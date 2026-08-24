@@ -24,6 +24,10 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-navy: var(--navy);
+  --color-navy-foreground: var(--navy-foreground);
+  --color-field: var(--field);
+  --color-primary-hover: var(--primary-hover);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -36,34 +40,40 @@
 :root {
   color-scheme: light;
 
-  /* almost-white with a cool undertone */
-  --background: oklch(0.99 0.004 250);
-  --foreground: oklch(0.25 0.045 255);
+  /* warm paper canvas */
+  --background: #f7f5f0;
+  --foreground: #142033;
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.045 255);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.045 255);
+  --card: #ffffff;
+  --card-foreground: #142033;
+  --popover: #ffffff;
+  --popover-foreground: #142033;
 
-  /* fresh blue */
-  --primary: oklch(0.52 0.16 255);
-  --primary-foreground: oklch(0.99 0.004 250);
+  /* the single primary CTA color, used everywhere a primary action appears */
+  --primary: #2f65c8;
+  --primary-hover: #2554aa;
+  --primary-foreground: #f8fafc;
 
-  --secondary: oklch(0.965 0.006 250);
-  --secondary-foreground: oklch(0.25 0.045 255);
+  --secondary: #dce8f5;
+  --secondary-foreground: #142033;
 
-  --muted: oklch(0.965 0.006 250);
-  --muted-foreground: oklch(0.52 0.025 255);
+  --muted: #efeae0;
+  --muted-foreground: #596777;
 
-  /* the single warm accent */
-  --accent: oklch(0.72 0.14 55);
-  --accent-foreground: oklch(0.25 0.045 255);
+  /* warm marker — reserved for eyebrows, dots and small numbering only */
+  --accent: #e58b52;
+  --accent-foreground: #142033;
 
   --destructive: oklch(0.577 0.245 27.325);
 
-  --border: oklch(0.91 0.01 250);
-  --input: oklch(0.91 0.01 250);
-  --ring: oklch(0.52 0.16 255);
+  --border: #d8dee7;
+  --input: #d8dee7;
+  --ring: #2f65c8;
+
+  /* the one full-width dark section (pricing) */
+  --navy: #17345f;
+  --navy-foreground: #f8fafc;
+  --field: #dce8f5;
 
   --radius: 0.5rem;
 }

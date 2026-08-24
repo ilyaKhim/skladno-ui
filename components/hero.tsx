@@ -2,7 +2,7 @@ import { ArrowRight, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { HeroDemo } from '@/components/hero-demo'
 
-const trust = ['Редактируемый PPTX', 'На русском языке', 'Структура под задачу']
+const trust = ['Из брифов и каталогов', 'Редактируемый PPTX/PDF', 'Готово за 5–10 минут']
 
 export function Hero() {
   return (
@@ -15,23 +15,27 @@ export function Hero() {
           </p>
 
           <h1 className="w-full min-w-0 max-w-full font-display text-[clamp(2.375rem,7vw,2.875rem)] font-bold leading-[1.1] tracking-tight text-balance [hyphens:auto] md:text-5xl md:leading-[1.05]">
-            Рабочая презентация из ваших материалов — за несколько минут
+            Из рабочих материалов — в складную презентацию за 5–10 минут
           </h1>
 
           <p className="max-w-xl text-lg leading-relaxed text-muted-foreground text-pretty">
-            Опишите задачу или загрузите текст, документ либо таблицу. Складно соберёт структуру,
-            напишет черновик и оформит деловые слайды — с выгрузкой в редактируемый PowerPoint.
+            Загрузите PPTX, DOCX или PDF либо добавьте ссылки на источники. Складно предложит
+            структуру, соберёт 7–15 деловых слайдов и подготовит редактируемый PPTX/PDF.
           </p>
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button size="lg" nativeButton={false} render={<a href="#create" />}>
-              Создать презентацию бесплатно
+              Получить бесплатное превью
               <ArrowRight aria-hidden="true" className="size-4" />
             </Button>
             <Button size="lg" variant="outline" nativeButton={false} render={<a href="#examples" />}>
               Посмотреть примеры
             </Button>
           </div>
+
+          <p className="text-sm text-muted-foreground">
+            Превью бесплатно · одна презентация — 290 ₽ · для работы — 1 090 ₽/месяц
+          </p>
 
           <ul className="flex flex-wrap gap-x-5 gap-y-2 pt-2">
             {trust.map((item) => (
