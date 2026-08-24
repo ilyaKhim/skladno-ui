@@ -1,4 +1,4 @@
-import { FileDown, Languages, Lock } from 'lucide-react'
+import { FileDown, Languages, ShieldCheck } from 'lucide-react'
 
 const facts = [
   {
@@ -12,9 +12,9 @@ const facts = [
     text: 'Интерфейс и текст презентаций на русском. Формулировки рассчитаны на рабочую переписку, а не на перевод.',
   },
   {
-    icon: Lock,
-    title: 'Приватность',
-    text: 'Материалы загружаются только для сборки презентации.',
+    icon: ShieldCheck,
+    title: 'Проверка перед выгрузкой',
+    text: 'Структура, цифры и формулировки остаются видимыми до скачивания — результат можно проверить и поправить.',
   },
 ]
 

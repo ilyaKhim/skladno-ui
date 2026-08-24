@@ -25,33 +25,66 @@ export const scenarios: Scenario[] = [
   {
     id: 'proposal',
     chip: 'КП клиенту',
-    prompt: 'Сделай коммерческое предложение по брифу на обновление корпоративного сайта.',
-    files: ['бриф.docx', 'прайс.xlsx'],
-    outline: ['Титульный слайд', 'Состав работ и этапы', 'Сроки и стоимость', 'Следующий шаг'],
+    prompt: 'Собери персональное коммерческое предложение по нашей линейке продуктов на основе брифа клиента.',
+    files: ['бриф клиента.docx', 'каталог продуктов.pdf'],
+    outline: ['Титульный слайд', 'Продукты под задачу клиента', 'Условия и цена', 'Следующий шаг'],
     slides: [
       <SlideFrame dense key="proposal-1">
         <SlideEyebrow>Коммерческое предложение</SlideEyebrow>
-        <SlideTitle>Обновление корпоративного сайта</SlideTitle>
+        <SlideTitle>Продукты под задачу клиента</SlideTitle>
         <SlideStages
           items={[
-            { label: 'Аудит и структура', note: 'Карта разделов' },
-            { label: 'Дизайн и вёрстка', note: 'Ключевые экраны' },
-            { label: 'Запуск', note: 'Перенос контента' },
+            { label: 'Бриф клиента', note: 'Задача и требования' },
+            { label: 'Каталог продуктов', note: 'Подходящая линейка' },
+            { label: 'Готовое КП', note: 'Условия и цена' },
           ]}
         />
-        <SlideTakeaway>Работа разбита на три этапа с отдельной приёмкой.</SlideTakeaway>
+        <SlideTakeaway>Предложение собрано под конкретного покупателя, а не по общему шаблону.</SlideTakeaway>
       </SlideFrame>,
       <SlideFrame dense key="proposal-2">
-        <SlideEyebrow>Сроки и объём</SlideEyebrow>
-        <SlideTitle>Планируемый график</SlideTitle>
+        <SlideEyebrow>Условия и цена</SlideEyebrow>
+        <SlideTitle>Что видит клиент</SlideTitle>
         <SlideBullets
           items={[
-            'Аудит и структура — 2 недели',
-            'Дизайн и вёрстка — 5 недель',
-            'Запуск и передача — 2 недели',
+            'Продукты подобраны под бриф, а не под весь каталог',
+            'Условия и цена — на отдельном слайде',
+            'Понятный следующий шаг для клиента',
           ]}
         />
-        <SlideTakeaway>Около 9 недель при согласовании макетов за три дня.</SlideTakeaway>
+        <SlideTakeaway>КП говорит о задаче клиента, а не о каталоге целиком.</SlideTakeaway>
+      </SlideFrame>,
+    ],
+  },
+  {
+    id: 'status-meeting',
+    chip: 'Статус-встреча',
+    prompt: 'Собери короткую презентацию к статус-встрече команды по текущим задачам.',
+    files: ['доска задач.pdf'],
+    outline: ['Что сделано', 'Что в работе', 'Блокеры и помощь'],
+    slides: [
+      <SlideFrame dense key="status-1">
+        <SlideEyebrow>Статус-встреча</SlideEyebrow>
+        <SlideTitle>Что сделано и что в работе</SlideTitle>
+        <SlideStages
+          items={[
+            { label: 'Сделано', note: 'Закрытые задачи' },
+            { label: 'В работе', note: 'Текущий фокус' },
+            { label: 'Блокеры', note: 'Нужна помощь' },
+          ]}
+        />
+        <SlideTakeaway>Статус собран по трём блокам, встреча не уходит в детали каждой задачи.</SlideTakeaway>
+      </SlideFrame>,
+      <SlideFrame dense key="status-2">
+        <SlideEyebrow>Блокеры</SlideEyebrow>
+        <SlideTitle>Что нужно от команды</SlideTitle>
+        <SlideBullets
+          items={[
+            'Одна задача ждёт решения по приоритету',
+            'Нужна проверка перед релизом',
+            'Следующий чек-ин — через неделю',
+          ]}
+        />
+        <SlideTakeaway>Встреча заканчивается конкретным действием, а не списком задач.</SlideTakeaway>
       </SlideFrame>,
     ],
   },
@@ -59,7 +92,7 @@ export const scenarios: Scenario[] = [
     id: 'report',
     chip: 'Отчёт руководителю',
     prompt: 'Собери отчёт за квартал по выгрузке заявок и рабочим заметкам.',
-    files: ['заявки-q1.xlsx', 'заметки.docx'],
+    files: ['заявки-q1.pdf', 'заметки.docx'],
     outline: ['Ключевые итоги', 'Динамика по месяцам', 'Выводы и шаги'],
     slides: [
       <SlideFrame dense key="report-1">
@@ -118,39 +151,6 @@ export const scenarios: Scenario[] = [
           ]}
         />
         <SlideTakeaway>Главный риск закрывается ранним согласованием интеграции.</SlideTakeaway>
-      </SlideFrame>,
-    ],
-  },
-  {
-    id: 'strategy',
-    chip: 'Стратегия',
-    prompt: 'Оформи стратегию на год из черновика тезисов в заметках.',
-    files: ['тезисы.txt'],
-    outline: ['Контекст', 'Три приоритета', 'Ресурсы и метрики'],
-    slides: [
-      <SlideFrame dense key="strategy-1">
-        <SlideEyebrow>Стратегия на год</SlideEyebrow>
-        <SlideTitle>Три приоритета направления</SlideTitle>
-        <SlideStages
-          items={[
-            { label: 'Удержание', note: 'снизить отток' },
-            { label: 'Процессы', note: 'убрать ручной труд' },
-            { label: 'Команда', note: 'усилить экспертизу' },
-          ]}
-        />
-        <SlideTakeaway>Фокус на удержании даёт результат быстрее расширения.</SlideTakeaway>
-      </SlideFrame>,
-      <SlideFrame dense key="strategy-2">
-        <SlideEyebrow>Ресурсы и метрики</SlideEyebrow>
-        <SlideTitle>Как поймём, что получилось</SlideTitle>
-        <SlideBullets
-          items={[
-            'Отток снижается с 8% до 5% за год',
-            'Доля ручных операций падает вдвое',
-            'Две ключевые роли закрыты в первом полугодии',
-          ]}
-        />
-        <SlideTakeaway>Метрики заданы заранее, прогресс виден поквартально.</SlideTakeaway>
       </SlideFrame>,
     ],
   },
