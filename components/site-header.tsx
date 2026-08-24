@@ -58,7 +58,7 @@ export function SiteHeader() {
         </nav>
         <div className="flex items-center gap-3">
           <Button size="sm" nativeButton={false} render={<a href="#create" />}>
-            Создать презентацию
+            Получить бесплатное превью
           </Button>
         </div>
       </div>
