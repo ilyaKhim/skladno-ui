@@ -14,8 +14,8 @@ export function Hero() {
             Презентации из ваших материалов
           </p>
 
-          <h1 className="w-full min-w-0 max-w-full font-display text-[clamp(2.375rem,7vw,2.875rem)] font-bold leading-[1.1] tracking-tight text-balance [hyphens:auto] md:text-5xl md:leading-[1.05]">
-            Из рабочих материалов — в складную презентацию за 5–10 минут
+          <h1 className="w-full min-w-0 max-w-full font-display text-[clamp(2.125rem,6.5vw,2.875rem)] font-bold leading-[1.15] tracking-tight text-balance [hyphens:none] [overflow-wrap:break-word] md:text-5xl md:leading-[1.05]">
+            Из документов — в рабочую презентацию за 5–10 минут
           </h1>
 
           <p className="max-w-xl text-lg leading-relaxed text-muted-foreground text-pretty">
