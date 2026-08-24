@@ -2,7 +2,7 @@ import { ArrowRight, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { HeroDemo } from '@/components/hero-demo'
 
-const trust = ['Из брифов и каталогов', 'Редактируемый PPTX/PDF', 'Готово за 5–10 минут']
+const trust = ['Из ваших материалов', 'В фирменном стиле', 'Редактируемый PPTX/PDF']
 
 export function Hero() {
   return (
@@ -34,7 +34,7 @@ export function Hero() {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            Превью бесплатно · одна презентация — 290 ₽ · для работы — 1 090 ₽/месяц
+            Превью бесплатно · одна презентация — 440 ₽ · для работы — 1 190 ₽/месяц
           </p>
 
           <ul className="flex flex-wrap gap-x-5 gap-y-2 pt-2">
