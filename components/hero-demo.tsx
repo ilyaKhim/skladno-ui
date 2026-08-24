@@ -175,6 +175,10 @@ function InputStage({ prompt, files }: { prompt: string; files: string[] }) {
               {file}
             </span>
           ))}
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 px-2 py-1 text-xs font-medium text-primary">
+            <Sparkles aria-hidden="true" className="size-3" />
+            Фирменный стиль — добавить шаблон
+          </span>
         </div>
       </div>
     </div>
