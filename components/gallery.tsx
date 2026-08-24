@@ -45,10 +45,11 @@ export function Gallery() {
         </div>
 
         <div
+          key={deck.id}
           role="tabpanel"
           id={`panel-${deck.id}`}
           aria-labelledby={`tab-${deck.id}`}
-          className="pt-6"
+          className="tab-fade-in pt-6"
         >
           <p className="max-w-[70ch] text-sm leading-relaxed text-muted-foreground text-pretty">
             {deck.caption}
