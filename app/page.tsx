@@ -1,5 +1,5 @@
-import { EarlyAccess } from '@/components/early-access'
 import { Facts } from '@/components/facts'
+import { EarlyAccess } from '@/components/early-access'
 import { Faq } from '@/components/faq'
 import { FinalCta } from '@/components/final-cta'
 import { Gallery } from '@/components/gallery'
