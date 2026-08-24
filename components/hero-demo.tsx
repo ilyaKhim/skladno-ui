@@ -74,41 +74,40 @@ export function HeroDemo() {
         </div>
 
         {/* Stage progress / manual control */}
-        <div className="flex items-center gap-1.5 border-t border-border px-4 py-3">
+        <div className="grid grid-cols-2 gap-1 border-t border-border px-3 py-3 sm:flex sm:items-center sm:gap-1.5 sm:px-4">
           {stageLabels.map((label, i) => {
             const isActive = i === stage
             const isDone = i < stage
             return (
-              <div key={label} className="flex flex-1 items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setStage(i)}
-                  aria-current={isActive ? 'step' : undefined}
+              <button
+                key={label}
+                type="button"
+                onClick={() => setStage(i)}
+                aria-current={isActive ? 'step' : undefined}
+                className={cn(
+                  'flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs font-medium transition-colors sm:flex-1',
+                  isActive
+                    ? 'text-foreground'
+                    : isDone
+                      ? 'text-muted-foreground'
+                      : 'text-muted-foreground/60 hover:text-muted-foreground',
+                )}
+              >
+                <span
+                  aria-hidden="true"
                   className={cn(
-                    'flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs font-medium transition-colors',
+                    'grid size-4 shrink-0 place-items-center rounded-full border text-[10px] transition-colors',
                     isActive
-                      ? 'text-foreground'
+                      ? 'border-primary bg-primary text-primary-foreground'
                       : isDone
-                        ? 'text-muted-foreground'
-                        : 'text-muted-foreground/60 hover:text-muted-foreground',
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-border',
                   )}
                 >
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      'grid size-4 shrink-0 place-items-center rounded-full border text-[10px] transition-colors',
-                      isActive
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : isDone
-                          ? 'border-primary/40 bg-primary/10 text-primary'
-                          : 'border-border',
-                    )}
-                  >
-                    {isDone ? <Check className="size-2.5" /> : i + 1}
-                  </span>
-                  <span className="truncate">{label}</span>
-                </button>
-              </div>
+                  {isDone ? <Check className="size-2.5" /> : i + 1}
+                </span>
+                <span className="truncate">{label}</span>
+              </button>
             )
           })}
         </div>
@@ -146,7 +145,7 @@ function Stage({ active, children }: { active: boolean; children: React.ReactNod
     <div
       aria-hidden={!active}
       className={cn(
-        'absolute inset-0 p-4 transition duration-500 ease-out sm:p-5',
+        'absolute inset-0 p-3 transition duration-500 ease-out sm:p-5',
         active
           ? 'translate-x-0 opacity-100'
           : 'pointer-events-none translate-x-2 opacity-0',

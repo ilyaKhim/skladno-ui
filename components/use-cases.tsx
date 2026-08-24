@@ -36,26 +36,26 @@ export function UseCases() {
           {cases.map((c) => (
             <li
               key={c.title}
-              className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6 md:flex-row md:items-center md:gap-8"
+              className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6 lg:flex-row lg:items-center lg:gap-8"
             >
-              <h3 className="font-display text-xl font-bold tracking-tight md:w-56 md:shrink-0">
+              <h3 className="font-display text-xl font-bold tracking-tight lg:w-56 lg:shrink-0">
                 {c.title}
               </h3>
 
-              <div className="flex flex-col gap-3 md:flex-1 md:flex-row md:items-center">
+              <div className="flex flex-col gap-3 lg:flex-1 lg:flex-row lg:items-center">
                 <p className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
                   {c.input}
                 </p>
                 <ArrowRight
                   aria-hidden="true"
-                  className="size-4 shrink-0 rotate-90 text-accent md:rotate-0"
+                  className="size-4 shrink-0 rotate-90 text-accent lg:rotate-0"
                 />
                 <p className="rounded-lg bg-muted px-3 py-2 text-sm font-medium text-foreground text-pretty">
                   {c.output}
                 </p>
               </div>
 
-              <p className="leading-relaxed text-muted-foreground text-pretty md:w-72 md:shrink-0">
+              <p className="leading-relaxed text-muted-foreground text-pretty lg:w-72 lg:shrink-0">
                 {c.text}
               </p>
             </li>
