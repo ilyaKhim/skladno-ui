@@ -29,7 +29,7 @@ export function SiteFooter() {
         </nav>
 
         <p className="text-sm text-muted-foreground">
-          {`© ${new Date().getFullYear()} Складно`}
+          {`© ${new Date().getFullYear()} GoDeck`}
         </p>
       </div>
     </footer>
