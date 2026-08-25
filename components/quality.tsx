@@ -39,10 +39,7 @@ export function Quality() {
           ))}
         </ul>
 
-        <div className="mt-10 flex flex-col gap-3 md:mt-14">
-          <p className="text-sm text-muted-foreground text-pretty">
-            Одни и те же материалы: слева заметки и таблица, справа — готовые рабочие слайды.
-          </p>
+        <div className="mt-10 md:mt-14">
           <TransformationScene />
         </div>
       </div>
