@@ -1,5 +1,5 @@
 import { SectionHeading } from '@/components/section-heading'
-import { BeforeAfter } from '@/components/before-after'
+import { TransformationScene } from '@/components/transformation-scene'
 
 const principles = [
   {
@@ -30,23 +30,20 @@ export function Quality() {
           description="Презентация собирается по правилам оформления, а не просто заливается текстом в шаблон."
         />
 
-        <div className="grid gap-10 lg:grid-cols-2 lg:gap-14">
-          <ul className="grid gap-5 sm:grid-cols-2">
-            {principles.map((p) => (
-              <li key={p.title} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-5">
-                <h3 className="font-display text-lg font-bold tracking-tight">{p.title}</h3>
-                <p className="leading-relaxed text-muted-foreground text-pretty">{p.text}</p>
-              </li>
-            ))}
-          </ul>
+        <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {principles.map((p) => (
+            <li key={p.title} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-5">
+              <h3 className="font-display text-lg font-bold tracking-tight">{p.title}</h3>
+              <p className="leading-relaxed text-muted-foreground text-pretty">{p.text}</p>
+            </li>
+          ))}
+        </ul>
 
-          <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground text-pretty">
-              Перетащите разделитель или переключите «Было / Стало», чтобы сравнить один и тот же
-              слайд до и после обработки.
-            </p>
-            <BeforeAfter />
-          </div>
+        <div className="mt-10 flex flex-col gap-3 md:mt-14">
+          <p className="text-sm text-muted-foreground text-pretty">
+            Одни и те же материалы: слева заметки и таблица, справа — готовые рабочие слайды.
+          </p>
+          <TransformationScene />
         </div>
       </div>
     </section>

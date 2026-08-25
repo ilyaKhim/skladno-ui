@@ -1,19 +1,5 @@
 import { SectionHeading } from '@/components/section-heading'
-
-const steps = [
-  {
-    title: 'Загрузить материалы',
-    text: 'Загрузите PPTX, DOCX или PDF либо добавьте ссылки на источники. Корпоративный шаблон, брендбук PDF или логотип можно добавить отдельно.',
-  },
-  {
-    title: 'Проверить структуру и фирменный стиль',
-    text: 'Загрузите корпоративный шаблон PowerPoint, брендбук PDF или логотип, чтобы применить цвета, шрифты и оформление компании.',
-  },
-  {
-    title: 'Получить PPTX',
-    text: 'Файл открывается в PowerPoint и совместимых редакторах, слайды правятся как обычно.',
-  },
-]
+import { ProductMoment } from '@/components/product-moment'
 
 export function Steps() {
   return (
@@ -21,29 +7,13 @@ export function Steps() {
       <div className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-28">
         <SectionHeading
           eyebrow="Как это работает"
-          title="Три шага до готового файла"
-          description="Никакой настройки перед началом: результат виден на втором шаге."
+          title="От заметок до готовых слайдов на одном примере"
+          description="Квартальный отчет проходит через три этапа. Переключайтесь между вкладками — управление полностью у вас."
         />
 
-        <ol className="relative flex flex-col gap-8 md:flex-row md:gap-6">
-          {/* connecting line, desktop only */}
-          <span
-            aria-hidden="true"
-            className="absolute left-5 top-5 hidden h-px w-full bg-border md:block"
-          />
-
-          {steps.map((step, i) => (
-            <li key={step.title} className="relative flex flex-1 flex-col gap-3">
-              <span className="flex size-10 items-center justify-center rounded-full border border-border bg-card font-display text-sm font-bold tabular-nums text-primary">
-                {i + 1}
-              </span>
-              <h3 className="font-display text-xl font-bold tracking-tight">{step.title}</h3>
-              <p className="max-w-[42ch] leading-relaxed text-muted-foreground text-pretty">
-                {step.text}
-              </p>
-            </li>
-          ))}
-        </ol>
+        <div className="rounded-2xl border border-border bg-card p-5 md:p-8">
+          <ProductMoment />
+        </div>
       </div>
     </section>
   )

@@ -1,4 +1,5 @@
 import { Facts } from '@/components/facts'
+import { BrandStyle } from '@/components/brand-style'
 import { EarlyAccess } from '@/components/early-access'
 import { Faq } from '@/components/faq'
 import { FinalCta } from '@/components/final-cta'
@@ -33,6 +34,9 @@ export default function Page() {
         </Reveal>
         <Reveal>
           <Quality />
+        </Reveal>
+        <Reveal>
+          <BrandStyle />
         </Reveal>
         <Reveal>
           <Facts />

@@ -9,20 +9,23 @@ export function Wordmark() {
         aria-hidden="true"
         className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground"
       >
-        <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden="true">
-          {/* back slide */}
-          <rect x="4" y="6" width="9" height="12" rx="1.5" fill="currentColor" opacity="0.4" />
-          {/* front slide */}
-          <rect x="8" y="6" width="9" height="12" rx="1.5" fill="currentColor" opacity="0.75" />
-          {/* forward chevron */}
-          <path
-            d="M15.5 8.5 19 12l-3.5 3.5"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+          <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden="true">
+            {/* back slide */}
+            <rect x="3" y="5" width="10" height="13" rx="1.5" fill="currentColor" opacity="0.35" />
+            {/* front slide, with a title bar + text lines so it reads as a slide */}
+            <rect x="7" y="5" width="10" height="13" rx="1.5" fill="currentColor" opacity="0.85" />
+            <rect x="9" y="8" width="6" height="1.4" rx="0.7" fill="var(--primary-foreground)" />
+            <rect x="9" y="11" width="4.2" height="1.1" rx="0.55" fill="var(--primary-foreground)" opacity="0.6" />
+            <rect x="9" y="13.2" width="5" height="1.1" rx="0.55" fill="var(--primary-foreground)" opacity="0.6" />
+            {/* forward chevron */}
+            <path
+              d="M16.5 9l3 3-3 3"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
       </span>
       <span className="font-display text-lg font-bold tracking-tight text-foreground">
         GoDeck
