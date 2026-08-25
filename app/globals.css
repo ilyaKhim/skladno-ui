@@ -43,43 +43,43 @@
 :root {
   color-scheme: light;
 
-  /* warm paper canvas */
-  --background: #f7f5f0;
-  --foreground: #101828;
+  /* neutral page canvas */
+  --background: #f7f7f5;
+  --foreground: #142033;
 
   --card: #ffffff;
-  --card-foreground: #101828;
+  --card-foreground: #142033;
   --popover: #ffffff;
-  --popover-foreground: #101828;
+  --popover-foreground: #142033;
 
   /* the single primary CTA color, used everywhere a primary action appears */
-  --primary: #315eff;
-  --primary-hover: #2549d8;
+  --primary: #335cc5;
+  --primary-hover: #294da6;
   --primary-foreground: #ffffff;
 
-  --secondary: #dde8ff;
-  --secondary-foreground: #101828;
+  --secondary: #e6edf8;
+  --secondary-foreground: #142033;
 
-  --muted: #edeef3;
-  --muted-foreground: #566072;
+  --muted: #eef0f2;
+  --muted-foreground: #5b6675;
 
   /* lime marker — reserved for small details: dots, underlines, diagram accents */
   --accent: #d7f36a;
-  --accent-foreground: #101828;
+  --accent-foreground: #142033;
 
   --destructive: oklch(0.577 0.245 27.325);
 
-  --border: #d8dee7;
-  --input: #d8dee7;
-  --ring: #315eff;
+  --border: #d9dee7;
+  --input: #d9dee7;
+  --ring: #335cc5;
 
   /* full-width dark scenes (transformation, pricing, final CTA) */
-  --navy: #142b4a;
+  --navy: #162d4e;
   --navy-foreground: #f5f7fb;
-  --field: #dde8ff;
+  --field: #e6edf8;
 
   /* soft tints used only around product mockups */
-  --tint-blue: #dde8ff;
+  --tint-blue: #e6edf8;
   --tint-sage: #e6eee3;
   --tint-apricot: #f6e8db;
 
