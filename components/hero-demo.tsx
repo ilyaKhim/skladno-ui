@@ -50,7 +50,7 @@ export function HeroDemo() {
         <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/50 px-4 py-3">
           <div className="flex items-center gap-2">
             <Sparkles aria-hidden="true" className="size-4 text-primary" />
-            <span className="text-sm font-medium">Складно</span>
+            <span className="text-sm font-medium">GoDeck</span>
           </div>
           <span className="rounded-full bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
             Пример
@@ -188,7 +188,7 @@ function InputStage({ prompt, files }: { prompt: string; files: string[] }) {
 function OutlineStage({ outline, active }: { outline: string[]; active: boolean }) {
   return (
     <div className="flex h-full flex-col gap-3">
-      <p className="text-xs font-medium text-muted-foreground">Складно предлагает структуру</p>
+          <p className="text-xs font-medium text-muted-foreground">GoDeck предлагает структуру</p>
       <ul className="flex flex-1 flex-col justify-center gap-2">
         {outline.map((item, i) => (
           <li
@@ -238,7 +238,7 @@ function ReadyStage({ title }: { title: string }) {
         </p>
       </div>
       <span className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">
-        skladno-presentation.pptx
+                godeck-presentation.pptx
         <ArrowRight aria-hidden="true" className="size-4" />
       </span>
     </div>

@@ -28,6 +28,9 @@
   --color-navy-foreground: var(--navy-foreground);
   --color-field: var(--field);
   --color-primary-hover: var(--primary-hover);
+  --color-tint-blue: var(--tint-blue);
+  --color-tint-sage: var(--tint-sage);
+  --color-tint-apricot: var(--tint-apricot);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -42,40 +45,45 @@
 
   /* warm paper canvas */
   --background: #f7f5f0;
-  --foreground: #142033;
+  --foreground: #101828;
 
   --card: #ffffff;
-  --card-foreground: #142033;
+  --card-foreground: #101828;
   --popover: #ffffff;
-  --popover-foreground: #142033;
+  --popover-foreground: #101828;
 
   /* the single primary CTA color, used everywhere a primary action appears */
-  --primary: #2f65c8;
-  --primary-hover: #2554aa;
-  --primary-foreground: #f8fafc;
+  --primary: #315eff;
+  --primary-hover: #2549d8;
+  --primary-foreground: #ffffff;
 
-  --secondary: #dce8f5;
-  --secondary-foreground: #142033;
+  --secondary: #dde8ff;
+  --secondary-foreground: #101828;
 
-  --muted: #efeae0;
-  --muted-foreground: #596777;
+  --muted: #edeef3;
+  --muted-foreground: #566072;
 
-  /* warm marker — reserved for eyebrows, dots and small numbering only */
-  --accent: #e58b52;
-  --accent-foreground: #142033;
+  /* lime marker — reserved for small details: dots, underlines, diagram accents */
+  --accent: #d7f36a;
+  --accent-foreground: #101828;
 
   --destructive: oklch(0.577 0.245 27.325);
 
   --border: #d8dee7;
   --input: #d8dee7;
-  --ring: #2f65c8;
+  --ring: #315eff;
 
-  /* the one full-width dark section (pricing) */
-  --navy: #17345f;
-  --navy-foreground: #f8fafc;
-  --field: #dce8f5;
+  /* full-width dark scenes (transformation, pricing, final CTA) */
+  --navy: #142b4a;
+  --navy-foreground: #f5f7fb;
+  --field: #dde8ff;
 
-  --radius: 0.5rem;
+  /* soft tints used only around product mockups */
+  --tint-blue: #dde8ff;
+  --tint-sage: #e6eee3;
+  --tint-apricot: #f6e8db;
+
+  --radius: 0.625rem;
 }
 
 @layer base {

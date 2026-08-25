@@ -18,9 +18,9 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Складно — рабочие презентации из ваших материалов',
+  title: 'GoDeck — рабочая презентация из ваших материалов',
   description:
-    'Опишите задачу или загрузите текст, документ либо таблицу — «Складно» соберет структуру, напишет черновик и оформит слайды. Выгрузка в редактируемый PowerPoint.',
+    'Загрузите документ, таблицу или черновик — GoDeck соберёт структуру, оформит слайды в вашем фирменном стиле и подготовит редактируемый PowerPoint.',
   generator: 'v0.app',
   icons: {
     icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: 'light',
-  themeColor: '#ffffff',
+  themeColor: '#f7f5f0',
 }
 
 export default function RootLayout({
