@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef, useState } from 'react'
+import { FileDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 import {
@@ -27,6 +28,11 @@ const stages = [
     key: 'slides',
     label: 'Готовые слайды',
     explainer: 'Тезисы становятся слайдами: вывод, график и следующий шаг.',
+  },
+  {
+    key: 'pptx',
+    label: 'PPTX',
+    explainer: 'Результат скачивается как редактируемый файл PowerPoint.',
   },
 ] as const
 
@@ -136,6 +142,26 @@ function SlidesPanel() {
   )
 }
 
+function PptxPanel() {
+  return (
+    <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-4 rounded-lg border border-border bg-card p-6 text-center">
+      <span className="grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
+        <FileDown aria-hidden="true" className="size-6" />
+      </span>
+      <div className="flex flex-col gap-1">
+        <p className="font-display text-lg font-bold tracking-tight">Отчёт готов</p>
+        <p className="max-w-sm text-sm leading-relaxed text-muted-foreground text-pretty">
+          Файл скачивается как обычная презентация PowerPoint и полностью редактируется.
+        </p>
+      </div>
+      <span className="inline-flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm font-medium text-foreground">
+        <FileDown aria-hidden="true" className="size-4 text-primary" />
+        otchet-q1.pptx
+      </span>
+    </div>
+  )
+}
+
 export function ProductMoment() {
   const [stage, setStage] = useState<StageKey>('materials')
   const tabListId = useId()
@@ -161,6 +187,7 @@ export function ProductMoment() {
         const schedule: Array<[number, StageKey]> = [
           [700, 'structure'],
           [1400, 'slides'],
+          [2100, 'pptx'],
         ]
         for (const [delay, key] of schedule) {
           timeouts.push(
@@ -221,9 +248,10 @@ export function ProductMoment() {
         {stage === 'materials' && <MaterialsPanel />}
         {stage === 'structure' && <StructurePanel />}
         {stage === 'slides' && <SlidesPanel />}
+        {stage === 'pptx' && <PptxPanel />}
       </div>
 
-      <ul className="grid gap-4 border-t border-border pt-5 sm:grid-cols-3">
+      <ul className="grid gap-4 border-t border-border pt-5 sm:grid-cols-2 lg:grid-cols-4">
         {stages.map((s) => (
           <li key={s.key} className="flex flex-col gap-1">
             <p className={cn('text-sm font-semibold', stage === s.key ? 'text-primary' : 'text-foreground')}>

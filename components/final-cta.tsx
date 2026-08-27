@@ -8,9 +8,9 @@ export function FinalCta() {
         <div className="flex max-w-2xl flex-col gap-3">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground/70">Начните с задачи</p>
           <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl">Что вам нужно подготовить?</h2>
-          <p className="text-lg leading-relaxed text-primary-foreground/80 text-pretty">Загрузите материалы в GoDeck, посмотрите предложенную структуру и черновик слайдов бесплатно — а затем решите, оплачивать ли готовый редактируемый файл.</p>
+          <p className="text-lg leading-relaxed text-primary-foreground/80 text-pretty">Загрузите материалы и получите структуру и черновик презентации. Карта не требуется.</p>
         </div>
-        <Button size="lg" variant="secondary" className="shrink-0" nativeButton={false} render={<a href="#create" />}>Получить бесплатное превью <ArrowRight aria-hidden="true" className="size-4" /></Button>
+        <Button size="lg" variant="secondary" className="shrink-0" nativeButton={false} render={<a href="#create" />}>Создать презентацию бесплатно <ArrowRight aria-hidden="true" className="size-4" /></Button>
       </div>
     </section>
   )

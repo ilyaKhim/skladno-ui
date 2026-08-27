@@ -1,5 +1,3 @@
-import { Facts } from '@/components/facts'
-import { BrandStyle } from '@/components/brand-style'
 import { EarlyAccess } from '@/components/early-access'
 import { Faq } from '@/components/faq'
 import { FinalCta } from '@/components/final-cta'
@@ -8,10 +6,11 @@ import { Hero } from '@/components/hero'
 import { Pains } from '@/components/pains'
 import { Quality } from '@/components/quality'
 import { Reveal } from '@/components/reveal'
+import { ResultSummary } from '@/components/result-summary'
 import { SiteFooter } from '@/components/site-footer'
 import { SiteHeader } from '@/components/site-header'
 import { Steps } from '@/components/steps'
-import { UseCases } from '@/components/use-cases'
+import { TransformationScene } from '@/components/transformation-scene'
 import { MobileCta } from '@/components/mobile-cta'
 
 export default function Page() {
@@ -21,25 +20,26 @@ export default function Page() {
       <main>
         <Hero />
         <Reveal>
-          <Gallery />
-        </Reveal>
-        <Reveal>
           <Pains />
         </Reveal>
         <Reveal>
           <Steps />
         </Reveal>
         <Reveal>
-          <UseCases />
+          <Gallery />
         </Reveal>
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-28">
+            <Reveal>
+              <TransformationScene />
+            </Reveal>
+          </div>
+        </section>
         <Reveal>
           <Quality />
         </Reveal>
         <Reveal>
-          <BrandStyle />
-        </Reveal>
-        <Reveal>
-          <Facts />
+          <ResultSummary />
         </Reveal>
         <Reveal>
           <EarlyAccess />
