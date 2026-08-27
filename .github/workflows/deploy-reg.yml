@@ -1,0 +1,77 @@
+name: Deploy production to REG.RU
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: reg-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      REG_HOST: ${{ secrets.REG_HOST }}
+      REG_PORT: ${{ secrets.REG_PORT }}
+      REG_USER: ${{ secrets.REG_USER }}
+      REG_DEPLOY_PATH: ${{ secrets.REG_DEPLOY_PATH }}
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.10.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build static site
+        run: pnpm build
+        env:
+          STATIC_EXPORT: '1'
+
+      - name: Validate destination
+        run: |
+          if [ -z "$REG_HOST" ] || [ -z "$REG_USER" ] || [ -z "$REG_DEPLOY_PATH" ]; then
+            echo "REG.RU deployment secrets are incomplete"
+            exit 1
+          fi
+          if [ "$REG_DEPLOY_PATH" = "/" ] || [ "$REG_DEPLOY_PATH" = "." ]; then
+            echo "Unsafe REG_DEPLOY_PATH"
+            exit 1
+          fi
+
+      - name: Configure SSH
+        env:
+          REG_SSH_KEY: ${{ secrets.REG_SSH_KEY }}
+        run: |
+          if [ -z "$REG_SSH_KEY" ]; then
+            echo "REG_SSH_KEY is missing"
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$REG_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${REG_PORT:-22}" "$REG_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy to REG.RU
+        run: |
+          rsync -az --delete \
+            -e "ssh -p ${REG_PORT:-22}" \
+            out/ "$REG_USER@$REG_HOST:$REG_DEPLOY_PATH/"
