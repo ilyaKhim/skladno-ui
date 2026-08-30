@@ -83,10 +83,6 @@
   --tint-sage: #e6eee3;
   --tint-apricot: #f6e8db;
 
-  /* hero accent-word gradient — a lighter, cyan-leaning stop of the primary blue */
-  --accent-word-from: var(--primary);
-  --accent-word-to: #3fb6e0;
-
   --radius: 0.625rem;
 }
 
@@ -157,86 +153,38 @@
 }
 
 /*
- * Magnetic kinetic typography (desktop): each word starts settled at its
- * free-floating position (--tx/--ty), holds for ~2.5s, then drifts along a
- * soft two-segment arc (through --mx/--my) toward "любые" (--gx/--gy),
- * shrinking, fading, and blurring as it dissolves into the word. After a
- * pause it arcs back out to its settled position. One shared keyframe;
- * per-word timing offsets come from negative animation-delay values.
+ * Calm, permanent gradient for "любые" — the subheading's single emphasis
+ * word. Deliberately less saturated than the "10×" accent so it never
+ * competes with it.
  */
-@keyframes magnetic-word {
-  0%,
-  30% {
-    opacity: 1;
-    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(1);
-    filter: blur(0px);
-  }
-  44%,
-  84% {
-    opacity: 0.5;
-    transform: translate(-50%, -50%) translate(var(--mx), var(--my)) scale(0.85);
-    filter: blur(1.5px);
-  }
-  56%,
-  72% {
-    opacity: 0;
-    transform: translate(-50%, -50%) translate(var(--gx), var(--gy)) scale(0.7);
-    filter: blur(4px);
-  }
-  96%,
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(1);
-    filter: blur(0px);
-  }
+.accent-gradient-text {
+  background: linear-gradient(90deg, #3f62d3 0%, #7b6fd0 55%, #d36d91 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  display: inline-block;
 }
 
 /*
- * Magnetic kinetic typography (mobile): words stay put and simply shrink,
- * blur, and fade near their own position instead of traveling toward
- * "любые" — avoids any risk of long-distance paths overlapping other text.
+ * One-shot reaction on "любые" each time a kinetic word (see hero.tsx's
+ * MagneticSubtitle) arrives and dissolves into it: a brief scale pulse plus
+ * a momentary brightening of its gradient. Re-triggered by remounting this
+ * element (via a changing `key`), so it always plays from the start.
  */
-@keyframes magnetic-word-mobile {
+@keyframes accent-pulse-once {
   0%,
-  30% {
-    opacity: 1;
-    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(1);
-    filter: blur(0px);
-  }
-  56%,
-  72% {
-    opacity: 0;
-    transform: translate(-50%, -50%) translate(calc(var(--tx) * 0.85), calc(var(--ty) * 0.85))
-      scale(0.7);
-    filter: blur(3px);
-  }
-  96%,
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(1);
-    filter: blur(0px);
-  }
-}
-
-/*
- * "любые" reacts as the kinetic words dissolve into it: a brief 1 -> 1.06 -> 1
- * scale with a soft color impulse, timed to the convergence window above.
- */
-@keyframes accent-pulse {
-  0%,
-  53%,
   100% {
     transform: scale(1);
-    color: var(--primary);
+    filter: brightness(1) saturate(1);
   }
-  60% {
+  45% {
     transform: scale(1.06);
-    color: var(--accent-word-to);
+    filter: brightness(1.18) saturate(1.15);
   }
-  67% {
-    transform: scale(1);
-    color: var(--primary);
-  }
+}
+
+.accent-pulse-once {
+  animation: accent-pulse-once 450ms ease-in-out;
 }
 
 @keyframes tenx-scale-in {
