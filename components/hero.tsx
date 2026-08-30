@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -18,7 +18,14 @@ export function Hero() {
         </p>
 
         <h1 className="max-w-xl font-display text-[clamp(2.625rem,9vw,3.25rem)] font-bold leading-[1.08] tracking-tight text-balance [hyphens:none] [overflow-wrap:break-word] md:text-[clamp(4.5rem,6vw,5.5rem)] md:leading-[1.02]">
-          Превращай <RotatingWord /> в презентации в 10 раз быстрее
+          Превращай <RotatingWord /> в презентации{' '}
+          <span className="relative inline-block">
+            <TenX /> быстрее
+            <span
+              aria-hidden="true"
+              className="tenx-underline-draw absolute -bottom-1 left-0 h-[3px] w-full origin-left rounded-full bg-primary motion-reduce:hidden md:-bottom-2 md:h-1"
+            />
+          </span>
         </h1>
 
         <div className="relative w-full max-w-md pb-20 md:pb-24">
@@ -100,73 +107,111 @@ function RotatingWord() {
 }
 
 /**
- * Enlarged, blue-to-cyan gradient treatment for "любые" — the subheading's
- * single emphasis word. Fades in once on mount; no looping pulse or blink.
+ * Enlarged, solid brand-blue treatment for "любые" — the subheading's single
+ * emphasis word and the hero's main *animation* accent. Fades in once on
+ * mount, then reacts with a short scale + color pulse each cycle as the
+ * kinetic words dissolve into it (see KineticWords / accent-pulse).
  */
 function AccentWord() {
   return (
-    <span className="accent-reveal inline-block bg-gradient-to-r from-[var(--accent-word-from)] to-[var(--accent-word-to)] bg-clip-text text-[1.15em] font-semibold text-transparent">
+    <span className="accent-reveal relative inline-block text-[1.15em] font-semibold text-primary [animation:accent-reveal_0.7s_ease-out_both,accent-pulse_7.5s_ease-in-out_infinite]">
       любые
     </span>
   )
 }
 
 /**
- * Free-floating kinetic typography: five business-task words drift in from
- * wider offsets toward settled positions around "любые бизнес-задачи", hold
- * briefly, then drift back out before the ~6s cycle repeats. Positions are
- * responsive via Tailwind arbitrary custom properties (--tx/--ty), and the
- * whole composition is CSS-only so `motion-reduce` swaps to a static
- * arrangement automatically, with no JS branching needed.
+ * "10×" — the hero's main *color* accent. Larger and bolder than the
+ * surrounding headline text, solid brand blue. Plays a one-time scale-in on
+ * first mount only; stays static afterward.
+ */
+function TenX() {
+  return (
+    <span className="tenx-scale-in inline-block text-[1.2em] font-extrabold text-primary motion-reduce:opacity-100">
+      10×
+    </span>
+  )
+}
+
+/**
+ * Magnetic kinetic typography — the hero's main *animation* accent. Five
+ * business-task words rest freely and readably around "любые бизнес-задачи"
+ * for ~2.5s, then in turn (staggered ~130ms via negative animation-delay)
+ * drift along a soft arc toward "любые", shrinking, fading, and blurring as
+ * they dissolve into it — no spiral, no particles, no hard snaps. After a
+ * pause they arc back out to their resting spots and the ~7.5s cycle
+ * repeats. Plain text, no chip/pill styling. On mobile the words don't
+ * travel toward "любые" at all — they just shrink and fade near their own
+ * position, in sequence, so nothing crosses over other text.
+ *
+ * `--tx/--ty` are each word's resting offset; `--mx/--my` is a soft arc
+ * midpoint; `--gx/--gy` is where the word dissolves into "любые" (desktop
+ * only — swapped out for the mobile keyframe below md). `motion-reduce`
+ * collapses every animation to its end (resting) frame automatically via
+ * the global reduced-motion rule, leaving a static, readable arrangement.
  */
 function KineticWords() {
+  const words: Array<{
+    label: string
+    tx: string
+    ty: string
+    mx: string
+    my: string
+    gx: string
+    gy: string
+    delay: string
+  }> = [
+    { label: 'КП', tx: '-96px', ty: '34px', mx: '-55px', my: '8px', gx: '-14px', gy: '-6px', delay: '0s' },
+    { label: 'Отчёты', tx: '92px', ty: '28px', mx: '52px', my: '6px', gx: '10px', gy: '-4px', delay: '-1.3s' },
+    {
+      label: 'Стратегии',
+      tx: '-56px',
+      ty: '58px',
+      mx: '-34px',
+      my: '18px',
+      gx: '-10px',
+      gy: '-10px',
+      delay: '-2.6s',
+    },
+    { label: 'Питчи', tx: '58px', ty: '58px', mx: '34px', my: '18px', gx: '8px', gy: '-8px', delay: '-3.9s' },
+    {
+      label: 'Исследования',
+      tx: '0px',
+      ty: '78px',
+      mx: '0px',
+      my: '24px',
+      gx: '-2px',
+      gy: '-12px',
+      delay: '-5.2s',
+    },
+  ]
+
+  const mobileOffsets = ['-50px 32px', '46px 28px', '-32px 52px', '32px 56px', '0px 70px']
+
   return (
     <span aria-hidden="true" className="pointer-events-none absolute inset-0">
-      <span
-        className="absolute left-1/2 top-1/2 [--tx:-50px] [--ty:32px] animate-[kinetic-word_6s_ease-in-out_infinite] whitespace-nowrap rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium text-muted-foreground opacity-100 shadow-sm motion-reduce:animate-none sm:px-2.5 sm:py-1 sm:text-[11px] md:[--tx:-96px] md:[--ty:34px]"
-        style={{
-          transform: 'translate(-50%, -50%) translate(var(--tx), var(--ty))',
-          animationDelay: '0s',
-        }}
-      >
-        КП
-      </span>
-      <span
-        className="absolute left-1/2 top-1/2 [--tx:46px] [--ty:28px] animate-[kinetic-word_6s_ease-in-out_infinite] whitespace-nowrap rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium text-muted-foreground opacity-100 shadow-sm motion-reduce:animate-none sm:px-2.5 sm:py-1 sm:text-[11px] md:[--tx:92px] md:[--ty:28px]"
-        style={{
-          transform: 'translate(-50%, -50%) translate(var(--tx), var(--ty))',
-          animationDelay: '-1.1s',
-        }}
-      >
-        Отчёты
-      </span>
-      <span
-        className="absolute left-1/2 top-1/2 [--tx:-32px] [--ty:52px] animate-[kinetic-word_6s_ease-in-out_infinite] whitespace-nowrap rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium text-muted-foreground opacity-100 shadow-sm motion-reduce:animate-none sm:px-2.5 sm:py-1 sm:text-[11px] md:[--tx:-56px] md:[--ty:58px]"
-        style={{
-          transform: 'translate(-50%, -50%) translate(var(--tx), var(--ty))',
-          animationDelay: '-2.3s',
-        }}
-      >
-        Стратегии
-      </span>
-      <span
-        className="absolute left-1/2 top-1/2 [--tx:32px] [--ty:56px] animate-[kinetic-word_6s_ease-in-out_infinite] whitespace-nowrap rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium text-muted-foreground opacity-100 shadow-sm motion-reduce:animate-none sm:px-2.5 sm:py-1 sm:text-[11px] md:[--tx:58px] md:[--ty:58px]"
-        style={{
-          transform: 'translate(-50%, -50%) translate(var(--tx), var(--ty))',
-          animationDelay: '-3.5s',
-        }}
-      >
-        Питчи
-      </span>
-      <span
-        className="absolute left-1/2 top-1/2 [--tx:0px] [--ty:70px] animate-[kinetic-word_6s_ease-in-out_infinite] whitespace-nowrap rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium text-muted-foreground opacity-100 shadow-sm motion-reduce:animate-none sm:px-2.5 sm:py-1 sm:text-[11px] md:[--tx:0px] md:[--ty:78px]"
-        style={{
-          transform: 'translate(-50%, -50%) translate(var(--tx), var(--ty))',
-          animationDelay: '-4.6s',
-        }}
-      >
-        Исследования
-      </span>
+      {words.map((word, i) => {
+        const [mobileTx, mobileTy] = mobileOffsets[i]!.split(' ')
+        return (
+          <span
+            key={word.label}
+            className="absolute left-1/2 top-1/2 animate-[magnetic-word-mobile_7.5s_ease-in-out_infinite] whitespace-nowrap text-[10px] font-medium text-muted-foreground motion-reduce:animate-none sm:text-[11px] md:animate-[magnetic-word_7.5s_ease-in-out_infinite]"
+            style={
+              {
+                '--tx': mobileTx,
+                '--ty': mobileTy,
+                '--mx': word.mx,
+                '--my': word.my,
+                '--gx': word.gx,
+                '--gy': word.gy,
+                animationDelay: word.delay,
+              } as CSSProperties
+            }
+          >
+            {word.label}
+          </span>
+        )
+      })}
     </span>
   )
 }
