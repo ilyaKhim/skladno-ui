@@ -9,12 +9,12 @@ import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 import { cn } from '@/lib/utils'
 
 /**
- * Destination for the only CTA that leaves the landing page. `/login` is
+ * Destination for the only CTA that leaves the landing page. `/onboarding` is
  * the single future page for both sign-in and sign-up, so there is no
  * separate `/signup` route. Kept as a constant so it's a one-line change
  * once the real destination is finalized.
  */
-const CREATE_URL = 'https://app.godeck.ru/login?returnTo=%2Fcreate'
+const CREATE_URL = 'https://app.godeck.ru/onboarding?returnTo=%2Fcreate'
 
 const EXAMPLES = [
   'Собери коммерческое предложение по брифу клиента',
