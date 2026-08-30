@@ -165,6 +165,19 @@
   display: inline-block;
 }
 
+/*
+ * Static blue-to-violet gradient for "презентации" — the H1's permanent
+ * product-name accent. No coral/pink stop (unlike .accent-gradient-text)
+ * so it stays visually distinct from "любые" and never animates.
+ */
+.accent-presentations-text {
+  background: linear-gradient(90deg, #2f52c4 0%, #6a5fce 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+
 @keyframes tenx-scale-in {
   from {
     opacity: 0;

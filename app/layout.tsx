@@ -5,7 +5,7 @@ import './globals.css'
 
 const manrope = Manrope({
   subsets: ['latin', 'cyrillic'],
-  weight: ['600', '700'],
+  weight: ['600', '700', '800'],
   variable: '--font-manrope',
   display: 'swap',
 })
@@ -13,6 +13,7 @@ const manrope = Manrope({
 const inter = Inter({
   subsets: ['latin', 'cyrillic'],
   weight: ['400', '500'],
+  style: ['normal', 'italic'],
   variable: '--font-inter',
   display: 'swap',
 })
