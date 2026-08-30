@@ -83,7 +83,7 @@ export function Pains() {
                 }}
               >
                 <div className="relative z-10 flex size-8 items-center justify-center rounded-full border-4 border-navy bg-accent text-[10px] font-bold text-navy md:mx-auto">
-                  <span className="font-mono text-[11px] font-medium tracking-wide text-accent">{stage.number}</span>
+                  <span className="font-mono text-[11px] font-medium tracking-wide text-navy">{stage.number}</span>
                 </div>
                 <div className="md:mt-5">
                   <p className="sr-only">Этап {stage.number}</p>
