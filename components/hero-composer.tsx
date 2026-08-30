@@ -1,46 +1,97 @@
 'use client'
 
-import { useId, useRef, useState, type KeyboardEvent } from 'react'
-import { ArrowRight, Paperclip, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { ArrowRight, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 import { cn } from '@/lib/utils'
 
-const ACCEPTED_FORMATS = '.pdf,.docx,.xlsx,.pptx'
+/**
+ * Destination for the only CTA that leaves the landing page. `/login` is
+ * the single future page for both sign-in and sign-up, so there is no
+ * separate `/signup` route. Kept as a constant so it's a one-line change
+ * once the real destination is finalized.
+ */
+const CREATE_URL = 'https://app.godeck.ru/login?returnTo=%2Fcreate'
 
 const EXAMPLES = [
   'Собери коммерческое предложение по брифу клиента',
   'Подготовь квартальный отчёт по таблице',
   'Сделай презентацию стратегии проекта',
+  'Упакуй результаты исследования для руководства',
+  'Создай питч нового продукта для инвесторов',
 ] as const
 
-type ComposerFile = { id: string; name: string; format: string }
+const AUTO_ROTATE_MS = 5000
+const FADE_MS = 300
 
 /**
  * The hero's interactive task-composer, replacing the plain "Создать
- * презентацию" button. Accepts a free-text task description and/or
- * attached files, and exposes a single `onSubmit` callback so the real
- * generation flow can be wired in later without changing this component's
- * public surface. Until then it falls back to the same `#create` anchor
- * every other CTA on the page already points to.
+ * презентацию" button. Before the user touches it, the field cycles
+ * through prepared example task descriptions as real, editable content
+ * (not a placeholder) with a soft fade. The moment the user focuses,
+ * clicks, or types, rotation stops for good and the caret settles at the
+ * end of whatever text is currently shown. The "+" button is purely
+ * informational — it opens a small card nudging sign-up, nothing else.
+ * Only the primary button ever navigates the user away from the page.
  */
 export function HeroComposer() {
-  const [value, setValue] = useState('')
-  const [files, setFiles] = useState<ComposerFile[]>([])
-  const [examplesOpen, setExamplesOpen] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const reduced = usePrefersReducedMotion()
+  const [value, setValue] = useState<string>(EXAMPLES[0])
+  const [exampleIndex, setExampleIndex] = useState(0)
+  const [hasInteracted, setHasInteracted] = useState(false)
+  const [fading, setFading] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const interactedRef = useRef(false)
   const textareaId = useId()
 
-  const canSubmit = value.trim().length > 0 || files.length > 0
+  const canSubmit = value.trim().length > 0
+
+  // Auto-rotate examples every 5s, as real field content, until the user
+  // interacts with the field. Reduced motion: no rotation at all — just the
+  // first example, statically.
+  useEffect(() => {
+    if (hasInteracted || reduced) return
+    const id = window.setInterval(() => {
+      setFading(true)
+      const timeout = window.setTimeout(() => {
+        setExampleIndex((i) => {
+          const next = (i + 1) % EXAMPLES.length
+          setValue(EXAMPLES[next])
+          return next
+        })
+        setFading(false)
+      }, FADE_MS)
+      return () => window.clearTimeout(timeout)
+    }, AUTO_ROTATE_MS)
+    return () => window.clearInterval(id)
+  }, [hasInteracted, reduced])
+
+  function placeCaretAtEnd() {
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      const end = el.value.length
+      el.setSelectionRange(end, end)
+    })
+  }
+
+  // Runs once, on the very first focus/click/keystroke: stops auto-rotate,
+  // keeps the current example as real content, and (for focus/click only)
+  // moves the caret to the end without selecting anything.
+  function handleFirstInteraction(placeCaret: boolean) {
+    if (interactedRef.current) return
+    interactedRef.current = true
+    setHasInteracted(true)
+    if (placeCaret) placeCaretAtEnd()
+  }
 
   function handleSubmit() {
     if (!canSubmit) return
-    // No product-level generation API exists yet — hand off to the same
-    // `#create` destination every other hero/CTA in the page already uses.
-    // Swap this for a real onSubmit({ value, files }) call once the
-    // generation flow is ready.
-    window.location.hash = 'create'
+    window.location.href = CREATE_URL
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -50,116 +101,72 @@ export function HeroComposer() {
     }
   }
 
-  function handleFilesSelected(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0) return
-    const next: ComposerFile[] = Array.from(fileList).map((file) => ({
-      id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2, 8)}`,
-      name: file.name,
-      format: (file.name.split('.').pop() ?? '').toUpperCase(),
-    }))
-    setFiles((prev) => [...prev, ...next])
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
-
-  function removeFile(id: string) {
-    setFiles((prev) => prev.filter((f) => f.id !== id))
-  }
-
-  function selectExample(example: string) {
-    setValue(example)
-    setExamplesOpen(false)
+  // Always replaces the field's content with the next example, regardless
+  // of what the user has already typed, and never resumes auto-rotation.
+  function handleExamplesClick() {
+    interactedRef.current = true
+    setHasInteracted(true)
+    const next = (exampleIndex + 1) % EXAMPLES.length
+    setExampleIndex(next)
+    setValue(EXAMPLES[next])
+    textareaRef.current?.focus()
+    placeCaretAtEnd()
   }
 
   return (
     <div className="relative z-10 w-full max-w-2xl">
-      <div
-        className={cn(
-          'flex min-h-[180px] w-full flex-col gap-3 rounded-2xl border border-[#d8dee7] bg-card p-[22px] shadow-[0_2px_6px_rgba(20,32,51,0.04),0_16px_32px_-16px_rgba(20,32,51,0.08)] transition-shadow has-focus-visible:border-primary has-focus-visible:shadow-[0_2px_8px_rgba(20,32,51,0.06),0_20px_36px_-16px_rgba(51,92,197,0.16)] sm:min-h-[150px] md:min-h-[140px] md:p-6'
-        )}
-      >
+      <div className="flex min-h-[180px] w-full flex-col gap-3 rounded-2xl border border-[#d8dee7] bg-card p-[22px] shadow-[0_2px_6px_rgba(20,32,51,0.04),0_16px_32px_-16px_rgba(20,32,51,0.08)] transition-shadow has-focus-visible:border-primary has-focus-visible:shadow-[0_2px_8px_rgba(20,32,51,0.06),0_20px_36px_-16px_rgba(51,92,197,0.16)] sm:min-h-[150px] md:min-h-[140px] md:p-6">
         <label htmlFor={textareaId} className="sr-only">
           Опишите, какую презентацию нужно подготовить
         </label>
         <Textarea
+          ref={textareaRef}
           id={textareaId}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value)
+            handleFirstInteraction(false)
+          }}
+          onFocus={() => handleFirstInteraction(true)}
+          onClick={() => handleFirstInteraction(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Например: собери коммерческое предложение по брифу клиента"
           rows={2}
-          className="min-h-16 flex-1 border-none px-0 py-0 text-base shadow-none focus-visible:ring-0 md:text-base"
+          className={cn(
+            'min-h-16 flex-1 border-none px-0 py-0 text-base shadow-none transition-opacity duration-300 focus-visible:ring-0 md:text-base',
+            !reduced && fading ? 'opacity-0' : 'opacity-100'
+          )}
         />
 
-        {files.length > 0 && (
-          <ul className="flex flex-wrap gap-2" aria-label="Прикреплённые файлы">
-            {files.map((file) => (
-              <li
-                key={file.id}
-                className="flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-secondary px-2.5 py-1.5 text-xs text-secondary-foreground"
-              >
-                <span className="truncate">{file.name}</span>
-                <span className="shrink-0 text-muted-foreground">{file.format}</span>
-                <button
-                  type="button"
-                  onClick={() => removeFile(file.id)}
-                  aria-label={`Удалить файл ${file.name}`}
-                  className="shrink-0 rounded-full p-0.5 text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                >
-                  <X aria-hidden="true" className="size-3.5" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-1.5">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept={ACCEPTED_FORMATS}
-              onChange={(e) => handleFilesSelected(e.target.files)}
-              className="sr-only"
-              aria-label="Добавить файл: PDF, DOCX, XLSX, PPTX"
-              id={`${textareaId}-file`}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              className="gap-1"
-            >
-              <Paperclip aria-hidden="true" className="size-3.5" />
-              Добавить файл
-            </Button>
-            <span className="hidden text-xs text-muted-foreground md:inline">PDF, DOCX, XLSX, PPTX</span>
-
-            <Popover open={examplesOpen} onOpenChange={setExamplesOpen}>
+          <div className="flex items-center gap-2">
+            <Popover open={moreOpen} onOpenChange={setMoreOpen}>
               <PopoverTrigger
                 render={
-                  <Button type="button" variant="ghost" size="sm">
-                    Примеры
-                  </Button>
+                  <button
+                    type="button"
+                    aria-label="Больше возможностей"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    <Plus aria-hidden="true" className="size-4" />
+                  </button>
                 }
               />
-              <PopoverContent align="start">
-                <p className="px-2 pb-1.5 pt-1 text-xs font-medium text-muted-foreground">Выберите пример</p>
-                <div className="flex flex-col">
-                  {EXAMPLES.map((example) => (
-                    <button
-                      key={example}
-                      type="button"
-                      onClick={() => selectExample(example)}
-                      className="rounded-lg px-2 py-2 text-left text-sm text-popover-foreground outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
-                    >
-                      {example}
-                    </button>
-                  ))}
-                </div>
+              <PopoverContent
+                side="top"
+                align="start"
+                sideOffset={10}
+                className="w-64 rounded-[20px] border-none bg-navy p-4 text-navy-foreground shadow-xl"
+              >
+                <p className="text-sm font-semibold text-navy-foreground">Откройте больше возможностей</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-navy-foreground/70">
+                  Зарегистрируйтесь, чтобы добавлять файлы, выбирать шаблоны и применять фирменный стиль.
+                </p>
               </PopoverContent>
             </Popover>
+
+            <Button type="button" variant="ghost" size="sm" onClick={handleExamplesClick}>
+              Примеры
+            </Button>
           </div>
 
           <Button
