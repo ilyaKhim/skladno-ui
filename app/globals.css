@@ -83,6 +83,10 @@
   --tint-sage: #e6eee3;
   --tint-apricot: #f6e8db;
 
+  /* hero accent-word gradient — a lighter, cyan-leaning stop of the primary blue */
+  --accent-word-from: var(--primary);
+  --accent-word-to: #3fb6e0;
+
   --radius: 0.625rem;
 }
 
@@ -135,4 +139,43 @@
 
 .tab-fade-in {
   animation: tab-fade-in 0.28s ease-out;
+}
+
+@keyframes accent-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.accent-reveal {
+  animation: accent-reveal 0.7s ease-out both;
+}
+
+/*
+ * Kinetic typography words in the hero: each word drifts in from a wider
+ * offset toward its settled position (set via --tx/--ty, defined per-word
+ * with responsive Tailwind arbitrary properties), holds, then drifts back
+ * out before looping. Fully driven by --tx/--ty so it stays responsive
+ * without JS.
+ */
+@keyframes kinetic-word {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(calc(var(--tx) * 1.6), calc(var(--ty) * 1.6));
+  }
+  20%,
+  68% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(var(--tx), var(--ty));
+  }
+  86% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(calc(var(--tx) * 1.6), calc(var(--ty) * 1.6));
+  }
 }
