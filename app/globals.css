@@ -157,25 +157,112 @@
 }
 
 /*
- * Kinetic typography words in the hero: each word drifts in from a wider
- * offset toward its settled position (set via --tx/--ty, defined per-word
- * with responsive Tailwind arbitrary properties), holds, then drifts back
- * out before looping. Fully driven by --tx/--ty so it stays responsive
- * without JS.
+ * Magnetic kinetic typography (desktop): each word starts settled at its
+ * free-floating position (--tx/--ty), holds for ~2.5s, then drifts along a
+ * soft two-segment arc (through --mx/--my) toward "любые" (--gx/--gy),
+ * shrinking, fading, and blurring as it dissolves into the word. After a
+ * pause it arcs back out to its settled position. One shared keyframe;
+ * per-word timing offsets come from negative animation-delay values.
  */
-@keyframes kinetic-word {
+@keyframes magnetic-word {
   0%,
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) translate(calc(var(--tx) * 1.6), calc(var(--ty) * 1.6));
-  }
-  20%,
-  68% {
+  30% {
     opacity: 1;
-    transform: translate(-50%, -50%) translate(var(--tx), var(--ty));
+    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(1);
+    filter: blur(0px);
   }
-  86% {
+  44%,
+  84% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) translate(var(--mx), var(--my)) scale(0.85);
+    filter: blur(1.5px);
+  }
+  56%,
+  72% {
     opacity: 0;
-    transform: translate(-50%, -50%) translate(calc(var(--tx) * 1.6), calc(var(--ty) * 1.6));
+    transform: translate(-50%, -50%) translate(var(--gx), var(--gy)) scale(0.7);
+    filter: blur(4px);
   }
+  96%,
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(1);
+    filter: blur(0px);
+  }
+}
+
+/*
+ * Magnetic kinetic typography (mobile): words stay put and simply shrink,
+ * blur, and fade near their own position instead of traveling toward
+ * "любые" — avoids any risk of long-distance paths overlapping other text.
+ */
+@keyframes magnetic-word-mobile {
+  0%,
+  30% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(1);
+    filter: blur(0px);
+  }
+  56%,
+  72% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(calc(var(--tx) * 0.85), calc(var(--ty) * 0.85))
+      scale(0.7);
+    filter: blur(3px);
+  }
+  96%,
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(1);
+    filter: blur(0px);
+  }
+}
+
+/*
+ * "любые" reacts as the kinetic words dissolve into it: a brief 1 -> 1.06 -> 1
+ * scale with a soft color impulse, timed to the convergence window above.
+ */
+@keyframes accent-pulse {
+  0%,
+  53%,
+  100% {
+    transform: scale(1);
+    color: var(--primary);
+  }
+  60% {
+    transform: scale(1.06);
+    color: var(--accent-word-to);
+  }
+  67% {
+    transform: scale(1);
+    color: var(--primary);
+  }
+}
+
+@keyframes tenx-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.tenx-scale-in {
+  animation: tenx-scale-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+@keyframes tenx-underline-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.tenx-underline-draw {
+  animation: tenx-underline-draw 0.5s ease-out 0.45s both;
 }
