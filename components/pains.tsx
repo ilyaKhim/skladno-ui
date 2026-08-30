@@ -6,24 +6,24 @@ import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 
 const stages = [
   {
-    time: '18:00',
-    title: 'Нужно собрать презентацию',
-    text: 'Задача появляется уже под конец рабочего дня.',
+    time: '17:40',
+    title: 'Пришла задача',
+    text: 'КП клиенту, отчёт руководителю или защита проекта — к утру.',
   },
   {
     time: '19:10',
-    title: 'Ищешь структуру и примеры',
-    text: 'Пустой слайд смотрит в ответ, пока время уходит.',
+    title: 'Материалы разбросаны',
+    labels: ['бриф.docx', 'цифры.xlsx', 'заметки', 'старый шаблон.pptx'],
   },
   {
-    time: '20:40',
-    title: 'Правишь слайды вручную',
-    text: 'Таблицы, шрифты и отступы требуют отдельного проекта.',
+    time: '21:30',
+    title: 'Вы собираете слайды вручную',
+    text: 'Ищете структуру, сокращаете текст, двигаете блоки и выравниваете шрифты.',
   },
   {
-    time: '22:15',
-    title: 'Отправляешь как есть',
-    text: 'Смысл готов, но результат всё ещё выглядит сырым.',
+    time: '23:50',
+    title: 'Презентация готова',
+    text: 'Но на аргументацию и подготовку к встрече времени почти не осталось.',
   },
 ]
 
@@ -60,8 +60,8 @@ export function Pains() {
       <div className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-28">
         <SectionHeading
           eyebrow="Знакомая ситуация"
-          title="Почему презентация съедает вечер"
-          description="Три причины, из-за которых рабочая презентация для клиента или руководителя превращается в отдельный проект."
+          title="Презентация нужна завтра. На неё снова уйдёт весь вечер."
+          description="Клиент ждёт персональное КП, руководитель — свежий отчёт, команда — презентацию проекта. Материалы уже есть, но их ещё нужно собрать в структуру, сократить и оформить."
         />
 
         <div className="relative mt-10 md:mt-16">
@@ -95,13 +95,39 @@ export function Pains() {
                   <h3 className="mt-2 font-display text-lg font-bold tracking-tight text-balance">
                     {stage.title}
                   </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground text-pretty">
-                    {stage.text}
-                  </p>
+                  {stage.text ? (
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground text-pretty">
+                      {stage.text}
+                    </p>
+                  ) : (
+                    <div className="mt-3 flex flex-wrap gap-2 md:justify-center">
+                      {stage.labels?.map((label) => (
+                        <span
+                          key={label}
+                          className="rounded-md border border-border bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </li>
             ))}
           </ol>
+
+          <div
+            className="mt-10 rounded-2xl border border-border bg-muted px-5 py-5 text-center md:mt-14 md:px-8 md:py-6"
+            style={{
+              opacity: revealed ? 1 : 0,
+              transform: revealed ? 'translateY(0)' : 'translateY(12px)',
+              transition: reduced ? 'none' : 'opacity 600ms ease-out 560ms, transform 600ms ease-out 560ms',
+            }}
+          >
+            <p className="mx-auto max-w-2xl text-base font-medium leading-relaxed text-foreground text-pretty">
+              Вы уже знаете, что хотите сказать. Но презентацию всё равно приходится собирать вручную.
+            </p>
+          </div>
         </div>
       </div>
     </section>
