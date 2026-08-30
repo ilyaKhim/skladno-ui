@@ -3,10 +3,12 @@ import { Faq } from '@/components/faq'
 import { FinalCta } from '@/components/final-cta'
 import { Gallery } from '@/components/gallery'
 import { Hero } from '@/components/hero'
+import { HeroDemo } from '@/components/hero-demo'
 import { Pains } from '@/components/pains'
 import { Quality } from '@/components/quality'
 import { Reveal } from '@/components/reveal'
 import { ResultSummary } from '@/components/result-summary'
+import { SectionHeading } from '@/components/section-heading'
 import { SiteFooter } from '@/components/site-footer'
 import { SiteHeader } from '@/components/site-header'
 import { Steps } from '@/components/steps'
@@ -22,6 +24,18 @@ export default function Page() {
         <Reveal>
           <Pains />
         </Reveal>
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-28">
+            <Reveal>
+              <SectionHeading
+                eyebrow="Как это выглядит"
+                title="Посмотрите, как GoDeck собирает презентацию"
+                description="Опишите задачу и приложите материалы — дальше GoDeck сам предложит структуру, оформит слайды и подготовит PPTX."
+              />
+              <HeroDemo />
+            </Reveal>
+          </div>
+        </section>
         <Reveal>
           <Steps />
         </Reveal>
