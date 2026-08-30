@@ -16,14 +16,22 @@ export function Hero() {
           ИИ для бизнес-презентаций
         </p>
 
-        <h1 className="relative z-10 max-w-xl font-display text-[clamp(2.625rem,9vw,3.25rem)] font-bold leading-[1.08] tracking-tight text-balance [hyphens:none] [overflow-wrap:break-word] md:max-w-3xl md:text-[clamp(3.25rem,5vw,4.5rem)] md:leading-[1.08]">
-          Создавай презентации из <RotatingWord /> в{' '}
-          <span className="relative inline-block whitespace-nowrap">
-            <TenNumber /> раз быстрее
-            <span
-              aria-hidden="true"
-              className="tenx-underline-draw absolute -bottom-1 left-0 h-[3px] w-full origin-left rounded-full bg-primary motion-reduce:hidden md:-bottom-2 md:h-1"
-            />
+        <h1 className="relative z-10 max-w-xl font-display text-[clamp(2.5rem,8.5vw,3.125rem)] font-bold leading-[1.14] tracking-tight text-balance [hyphens:none] [overflow-wrap:break-word] md:max-w-3xl md:text-[clamp(3rem,4.6vw,4.25rem)] md:leading-[1.14]">
+          <span className="block">Создавай</span>
+          <span className="block">
+            <span className="accent-presentations-text text-[1.03em] font-extrabold">презентации</span> из
+          </span>
+          <span className="block">
+            <RotatingWord />
+          </span>
+          <span className="block">
+            <span className="relative inline-block whitespace-nowrap font-sans text-[0.86em] font-medium italic text-foreground md:text-[0.82em]">
+              в <TenNumber /> раз быстрее
+              <span
+                aria-hidden="true"
+                className="tenx-underline-draw absolute -bottom-1 left-0 h-[3px] w-full origin-left rounded-full bg-primary motion-reduce:hidden md:-bottom-1.5 md:h-1"
+              />
+            </span>
           </span>
         </h1>
 
@@ -63,18 +71,18 @@ function RotatingWord() {
         setPrevIndex(i)
         return (i + 1) % rotatingWords.length
       })
-    }, 2000)
+    }, 2700)
     return () => window.clearInterval(id)
   }, [reduced])
 
   if (reduced) {
     return (
-      <span className="grid w-fit text-primary sm:inline-grid sm:align-baseline">материалов</span>
+      <span className="grid w-fit text-muted-foreground sm:inline-grid sm:align-baseline">материалов</span>
     )
   }
 
   return (
-    <span className="relative grid w-fit text-primary sm:inline-grid sm:align-baseline">
+    <span className="relative grid w-fit text-muted-foreground sm:inline-grid sm:align-baseline">
       {rotatingWords.map((word, i) => {
         const isActive = i === index
         const isPrev = i === prevIndex
@@ -85,10 +93,10 @@ function RotatingWord() {
             className={
               'col-start-1 row-start-1 transition-all ease-out motion-reduce:transition-none ' +
               (isActive
-                ? 'translate-y-0 opacity-100 duration-300 delay-150'
+                ? 'translate-y-0 opacity-100 duration-500 delay-150'
                 : isPrev
-                  ? 'translate-y-2 opacity-0 pointer-events-none duration-150'
-                  : 'translate-y-2 opacity-0 pointer-events-none duration-0')
+                  ? 'translate-y-1 opacity-0 pointer-events-none duration-200'
+                  : 'translate-y-1 opacity-0 pointer-events-none duration-0')
             }
           >
             {word}
@@ -107,7 +115,7 @@ function RotatingWord() {
  */
 function TenNumber() {
   return (
-    <span className="tenx-scale-in inline-block text-[1.2em] font-extrabold text-primary motion-reduce:opacity-100">
+    <span className="tenx-scale-in inline-block text-[1.09em] font-bold not-italic text-primary motion-reduce:opacity-100">
       10
     </span>
   )
@@ -145,8 +153,8 @@ const CYCLE_MS = FORWARD_END_MS + HOLD_MS + FADE_MS
 
 const STOP_SHORT_PX = 13 // vanishes this many px before touching "любые"
 const MOBILE_TRAVEL_FRACTION = 0.4 // mobile: short hop toward the target, not a full flight
-const SCALE_LADDER = [1, 1.02, 1.04, 1.06, 1.08, 1.1] // cumulative, indexed by words-absorbed-so-far
-const FINAL_PULSE_SCALE = 1.13
+const SCALE_LADDER = [1, 1.025, 1.05, 1.075, 1.1, 1.125] // cumulative, indexed by words-absorbed-so-far
+const FINAL_PULSE_SCALE = 1.15
 
 function easeInOutCubic(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2
@@ -368,7 +376,7 @@ function AbsorptionStage() {
         GoDeck — ИИ для создания профессиональных презентаций под{' '}
         <span
           ref={accentRef}
-          className="accent-gradient-text inline-block font-semibold"
+          className="accent-gradient-text mx-[0.1em] inline-block font-semibold md:mx-[0.14em]"
           style={reduced ? undefined : accentStyle}
         >
           любые
@@ -381,7 +389,7 @@ function AbsorptionStage() {
       <div
         ref={stageRef}
         aria-hidden="true"
-        className="pointer-events-none relative z-[2] mx-auto mt-3 mb-6 h-[132px] w-full md:mt-4 md:mb-8 md:h-[108px]"
+        className="pointer-events-none relative z-[2] mx-auto mt-3 mb-5 h-[132px] w-full md:mt-2.5 md:mb-6 md:h-[92px]"
       >
         {/* Hidden measurement layout: real flex rows so rest positions come
             from actual layout, not guessed coordinates. */}
