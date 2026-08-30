@@ -165,28 +165,6 @@
   display: inline-block;
 }
 
-/*
- * One-shot reaction on "любые" each time a kinetic word (see hero.tsx's
- * MagneticSubtitle) arrives and dissolves into it: a brief scale pulse plus
- * a momentary brightening of its gradient. Re-triggered by remounting this
- * element (via a changing `key`), so it always plays from the start.
- */
-@keyframes accent-pulse-once {
-  0%,
-  100% {
-    transform: scale(1);
-    filter: brightness(1) saturate(1);
-  }
-  45% {
-    transform: scale(1.06);
-    filter: brightness(1.18) saturate(1.15);
-  }
-}
-
-.accent-pulse-once {
-  animation: accent-pulse-once 450ms ease-in-out;
-}
-
 @keyframes tenx-scale-in {
   from {
     opacity: 0;
