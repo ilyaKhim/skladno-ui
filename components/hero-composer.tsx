@@ -152,9 +152,9 @@ export function HeroComposer() {
                 }
               />
               <PopoverContent
-                side="top"
+                side="bottom"
                 align="start"
-                sideOffset={10}
+                sideOffset={12}
                 className="w-64 rounded-[20px] border-none bg-navy p-4 text-navy-foreground shadow-xl"
               >
                 <p className="text-sm font-semibold text-navy-foreground">Откройте больше возможностей</p>
