@@ -75,7 +75,7 @@ export function Pains() {
               style={{ transform: revealed ? 'scaleX(1)' : 'scaleX(0)', transitionDelay: `${progressTimings.lineOne}ms` }}
             />
             <span
-              className="absolute right-0 top-0 h-px w-1/2 origin-right bg-accent transition-transform duration-500 ease-out"
+              className="absolute left-1/2 top-0 h-px w-1/2 origin-left bg-accent transition-transform duration-500 ease-out"
               style={{ transform: revealed ? 'scaleX(1)' : 'scaleX(0)', transitionDelay: `${progressTimings.lineTwo}ms` }}
             />
           </div>
@@ -85,7 +85,7 @@ export function Pains() {
               style={{ transform: revealed ? 'scaleY(1)' : 'scaleY(0)', transitionDelay: `${progressTimings.lineOne}ms` }}
             />
             <span
-              className="absolute bottom-0 left-0 h-1/2 w-px origin-bottom bg-accent transition-transform duration-500 ease-out"
+              className="absolute left-0 top-1/2 h-1/2 w-px origin-top bg-accent transition-transform duration-500 ease-out"
               style={{ transform: revealed ? 'scaleY(1)' : 'scaleY(0)', transitionDelay: `${progressTimings.lineTwo}ms` }}
             />
           </div>
