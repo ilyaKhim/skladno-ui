@@ -57,17 +57,17 @@ export function Pains() {
 
   return (
     <section ref={sectionRef} className="border-b border-border">
-      <div className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-28">
+      <div className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-20">
         <SectionHeading
           eyebrow="Знакомая ситуация"
           title="Презентация нужна завтра. На неё снова уйдёт весь вечер."
           description="Клиент ждёт персональное КП, руководитель — свежий отчёт, команда — презентацию проекта. Материалы уже есть, но их ещё нужно собрать в структуру, сократить и оформить."
         />
 
-        <div className="relative mt-10 md:mt-16">
+        <div className="relative mt-10 overflow-hidden rounded-3xl bg-navy px-5 py-7 text-navy-foreground md:mt-12 md:px-8 md:py-10">
           <div
             aria-hidden="true"
-            className="absolute left-[calc(12.5%)] right-[calc(12.5%)] top-4 hidden h-px bg-border md:block"
+            className="absolute left-[calc(12.5%)] right-[calc(12.5%)] top-4 hidden h-px bg-white/20 md:block"
           >
             <span
               className="block h-px origin-left bg-accent transition-transform duration-1000 ease-out"
@@ -76,7 +76,7 @@ export function Pains() {
           </div>
 
           <ol className="relative grid gap-8 md:grid-cols-4 md:gap-5">
-            <span aria-hidden="true" className="absolute bottom-8 left-4 top-8 w-px bg-border md:hidden" />
+            <span aria-hidden="true" className="absolute bottom-8 left-4 top-8 w-px bg-white/20 md:hidden" />
             {stages.map((stage, index) => (
               <li
                 key={stage.time}
@@ -87,16 +87,16 @@ export function Pains() {
                   transition: reduced ? 'none' : `opacity 600ms ease-out ${index * 140}ms, transform 600ms ease-out ${index * 140}ms`,
                 }}
               >
-                <div className="relative z-10 flex size-8 items-center justify-center rounded-full border-4 border-background bg-primary text-[10px] font-bold text-primary-foreground md:mx-auto">
+                <div className="relative z-10 flex size-8 items-center justify-center rounded-full border-4 border-navy bg-accent text-[10px] font-bold text-accent-foreground md:mx-auto">
                   <span className="sr-only">Этап {index + 1}</span>
                 </div>
                 <div className="md:mt-5">
                   <p className="font-mono text-xs font-medium tracking-wide text-accent">{stage.time}</p>
-                  <h3 className="mt-2 font-display text-lg font-bold tracking-tight text-balance">
+                  <h3 className="mt-2 font-display text-lg font-bold tracking-tight text-navy-foreground text-balance">
                     {stage.title}
                   </h3>
                   {stage.text ? (
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground text-pretty">
+                    <p className="mt-2 text-sm leading-relaxed text-navy-foreground/75 text-pretty">
                       {stage.text}
                     </p>
                   ) : (
@@ -104,7 +104,7 @@ export function Pains() {
                       {stage.labels?.map((label) => (
                         <span
                           key={label}
-                          className="rounded-md border border-border bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground"
+                          className="rounded-md border border-white/15 bg-white/10 px-2 py-1 font-mono text-[11px] text-navy-foreground/80"
                         >
                           {label}
                         </span>
@@ -117,14 +117,14 @@ export function Pains() {
           </ol>
 
           <div
-            className="mt-10 rounded-2xl border border-border bg-muted px-5 py-5 text-center md:mt-14 md:px-8 md:py-6"
+            className="mt-8 border-t border-white/15 px-2 pt-6 text-center md:mt-10 md:px-8 md:pt-7"
             style={{
               opacity: revealed ? 1 : 0,
               transform: revealed ? 'translateY(0)' : 'translateY(12px)',
               transition: reduced ? 'none' : 'opacity 600ms ease-out 560ms, transform 600ms ease-out 560ms',
             }}
           >
-            <p className="mx-auto max-w-2xl text-base font-medium leading-relaxed text-foreground text-pretty">
+            <p className="mx-auto max-w-2xl text-base font-medium leading-relaxed text-navy-foreground text-pretty">
               Вы уже знаете, что хотите сказать. Но презентацию всё равно приходится собирать вручную.
             </p>
           </div>
