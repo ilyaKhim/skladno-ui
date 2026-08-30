@@ -12,14 +12,21 @@ function PopoverTrigger(props: PopoverPrimitive.Trigger.Props) {
 
 function PopoverContent({
   className,
+  side = 'bottom',
   align = 'start',
   sideOffset = 8,
   children,
   ...props
-}: PopoverPrimitive.Popup.Props & Pick<PopoverPrimitive.Positioner.Props, 'align' | 'sideOffset'>) {
+}: PopoverPrimitive.Popup.Props & Pick<PopoverPrimitive.Positioner.Props, 'side' | 'align' | 'sideOffset'>) {
   return (
     <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Positioner align={align} sideOffset={sideOffset} className="z-50 outline-none">
+      <PopoverPrimitive.Positioner
+        side={side}
+        align={align}
+        sideOffset={sideOffset}
+        collisionPadding={16}
+        className="z-50 max-w-[calc(100vw-2rem)] outline-none"
+      >
         <PopoverPrimitive.Popup
           data-slot="popover-content"
           className={cn(
