@@ -16,7 +16,7 @@ export function Hero() {
           ИИ для бизнес-презентаций
         </p>
 
-        <h1 className="relative z-10 max-w-xl font-display text-[clamp(2.625rem,9vw,3.25rem)] font-bold leading-[1.08] tracking-tight text-balance [hyphens:none] [overflow-wrap:break-word] md:text-[clamp(4.5rem,6vw,5.5rem)] md:leading-[1.02]">
+        <h1 className="relative z-10 max-w-xl font-display text-[clamp(2.625rem,9vw,3.25rem)] font-bold leading-[1.08] tracking-tight text-balance [hyphens:none] [overflow-wrap:break-word] md:max-w-3xl md:text-[clamp(3.25rem,5vw,4.5rem)] md:leading-[1.08]">
           Создавай презентации из <RotatingWord /> в{' '}
           <span className="relative inline-block whitespace-nowrap">
             <TenNumber /> раз быстрее
@@ -83,12 +83,12 @@ function RotatingWord() {
             key={word}
             aria-hidden={!isActive}
             className={
-              'col-start-1 row-start-1 transition-all duration-500 ease-out motion-reduce:transition-none ' +
+              'col-start-1 row-start-1 transition-all ease-out motion-reduce:transition-none ' +
               (isActive
-                ? 'translate-y-0 opacity-100'
+                ? 'translate-y-0 opacity-100 duration-300 delay-150'
                 : isPrev
-                  ? '-translate-y-2 opacity-0 pointer-events-none'
-                  : 'translate-y-2 opacity-0 pointer-events-none')
+                  ? 'translate-y-2 opacity-0 pointer-events-none duration-150'
+                  : 'translate-y-2 opacity-0 pointer-events-none duration-0')
             }
           >
             {word}
