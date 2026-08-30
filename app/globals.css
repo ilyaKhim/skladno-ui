@@ -178,6 +178,19 @@
   display: inline-block;
 }
 
+/*
+ * Cool blue-gray for the H1's rotating word (идей / документов / данных /
+ * отчётов) — calm and legible, distinct from disabled/muted gray. The
+ * slightly darker shade is available for the word's active fade-in phase.
+ */
+.carousel-word-text {
+  color: #56677f;
+}
+
+.carousel-word-text--active {
+  color: #4f6078;
+}
+
 @keyframes tenx-scale-in {
   from {
     opacity: 0;
