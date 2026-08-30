@@ -1,22 +1,21 @@
 'use client'
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { ArrowRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
+import { HeroComposer } from '@/components/hero-composer'
 
 const rotatingWords = ['идей', 'документов', 'данных', 'отчётов']
 
 export function Hero() {
   return (
     <section id="top" className="border-b border-border">
-      <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 px-5 pt-10 pb-10 text-center md:px-8 md:pt-14 md:pb-12">
+      <div className="mx-auto flex max-w-2xl flex-col items-center px-5 pt-10 pb-10 text-center md:px-8 md:pt-14 md:pb-12">
         <p className="inline-flex w-fit items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
           <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
           ИИ для бизнес-презентаций
         </p>
 
-        <h1 className="relative z-10 max-w-xl font-display text-[clamp(2.5rem,8.5vw,3.125rem)] font-bold leading-[1.14] tracking-tight text-balance [hyphens:none] [overflow-wrap:break-word] md:max-w-3xl md:text-[clamp(3rem,4.6vw,4.25rem)] md:leading-[1.14]">
+        <h1 className="relative z-10 mt-4 max-w-xl font-display text-[clamp(2.5rem,8.5vw,3.125rem)] font-bold leading-[1.14] tracking-tight text-balance [hyphens:none] [overflow-wrap:break-word] md:max-w-3xl md:text-[clamp(3rem,4.6vw,4.25rem)] md:leading-[1.14]">
           <span className="block">Создавай</span>
           <span className="block">
             <span className="accent-presentations-text text-[1.03em] font-extrabold">презентации</span> из
@@ -35,16 +34,17 @@ export function Hero() {
           </span>
         </h1>
 
-        <AbsorptionStage />
+        <div className="mt-4 w-full">
+          <AbsorptionStage />
+        </div>
 
-        <p className="relative z-10 max-w-sm text-sm text-muted-foreground text-pretty">
+        <p className="relative z-10 mt-3.5 max-w-sm text-sm text-muted-foreground text-pretty md:mt-3">
           Для менеджеров и специалистов, которые презентуют идеи, решения и результаты.
         </p>
 
-        <Button size="lg" nativeButton={false} render={<a href="#create" />} className="relative z-10">
-          Создать презентацию
-          <ArrowRight aria-hidden="true" className="size-4" />
-        </Button>
+        <div className="mt-5 w-full">
+          <HeroComposer />
+        </div>
       </div>
     </section>
   )
@@ -77,12 +77,12 @@ function RotatingWord() {
 
   if (reduced) {
     return (
-      <span className="grid w-fit text-muted-foreground sm:inline-grid sm:align-baseline">материалов</span>
+      <span className="carousel-word-text grid w-fit sm:inline-grid sm:align-baseline">материалов</span>
     )
   }
 
   return (
-    <span className="relative grid w-fit text-muted-foreground sm:inline-grid sm:align-baseline">
+    <span className="relative grid w-fit sm:inline-grid sm:align-baseline">
       {rotatingWords.map((word, i) => {
         const isActive = i === index
         const isPrev = i === prevIndex
@@ -91,9 +91,9 @@ function RotatingWord() {
             key={word}
             aria-hidden={!isActive}
             className={
-              'col-start-1 row-start-1 transition-all ease-out motion-reduce:transition-none ' +
+              'carousel-word-text col-start-1 row-start-1 transition-all ease-out motion-reduce:transition-none ' +
               (isActive
-                ? 'translate-y-0 opacity-100 duration-500 delay-150'
+                ? 'carousel-word-text--active translate-y-0 opacity-100 duration-500 delay-150'
                 : isPrev
                   ? 'translate-y-1 opacity-0 pointer-events-none duration-200'
                   : 'translate-y-1 opacity-0 pointer-events-none duration-0')
@@ -389,7 +389,7 @@ function AbsorptionStage() {
       <div
         ref={stageRef}
         aria-hidden="true"
-        className="pointer-events-none relative z-[2] mx-auto mt-3 mb-5 h-[132px] w-full md:mt-2.5 md:mb-6 md:h-[92px]"
+        className="pointer-events-none relative z-[2] mx-auto mt-3 mb-3.5 h-[112px] w-full overflow-visible md:mt-2.5 md:mb-3 md:h-[84px]"
       >
         {/* Hidden measurement layout: real flex rows so rest positions come
             from actual layout, not guessed coordinates. */}
