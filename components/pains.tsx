@@ -27,21 +27,21 @@ const DASH_LINE = 'rgba(190, 205, 225, 0.38)'
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
 
 const timings = {
-  ringOne: 0,
-  travelOneStart: 1500,
+  ringOne: 250,
+  travelOneStart: 1750,
   travelOneDuration: 1500,
-  ringTwo: 3200,
-  travelTwoStart: 4700,
+  ringTwo: 3450,
+  travelTwoStart: 4950,
   travelTwoDuration: 1500,
-  ringThree: 6400,
-  conclusion: 7900,
+  ringThree: 6650,
+  conclusion: 8150,
 }
 
 const ringDuration = 1300
 const conclusionDuration = 1000
 
 export function Pains() {
-  const sectionRef = useRef<HTMLElement>(null)
+  const markersRef = useRef<HTMLOListElement>(null)
   const [revealed, setRevealed] = useState(false)
   const reduced = usePrefersReducedMotion()
 
@@ -51,8 +51,8 @@ export function Pains() {
       return
     }
 
-    const section = sectionRef.current
-    if (!section) return
+    const markers = markersRef.current
+    if (!markers) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -61,17 +61,17 @@ export function Pains() {
           observer.disconnect()
         }
       },
-      { threshold: 0.2 },
+      { threshold: 0, rootMargin: '0px 0px -30% 0px' },
     )
 
-    observer.observe(section)
+    observer.observe(markers)
     return () => observer.disconnect()
   }, [reduced])
 
   const animate = revealed && !reduced
 
   return (
-    <section ref={sectionRef} className="border-b border-border">
+    <section className="border-b border-border">
       <style>{`
         @keyframes painsTravelH1 {
           0% { left: 16.666%; opacity: 0; }
@@ -175,7 +175,7 @@ export function Pains() {
             }}
           />
 
-          <ol className="relative grid gap-8 md:grid-cols-3 md:gap-8">
+          <ol ref={markersRef} className="relative grid gap-8 md:grid-cols-3 md:gap-8">
             {stages.map((stage, index) => {
               const ringDelay = [timings.ringOne, timings.ringTwo, timings.ringThree][index]
 
