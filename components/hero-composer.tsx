@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { ArrowRight, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 import { cn } from '@/lib/utils'
 
 /**
@@ -24,51 +23,40 @@ const EXAMPLES = [
   'Создай питч нового продукта для инвесторов',
 ] as const
 
-const AUTO_ROTATE_MS = 5000
-const FADE_MS = 300
-
 /**
  * The hero's interactive task-composer, replacing the plain "Создать
- * презентацию" button. Before the user touches it, the field cycles
- * through prepared example task descriptions as real, editable content
- * (not a placeholder) with a soft fade. The moment the user focuses,
- * clicks, or types, rotation stops for good and the caret settles at the
- * end of whatever text is currently shown. The "+" button is purely
- * informational — it opens a small card nudging sign-up, nothing else.
- * Only the primary button ever navigates the user away from the page.
+ * презентацию" button. On mount, the field is seeded with one random
+ * example from EXAMPLES as real, editable content (not a placeholder),
+ * shown in a muted tone. It never changes on its own afterward — only a
+ * manual edit, a click of "Примеры", or a fresh full page load can change
+ * it. The "+" button is purely informational — it opens a small card
+ * nudging sign-up, nothing else. Only the primary button ever navigates
+ * the user away from the page.
  */
 export function HeroComposer() {
-  const reduced = usePrefersReducedMotion()
+  // Server-rendered and initial client render both use EXAMPLES[0], so
+  // hydration matches. useLayoutEffect below swaps in the random pick
+  // synchronously before the browser paints, so there is no visible flash.
   const [value, setValue] = useState<string>(EXAMPLES[0])
-  const [exampleIndex, setExampleIndex] = useState(0)
-  const [hasInteracted, setHasInteracted] = useState(false)
-  const [fading, setFading] = useState(false)
+  const [isExampleText, setIsExampleText] = useState(true)
   const [moreOpen, setMoreOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const interactedRef = useRef(false)
+  const exampleIndexRef = useRef(0)
   const textareaId = useId()
 
   const canSubmit = value.trim().length > 0
 
-  // Auto-rotate examples every 5s, as real field content, until the user
-  // interacts with the field. Reduced motion: no rotation at all — just the
-  // first example, statically.
-  useEffect(() => {
-    if (hasInteracted || reduced) return
-    const id = window.setInterval(() => {
-      setFading(true)
-      const timeout = window.setTimeout(() => {
-        setExampleIndex((i) => {
-          const next = (i + 1) % EXAMPLES.length
-          setValue(EXAMPLES[next])
-          return next
-        })
-        setFading(false)
-      }, FADE_MS)
-      return () => window.clearTimeout(timeout)
-    }, AUTO_ROTATE_MS)
-    return () => window.clearInterval(id)
-  }, [hasInteracted, reduced])
+  // Runs once on mount, before paint: pick a random example as the real
+  // initial value. Skipped if the user has somehow already interacted
+  // (not possible before mount, but kept for safety).
+  useLayoutEffect(() => {
+    if (interactedRef.current) return
+    const randomIndex = Math.floor(Math.random() * EXAMPLES.length)
+    exampleIndexRef.current = randomIndex
+    setValue(EXAMPLES[randomIndex])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function placeCaretAtEnd() {
     requestAnimationFrame(() => {
@@ -79,13 +67,12 @@ export function HeroComposer() {
     })
   }
 
-  // Runs once, on the very first focus/click/keystroke: stops auto-rotate,
-  // keeps the current example as real content, and (for focus/click only)
-  // moves the caret to the end without selecting anything.
+  // Runs on the first focus/click of the field: moves the caret to the end
+  // without selecting anything. Does not change the muted styling — only
+  // actually typing (onChange) does that.
   function handleFirstInteraction(placeCaret: boolean) {
     if (interactedRef.current) return
     interactedRef.current = true
-    setHasInteracted(true)
     if (placeCaret) placeCaretAtEnd()
   }
 
@@ -102,13 +89,14 @@ export function HeroComposer() {
   }
 
   // Always replaces the field's content with the next example, regardless
-  // of what the user has already typed, and never resumes auto-rotation.
+  // of what the user has already typed, with no fade/transition, and marks
+  // it as example text again (muted styling).
   function handleExamplesClick() {
     interactedRef.current = true
-    setHasInteracted(true)
-    const next = (exampleIndex + 1) % EXAMPLES.length
-    setExampleIndex(next)
+    const next = (exampleIndexRef.current + 1) % EXAMPLES.length
+    exampleIndexRef.current = next
     setValue(EXAMPLES[next])
+    setIsExampleText(true)
     textareaRef.current?.focus()
     placeCaretAtEnd()
   }
@@ -125,6 +113,7 @@ export function HeroComposer() {
           value={value}
           onChange={(e) => {
             setValue(e.target.value)
+            setIsExampleText(false)
             handleFirstInteraction(false)
           }}
           onFocus={() => handleFirstInteraction(true)}
@@ -132,8 +121,8 @@ export function HeroComposer() {
           onKeyDown={handleKeyDown}
           rows={2}
           className={cn(
-            'min-h-16 flex-1 border-none px-0 py-0 text-base shadow-none transition-opacity duration-300 focus-visible:ring-0 md:text-base',
-            !reduced && fading ? 'opacity-0' : 'opacity-100'
+            'min-h-16 flex-1 border-none px-0 py-0 text-base shadow-none focus-visible:ring-0 md:text-base',
+            isExampleText ? 'text-muted-foreground' : 'text-foreground'
           )}
         />
 
