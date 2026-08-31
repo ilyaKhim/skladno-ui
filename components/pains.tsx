@@ -22,22 +22,23 @@ const stages = [
   },
 ]
 
-const CORAL = '#E58B52'
+const CORAL = '#D47A50'
 const DASH_LINE = 'rgba(190, 205, 225, 0.38)'
+const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
 
 const timings = {
   ringOne: 0,
-  travelOneStart: 750,
-  travelOneDuration: 750,
-  ringTwo: 1550,
-  travelTwoStart: 2300,
-  travelTwoDuration: 750,
-  ringThree: 3100,
-  conclusion: 3850,
+  travelOneStart: 1500,
+  travelOneDuration: 1500,
+  ringTwo: 3200,
+  travelTwoStart: 4700,
+  travelTwoDuration: 1500,
+  ringThree: 6400,
+  conclusion: 7900,
 }
 
-const ringDuration = 700
-const conclusionDuration = 600
+const ringDuration = 1300
+const conclusionDuration = 1000
 
 export function Pains() {
   const sectionRef = useRef<HTMLElement>(null)
@@ -123,7 +124,7 @@ export function Pains() {
               transform: 'translate(-50%, -50%)',
               left: '16.666%',
               animation: animate
-                ? `painsTravelH1 ${timings.travelOneDuration}ms ease-out ${timings.travelOneStart}ms forwards`
+                ? `painsTravelH1 ${timings.travelOneDuration}ms ${EASE} ${timings.travelOneStart}ms forwards`
                 : 'none',
             }}
           />
@@ -135,7 +136,7 @@ export function Pains() {
               transform: 'translate(-50%, -50%)',
               left: '50%',
               animation: animate
-                ? `painsTravelH2 ${timings.travelTwoDuration}ms ease-out ${timings.travelTwoStart}ms forwards`
+                ? `painsTravelH2 ${timings.travelTwoDuration}ms ${EASE} ${timings.travelTwoStart}ms forwards`
                 : 'none',
             }}
           />
@@ -157,7 +158,7 @@ export function Pains() {
               transform: 'translate(-50%, -50%)',
               top: '0%',
               animation: animate
-                ? `painsTravelV1 ${timings.travelOneDuration}ms ease-out ${timings.travelOneStart}ms forwards`
+                ? `painsTravelV1 ${timings.travelOneDuration}ms ${EASE} ${timings.travelOneStart}ms forwards`
                 : 'none',
             }}
           />
@@ -169,7 +170,7 @@ export function Pains() {
               transform: 'translate(-50%, -50%)',
               top: '50%',
               animation: animate
-                ? `painsTravelV2 ${timings.travelTwoDuration}ms ease-out ${timings.travelTwoStart}ms forwards`
+                ? `painsTravelV2 ${timings.travelTwoDuration}ms ${EASE} ${timings.travelTwoStart}ms forwards`
                 : 'none',
             }}
           />
@@ -199,13 +200,14 @@ export function Pains() {
                         stroke="currentColor"
                         strokeWidth="1.5"
                         pathLength="1"
-                        className="transition-[stroke-dashoffset] ease-out"
+                        className="transition-[stroke-dashoffset]"
                         style={{
                           color: CORAL,
                           strokeDasharray: 1,
                           strokeDashoffset: revealed ? 0 : 1,
                           transitionDuration: reduced ? '0ms' : `${ringDuration}ms`,
                           transitionDelay: reduced ? '0ms' : `${ringDelay}ms`,
+                          transitionTimingFunction: reduced ? 'linear' : EASE,
                         }}
                       />
                     </svg>
