@@ -146,7 +146,7 @@ export function Pains() {
           description="Между готовой мыслью и готовыми слайдами — ещё три отдельные задачи."
         />
 
-        <div className="relative mt-6 overflow-hidden rounded-3xl bg-navy px-5 py-7 text-navy-foreground md:mt-8 md:px-8 md:py-10">
+        <div className="relative mt-1 overflow-hidden rounded-3xl bg-navy px-5 py-7 text-navy-foreground md:mt-3 md:px-8 md:py-10">
           <div aria-hidden="true" className="pointer-events-none absolute left-5 right-5 top-5 hidden h-px md:block" style={{ backgroundImage: `repeating-linear-gradient(to right, ${DASH_LINE} 0px, ${DASH_LINE} 6px, transparent 6px, transparent 14px)` }} />
           <div aria-hidden="true" className="pointer-events-none absolute bottom-[12%] right-5 top-5 hidden w-px md:block" style={{ backgroundImage: `repeating-linear-gradient(to bottom, ${DASH_LINE} 0px, ${DASH_LINE} 6px, transparent 6px, transparent 14px)` }} />
           <div aria-hidden="true" className="pointer-events-none absolute bottom-[12%] left-5 right-5 hidden h-px md:block" style={{ backgroundImage: `repeating-linear-gradient(to right, ${DASH_LINE} 0px, ${DASH_LINE} 6px, transparent 6px, transparent 14px)` }} />
