@@ -153,22 +153,9 @@
 }
 
 /*
- * Calm, permanent gradient for "любые" — the subheading's single emphasis
- * word. Deliberately less saturated than the "10×" accent so it never
- * competes with it.
- */
-.accent-gradient-text {
-  background: linear-gradient(90deg, #3f62d3 0%, #7b6fd0 55%, #d36d91 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  display: inline-block;
-}
-
-/*
  * Static blue-to-violet gradient for "презентации" — the H1's permanent
- * product-name accent. No coral/pink stop (unlike .accent-gradient-text)
- * so it stays visually distinct from "любые" and never animates.
+ * product-name accent. No coral/pink stop so it stays visually distinct
+ * and never animates.
  */
 .accent-presentations-text {
   background: linear-gradient(90deg, #2f52c4 0%, #6a5fce 100%);
