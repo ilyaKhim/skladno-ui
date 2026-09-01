@@ -153,8 +153,22 @@
 }
 
 /*
- * Static blue-to-violet gradient for the H1's permanent accent line
- * ("в 10 раз быстрее").
+ * Calm, permanent gradient for "любые" — the subheading's single emphasis
+ * word. Deliberately less saturated than the "10×" accent so it never
+ * competes with it.
+ */
+.accent-gradient-text {
+  background: linear-gradient(90deg, #3f62d3 0%, #7b6fd0 55%, #d36d91 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+
+/*
+ * Static blue-to-violet gradient for "презентации" — the H1's permanent
+ * product-name accent. No coral/pink stop (unlike .accent-gradient-text)
+ * so it stays visually distinct from "любые" and never animates.
  */
 .accent-presentations-text {
   background: linear-gradient(90deg, #2f52c4 0%, #6a5fce 100%);
@@ -162,4 +176,45 @@
   -webkit-background-clip: text;
   color: transparent;
   display: inline-block;
+}
+
+/*
+ * Cool blue-gray for the H1's rotating word (идей / документов / данных /
+ * отчётов) — calm and legible, distinct from disabled/muted gray. The
+ * slightly darker shade is available for the word's active fade-in phase.
+ */
+.carousel-word-text {
+  color: #56677f;
+}
+
+.carousel-word-text--active {
+  color: #4f6078;
+}
+
+@keyframes tenx-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.tenx-scale-in {
+  animation: tenx-scale-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+@keyframes tenx-underline-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.tenx-underline-draw {
+  animation: tenx-underline-draw 0.5s ease-out 0.45s both;
 }
