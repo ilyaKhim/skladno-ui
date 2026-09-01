@@ -10,7 +10,7 @@ export function Hero() {
   return (
     <section id="top" className="border-b border-border">
       <div className="mx-auto flex max-w-2xl flex-col items-center px-5 pt-6 pb-5 text-center md:px-8 md:pt-8 md:pb-6 [@media(max-height:780px)]:pt-5 [@media(max-height:780px)]:pb-4 [@media(max-height:720px)]:pt-4 [@media(max-height:720px)]:pb-3">
-        <h1 className="relative z-10 max-w-xl font-display text-[clamp(2.45rem,9.3vw,3.15rem)] font-bold leading-[1.12] tracking-tight text-balance [hyphens:none] [overflow-wrap:break-word] md:max-w-3xl md:text-[clamp(3rem,4.6vw,4.65rem)] md:leading-[1.12] [@media(max-height:780px)]:md:text-[clamp(2.75rem,4.15vw,3.85rem)] [@media(max-height:720px)]:md:text-[clamp(2.45rem,3.7vw,3.3rem)] [@media(max-height:720px)]:md:leading-[1.08]">
+        <h1 className="relative z-10 max-w-xl font-display text-[clamp(2.45rem,9.3vw,3.15rem)] font-bold leading-[1.12] tracking-tight text-balance [hyphens:none] [overflow-wrap:break-word] md:max-w-3xl md:text-[clamp(3rem,4.6vw,4.65rem)] md:leading-[1.12] [@media(max-height:780px)]:md:text-[clamp(2.75rem,4.15vw,3.85rem)] [@media(max-height:720px)]:md:text-[clamp(2.45rem,3.7vw,3.3rem)] [@media(max-height:720px)]:md:leading-[1.08] lg:text-[clamp(3.35rem,5.1vw,5.15rem)] [@media(max-height:720px)]:lg:!text-[clamp(3.1rem,4.65vw,4.3rem)]">
           <span className="block">Создавай</span>
           <span className="block">
             <span className="accent-presentations-text text-[1.03em] font-extrabold">презентации</span> из
