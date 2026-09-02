@@ -9,18 +9,18 @@ const CORAL = '#D47A50'
 const cards = [
   {
     key: 'time',
-    title: '2–3 часа на механическую работу',
-    text: 'Собрать структуру, перенести материалы в PowerPoint, сократить текст и вручную выровнять каждый слайд.',
+    title: '2–3 часа уходят на сборку слайдов',
+    text: 'Продумать структуру, перенести материалы, сократить текст и выровнять каждый слайд в PowerPoint.',
   },
   {
     key: 'design',
-    title: 'Слайды выглядят не по-деловому',
-    text: 'Шаблонный или «детский» дизайн снижает доверие — особенно когда презентацию увидит клиент или руководитель.',
+    title: 'Презентация выглядит непрофессионально',
+    text: 'Шаблонный или «детский» дизайн снижает доверие клиента и руководителя.',
   },
   {
     key: 'overtime',
-    title: 'Срочная презентация превращается в овертайм',
-    text: 'Встречу назначили на завтра или понадобилось КП под конкретного клиента — готового варианта нет, и всё приходится пересобирать вечером.',
+    title: 'Срочная встреча превращается в овертайм',
+    text: 'Встреча завтра, а готового КП под этого клиента нет — приходится собирать презентацию после работы.',
   },
 ] as const
 
@@ -48,30 +48,30 @@ export function Pains() {
 
   return (
     <section ref={sectionRef} className="border-b border-border">
-      <div className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-20">
+      <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-[72px]">
         <SectionHeading
           eyebrow="Знакомая ситуация"
-          title="Презентация нужна быстро. А собирать её всё равно приходится вручную."
+          title="Презентация нужна быстро. Но на её подготовку всё равно уходят часы."
         />
 
-        <div className="mt-12 grid gap-5 md:mt-14 md:grid-cols-3">
+        <div className="mt-6 grid gap-4 md:mt-8 md:grid-cols-3">
           {cards.map((card, index) => (
             <div
               key={card.key}
-              className="flex h-full min-h-[260px] flex-col rounded-2xl border border-border bg-card p-6 shadow-[0_1px_2px_rgba(20,32,51,0.04),0_8px_24px_-12px_rgba(20,32,51,0.10)] md:min-h-[300px]"
+              className="group flex h-full flex-col rounded-2xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(20,32,51,0.04),0_8px_24px_-12px_rgba(20,32,51,0.10)] transition-[transform,box-shadow] duration-200 ease-out motion-safe:hover:-translate-y-[3px] motion-safe:hover:shadow-[0_2px_4px_rgba(20,32,51,0.06),0_14px_32px_-12px_rgba(20,32,51,0.16)] md:p-6"
               style={{
                 opacity: revealed ? 1 : 0,
                 transform: revealed ? 'translateY(0)' : 'translateY(12px)',
                 transition: `opacity 450ms ease-out ${index * 100}ms, transform 450ms ease-out ${index * 100}ms`,
               }}
             >
-              <div className="flex h-24 items-center justify-center">
+              <div className="flex h-20 items-center justify-center">
                 {card.key === 'time' ? <TimerVisual /> : null}
                 {card.key === 'design' ? <MessySlideVisual /> : null}
                 {card.key === 'overtime' ? <OvertimeVisual /> : null}
               </div>
 
-              <h3 className="mt-4 font-display text-lg font-bold leading-snug tracking-tight text-foreground text-balance">
+              <h3 className="mt-3 font-display text-lg font-bold leading-snug tracking-tight text-foreground text-balance">
                 {card.title}
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground text-pretty">{card.text}</p>
@@ -79,8 +79,8 @@ export function Pains() {
           ))}
         </div>
 
-        <p className="mx-auto mt-10 max-w-2xl text-center text-base font-medium leading-relaxed text-foreground text-pretty md:mt-12">
-          В итоге время уходит не на подготовку к встрече, а на{' '}
+        <p className="mx-auto mt-6 max-w-2xl text-center text-base font-medium leading-relaxed text-foreground text-pretty md:mt-7">
+          В итоге вы тратите время не на подготовку к встрече, а на{' '}
           <span className="relative inline-block" style={{ color: CORAL }}>
             сборку слайдов
             <span aria-hidden="true" className="absolute -bottom-1 left-0 h-px w-full bg-current" />
