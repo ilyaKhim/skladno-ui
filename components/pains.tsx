@@ -48,13 +48,13 @@ export function Pains() {
 
   return (
     <section ref={sectionRef} className="border-b border-border">
-      <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-[72px]">
+      <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:pt-[60px] md:pb-[60px]">
         <SectionHeading
           eyebrow="Знакомая ситуация"
           title="Презентация нужна быстро. Но на её подготовку всё равно уходят часы."
         />
 
-        <div className="mt-6 grid gap-4 md:mt-8 md:grid-cols-3">
+        <div className="mt-6 grid gap-4 md:mt-1 md:grid-cols-3">
           {cards.map((card, index) => (
             <div
               key={card.key}
@@ -79,7 +79,7 @@ export function Pains() {
           ))}
         </div>
 
-        <p className="mx-auto mt-6 max-w-2xl text-center text-base font-medium leading-relaxed text-foreground text-pretty md:mt-7">
+        <p className="mx-auto mt-6 max-w-2xl text-center text-base font-medium leading-relaxed text-foreground text-pretty md:mt-8">
           В итоге вы тратите время не на подготовку к встрече, а на{' '}
           <span className="relative inline-block" style={{ color: CORAL }}>
             сборку слайдов
