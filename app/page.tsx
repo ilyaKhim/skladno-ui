@@ -1,3 +1,4 @@
+import { Benefits } from '@/components/benefits'
 import { EarlyAccess } from '@/components/early-access'
 import { Faq } from '@/components/faq'
 import { FinalCta } from '@/components/final-cta'
@@ -23,6 +24,9 @@ export default function Page() {
         <Hero />
         <Reveal>
           <Pains />
+        </Reveal>
+        <Reveal>
+          <Benefits />
         </Reveal>
         <section className="border-b border-border">
           <div className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-28">
