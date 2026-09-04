@@ -29,8 +29,8 @@ export default function Page() {
             <Reveal>
               <SectionHeading
                 eyebrow="Как это выглядит"
-                title="Посмотрите, как GoDeck собирает презентацию"
-                description="Опишите задачу и приложите материалы — дальше GoDeck сам предложит структуру, оформит слайды и подготовит PPTX."
+                title="GoDeck берёт сборку слайдов на себя"
+                description="Опишите задачу и приложите материалы — GoDeck предложит структуру, оформит слайды и подготовит редактируемый PPTX."
               />
               <HeroDemo />
             </Reveal>
