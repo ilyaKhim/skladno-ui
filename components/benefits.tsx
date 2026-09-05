@@ -8,18 +8,18 @@ import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 const benefits = [
   {
     key: 'structure',
-    title: 'Экономьте часы на каждой презентации',
-    description: 'Добавьте материалы или опишите идею. GoDeck выделит главное, построит структуру и распределит содержание по слайдам.',
+    title: 'Начинайте с готовой структуры',
+    description: 'Добавьте материалы или опишите идею. GoDeck выделит главное и распределит содержание по слайдам.',
   },
   {
     key: 'audience',
     title: 'Презентация точно под задачу и аудиторию',
-    description: 'Задайте цель и аудиторию. GoDeck адаптирует структуру, акценты и аргументацию под конкретную ситуацию.',
+    description: 'Задайте цель и аудиторию. GoDeck адаптирует структуру, акценты и аргументацию.',
   },
   {
     key: 'brand',
     title: 'Сохраняйте единый фирменный стиль',
-    description: 'Загрузите шаблон, брендбук или логотип. GoDeck применит фирменные цвета, шрифты и оформление ко всей презентации.',
+    description: 'Загрузите шаблон, брендбук или логотип. GoDeck применит фирменное оформление ко всей презентации.',
   },
 ] as const
 
@@ -36,11 +36,12 @@ export function Benefits() {
             Что меняется с GoDeck
           </p>
           <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl">
-            От материалов до готовой презентации
+            <span className="text-navy-foreground">{'Создавайте презентации, которые '}</span>
+            <span className="accent-presentations-text">хочется показывать</span>
           </h2>
           <p className="max-w-[58ch] text-base leading-relaxed text-navy-foreground/70 text-pretty md:text-lg">
-            GoDeck собирает структуру, адаптирует подачу и применяет фирменный стиль. Вы не тратите часы на ручную
-            работу в PowerPoint.
+            GoDeck экономит часы ручной работы, превращая материалы в готовые слайды под вашу задачу и фирменный
+            стиль.
           </p>
         </div>
 
