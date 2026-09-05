@@ -80,7 +80,7 @@ export function Pains() {
         </div>
 
         <p className="mx-auto mt-6 max-w-2xl text-center text-base font-medium leading-relaxed text-foreground text-pretty md:mt-8">
-          В итоге вы тратите время не на подготовку к встрече, а на{' '}
+          В итоге тратишь время не на подготовку к встрече, а на{' '}
           <span className="relative inline-block" style={{ color: CORAL }}>
             сборку слайдов
             <span aria-hidden="true" className="absolute -bottom-1 left-0 h-px w-full bg-current" />
