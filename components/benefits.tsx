@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowRight, Clock3, ReceiptText } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 
@@ -9,21 +9,18 @@ const benefits = [
   {
     key: 'structure',
     title: 'Не начинайте с пустого слайда',
-    description:
-      'Загрузите документы, данные или опишите идею — GoDeck подготовит структуру и первый вариант презентации за 5–10 минут.',
+    description: 'GoDeck соберёт структуру и перенесёт материалы в презентацию — вы сэкономите часы ручной работы.',
   },
   {
     key: 'audience',
     title: 'Под каждую задачу — своя презентация',
     description:
-      'Укажите, кому и зачем вы её показываете — GoDeck адаптирует структуру, акценты и подачу под конкретную ситуацию.',
-    extra: 'КП клиенту · отчёт руководителю · утренняя летучка · защита проекта',
+      'Структура, акценты и подача адаптируются под аудиторию и цель — презентация точнее отвечает конкретной ситуации.',
   },
   {
     key: 'brand',
     title: 'Все слайды — в стиле вашей компании',
-    description:
-      'Загрузите корпоративный шаблон, брендбук или логотип — GoDeck сохранит фирменные цвета, шрифты и оформление.',
+    description: 'Фирменные цвета, шрифты и логотип применяются ко всей презентации — результат выглядит цельно и профессионально.',
   },
 ] as const
 
@@ -35,15 +32,15 @@ export function Benefits() {
   return (
     <section className="border-b border-border bg-navy text-navy-foreground">
       <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
-        <div className="flex max-w-2xl flex-col gap-3 pb-8 md:pb-10">
+        <div className="flex max-w-2xl flex-col gap-3 pb-6 md:pb-8">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-navy-foreground/60">
             Что меняется с GoDeck
           </p>
           <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl">
-            Готовая презентация для работы — за несколько минут
+            Рабочая презентация — без часов ручной сборки
           </h2>
           <p className="max-w-[58ch] text-base leading-relaxed text-navy-foreground/70 text-pretty md:text-lg">
-            GoDeck соберёт структуру, адаптирует содержание под задачу и оформит слайды в стиле вашей компании.
+            GoDeck возьмёт на себя структуру, подачу и оформление — вы сосредоточитесь на задаче, а не на PowerPoint.
           </p>
         </div>
 
@@ -69,24 +66,21 @@ export function Benefits() {
                 onClick={() => setActive(index)}
                 aria-pressed={active === index}
                 className={cn(
-                  'flex flex-col gap-1.5 border-l-2 py-5 pl-4 text-left transition-colors first:pt-0 last:pb-0',
+                  'flex flex-col gap-1.5 border-l-2 py-4 pl-4 text-left transition-colors first:pt-0 last:pb-0',
                   active === index ? 'border-primary' : 'border-transparent',
                 )}
               >
                 <h3
                   className={cn(
                     'font-display text-lg font-bold leading-snug tracking-tight text-balance',
-                    active === index ? 'text-navy-foreground' : 'text-navy-foreground/70',
+                    active === index ? 'text-navy-foreground' : 'text-navy-foreground/90',
                   )}
                 >
                   {benefit.title}
                 </h3>
-                <p className="text-sm leading-relaxed text-navy-foreground/60 text-pretty">
+                <p className="text-sm leading-relaxed text-navy-foreground/70 text-pretty">
                   {benefit.description}
                 </p>
-                {'extra' in benefit ? (
-                  <p className="mt-1 text-xs font-medium text-navy-foreground/45">{benefit.extra}</p>
-                ) : null}
               </button>
             ))}
           </div>
@@ -105,64 +99,15 @@ export function Benefits() {
                 <h3 className="font-display text-lg font-bold leading-snug tracking-tight text-balance text-navy-foreground">
                   {benefit.title}
                 </h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-navy-foreground/60 text-pretty">
+                <p className="mt-1.5 text-sm leading-relaxed text-navy-foreground/70 text-pretty">
                   {benefit.description}
                 </p>
-                {'extra' in benefit ? (
-                  <p className="mt-1 text-xs font-medium text-navy-foreground/45">{benefit.extra}</p>
-                ) : null}
               </div>
             </div>
           ))}
         </div>
-
-        {/* Compact economics plate */}
-        <div className="mt-10 rounded-2xl border border-navy-foreground/15 bg-navy-foreground/[0.04] p-6 md:mt-14 md:p-8">
-          <h3 className="font-display text-xl font-bold leading-snug tracking-tight text-balance text-navy-foreground md:text-2xl">
-            Подписка окупается уже с первой рабочей задачи
-          </h3>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-navy-foreground/70 text-pretty md:text-base">
-            Для внутренней презентации вы экономите 2–3 часа работы. Для клиентской — даже одна сделка многократно
-            перекрывает стоимость GoDeck.
-          </p>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <ScenarioChip
-              icon={<Clock3 aria-hidden="true" className="size-4" />}
-              label="Внутренняя задача"
-              result="2–3 часа обратно"
-            />
-            <ScenarioChip
-              icon={<ReceiptText aria-hidden="true" className="size-4" />}
-              label="Клиентская задача"
-              result="одна сделка перекрывает стоимость подписки"
-            />
-          </div>
-        </div>
       </div>
     </section>
-  )
-}
-
-function ScenarioChip({
-  icon,
-  label,
-  result,
-}: {
-  icon: React.ReactNode
-  label: string
-  result: string
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-navy-foreground/15 bg-navy-foreground/[0.03] px-4 py-3">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary">
-        {icon}
-      </span>
-      <p className="text-sm leading-snug text-navy-foreground/80 text-pretty">
-        <span className="font-medium text-navy-foreground">{label}</span>
-        <ArrowRight aria-hidden="true" className="mx-1.5 inline size-3 -translate-y-px text-navy-foreground/40" />
-        {result}
-      </p>
-    </div>
   )
 }
 
