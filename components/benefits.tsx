@@ -8,18 +8,21 @@ import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 const benefits = [
   {
     key: 'structure',
-    title: 'Начинайте с готовой структуры',
-    description: 'Добавьте материалы или опишите идею. GoDeck выделит главное и распределит содержание по слайдам.',
+    title: 'Экономь часы на каждой презентации',
+    description:
+      'Добавь документы, данные или опиши идею. GoDeck выделит главное, построит структуру и распределит содержание по слайдам.',
   },
   {
     key: 'audience',
-    title: 'Презентация точно под задачу и аудиторию',
-    description: 'Задайте цель и аудиторию. GoDeck адаптирует структуру, акценты и аргументацию.',
+    title: 'Персонализируй презентацию под задачу',
+    description:
+      'Укажи цель и аудиторию. GoDeck адаптирует структуру, акценты и аргументацию под конкретную ситуацию.',
   },
   {
     key: 'brand',
-    title: 'Сохраняйте единый фирменный стиль',
-    description: 'Загрузите шаблон, брендбук или логотип. GoDeck применит фирменное оформление ко всей презентации.',
+    title: 'Получай профессиональные слайды без дизайнера',
+    description:
+      'Выбери готовый шаблон или загрузи корпоративный шаблон. GoDeck выстроит композицию и применит фирменное оформление ко всей презентации.',
   },
 ] as const
 
@@ -36,13 +39,9 @@ export function Benefits() {
             Что меняется с GoDeck
           </p>
           <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl">
-            <span className="text-navy-foreground">{'Создавайте презентации, которые '}</span>
+            <span className="text-navy-foreground">{'Создавай презентации, которые '}</span>
             <span className="accent-presentations-text">хочется показывать</span>
           </h2>
-          <p className="max-w-[58ch] text-base leading-relaxed text-navy-foreground/70 text-pretty md:text-lg">
-            GoDeck экономит часы ручной работы, превращая материалы в готовые слайды под вашу задачу и фирменный
-            стиль.
-          </p>
         </div>
 
         {/* Desktop / tablet: visual on the left, clickable benefits on the right */}
