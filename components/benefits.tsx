@@ -8,19 +8,19 @@ import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 const benefits = [
   {
     key: 'structure',
-    title: 'Не начинайте с пустого слайда',
-    description: 'GoDeck соберёт структуру и перенесёт материалы в презентацию — вы сэкономите часы ручной работы.',
+    title: 'Экономьте часы на каждой презентации',
+    description: 'GoDeck превратит материалы в структуру и готовые слайды — без ручной сборки в PowerPoint.',
   },
   {
     key: 'audience',
-    title: 'Под каждую задачу — своя презентация',
-    description:
-      'Структура, акценты и подача адаптируются под аудиторию и цель — презентация точнее отвечает конкретной ситуации.',
+    title: 'Презентация — точно под задачу и аудиторию',
+    description: 'GoDeck адаптирует структуру, акценты и подачу под цель конкретной презентации.',
   },
   {
     key: 'brand',
-    title: 'Все слайды — в стиле вашей компании',
-    description: 'Фирменные цвета, шрифты и логотип применяются ко всей презентации — результат выглядит цельно и профессионально.',
+    title: 'Сохраняйте единый фирменный стиль',
+    description:
+      'Цвета, шрифты и логотип компании применяются ко всей презентации — результат выглядит цельно и профессионально.',
   },
 ] as const
 
@@ -37,7 +37,7 @@ export function Benefits() {
             Что меняется с GoDeck
           </p>
           <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl">
-            Рабочая презентация — без часов ручной сборки
+            Готовая презентация для работы — без часов ручной сборки
           </h2>
           <p className="max-w-[58ch] text-base leading-relaxed text-navy-foreground/70 text-pretty md:text-lg">
             GoDeck возьмёт на себя структуру, подачу и оформление — вы сосредоточитесь на задаче, а не на PowerPoint.
@@ -58,7 +58,7 @@ export function Benefits() {
             {activeKey === 'brand' ? <BrandVisual /> : null}
           </div>
 
-          <div className="flex flex-col divide-y divide-navy-foreground/10">
+          <div className="flex flex-col gap-6">
             {benefits.map((benefit, index) => (
               <button
                 key={benefit.key}
@@ -66,19 +66,24 @@ export function Benefits() {
                 onClick={() => setActive(index)}
                 aria-pressed={active === index}
                 className={cn(
-                  'flex flex-col gap-1.5 border-l-2 py-4 pl-4 text-left transition-colors first:pt-0 last:pb-0',
+                  'flex flex-col gap-1.5 border-l-2 py-0.5 pl-4 text-left transition-colors',
                   active === index ? 'border-primary' : 'border-transparent',
                 )}
               >
                 <h3
                   className={cn(
-                    'font-display text-lg font-bold leading-snug tracking-tight text-balance',
+                    'font-display text-lg font-bold leading-snug tracking-tight text-balance transition-colors',
                     active === index ? 'text-navy-foreground' : 'text-navy-foreground/90',
                   )}
                 >
                   {benefit.title}
                 </h3>
-                <p className="text-sm leading-relaxed text-navy-foreground/70 text-pretty">
+                <p
+                  className={cn(
+                    'text-sm leading-relaxed text-pretty transition-colors',
+                    active === index ? 'text-navy-foreground/70' : 'text-navy-foreground/60',
+                  )}
+                >
                   {benefit.description}
                 </p>
               </button>
