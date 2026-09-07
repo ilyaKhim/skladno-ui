@@ -9,13 +9,13 @@ import {
   GripVertical,
   MessageSquareText,
   Presentation,
-  RotateCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 
 const STAGE_DURATION = 4000
 const TOTAL_DURATION = STAGE_DURATION * 3
+const HOLD_DURATION = 10000
 const TICK_MS = 80
 
 const STAGE_LABELS = ['Материалы', 'Структура', 'Презентация'] as const
@@ -43,6 +43,26 @@ type Flags = {
   downloadButton: boolean
 }
 
+const MATERIALS_KEYS = ['prompt', 'file1', 'file2', 'file3', 'params', 'materialsStatus'] as const
+const STRUCTURE_KEYS = [
+  'outline1',
+  'outline2',
+  'outline3',
+  'outline4',
+  'outline5',
+  'reordered',
+  'structureStatus',
+] as const
+const PRESENTATION_KEYS = [
+  'slideSkeleton',
+  'chart',
+  'slideText',
+  'brandAccent',
+  'aiCommand',
+  'slideUpdated',
+  'downloadButton',
+] as const
+
 const INITIAL_FLAGS: Flags = {
   prompt: false,
   file1: false,
@@ -66,129 +86,189 @@ const INITIAL_FLAGS: Flags = {
   downloadButton: false,
 }
 
-const FINAL_FLAGS: Flags = Object.fromEntries(
-  Object.keys(INITIAL_FLAGS).map((key) => [key, true]),
-) as Flags
+const FINAL_FLAGS: Flags = Object.fromEntries(Object.keys(INITIAL_FLAGS).map((key) => [key, true])) as Flags
 
-const EVENTS: Array<{ t: number; key: keyof Flags }> = [
-  { t: 100, key: 'prompt' },
-  { t: 600, key: 'file1' },
-  { t: 1000, key: 'file2' },
-  { t: 1400, key: 'file3' },
-  { t: 1900, key: 'params' },
-  { t: 2700, key: 'materialsStatus' },
-  { t: 4300, key: 'outline1' },
-  { t: 4600, key: 'outline2' },
-  { t: 4900, key: 'outline3' },
-  { t: 5200, key: 'outline4' },
-  { t: 5500, key: 'outline5' },
-  { t: 6100, key: 'reordered' },
-  { t: 6900, key: 'structureStatus' },
-  { t: 8300, key: 'slideSkeleton' },
-  { t: 8700, key: 'chart' },
-  { t: 9100, key: 'slideText' },
-  { t: 9400, key: 'brandAccent' },
-  { t: 9900, key: 'aiCommand' },
-  { t: 10500, key: 'slideUpdated' },
-  { t: 10900, key: 'downloadButton' },
+/** Events use a local 0..STAGE_DURATION timeline — one per screen. */
+const STAGE_EVENTS: Array<Array<{ t: number; key: keyof Flags }>> = [
+  [
+    { t: 100, key: 'prompt' },
+    { t: 600, key: 'file1' },
+    { t: 1000, key: 'file2' },
+    { t: 1400, key: 'file3' },
+    { t: 1900, key: 'params' },
+    { t: 2700, key: 'materialsStatus' },
+  ],
+  [
+    { t: 300, key: 'outline1' },
+    { t: 600, key: 'outline2' },
+    { t: 900, key: 'outline3' },
+    { t: 1200, key: 'outline4' },
+    { t: 1500, key: 'outline5' },
+    { t: 2100, key: 'reordered' },
+    { t: 2900, key: 'structureStatus' },
+  ],
+  [
+    { t: 300, key: 'slideSkeleton' },
+    { t: 700, key: 'chart' },
+    { t: 1100, key: 'slideText' },
+    { t: 1400, key: 'brandAccent' },
+    { t: 1900, key: 'aiCommand' },
+    { t: 2500, key: 'slideUpdated' },
+    { t: 2900, key: 'downloadButton' },
 ]
+]
+
+function flagsForStage(stageIndex: number, localElapsed: number): Partial<Flags> {
+  const out: Partial<Flags> = {}
+  for (const e of STAGE_EVENTS[stageIndex]) {
+    if (e.t <= localElapsed) out[e.key] = true
+  }
+  return out
+}
+
+export type StageStatus = 'active' | 'done' | 'upcoming'
 
 /**
  * Product demo: three vertical micro-screens (Materials → Structure →
- * Presentation) driven by one ~12s timeline, with a shared progress rail.
- * Runs once on scroll-into-view, pauses on hover/focus, and offers a manual
- * replay. Reduced-motion users see every screen in its finished state.
+ * Presentation) with a shared, segmented progress rail. Runs continuously
+ * while >=50% in view and the tab is active, never pauses on hover, and
+ * every stage (label, rail segment, or screen) can be selected to jump
+ * straight to its finished state. After the full cycle it holds for 10s
+ * then softly restarts. Reduced-motion users see the finished state only.
  */
 export function ProductDemo() {
   const prefersReducedMotion = usePrefersReducedMotion()
   const containerRef = useRef<HTMLDivElement>(null)
-  const [started, setStarted] = useState(false)
-  const [finished, setFinished] = useState(false)
-  const [paused, setPaused] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
-  const [flags, setFlags] = useState<Flags>(INITIAL_FLAGS)
-  const firedRef = useRef<Set<keyof Flags>>(new Set())
 
-  // Trigger the run once when 50–60% of the section is in view.
+  const [inView, setInView] = useState(false)
+  const [tabVisible, setTabVisible] = useState(() =>
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible',
+  )
+
+  // -1 = nothing actively animating right now.
+  const [activeStageIndex, setActiveStageIndex] = useState(-1)
+  // -1 = nothing finished yet. Otherwise the highest stage index shown final.
+  const [maxCompletedIndex, setMaxCompletedIndex] = useState(-1)
+  const [stageElapsed, setStageElapsed] = useState(0)
+  const [holding, setHolding] = useState(false)
+
+  const wasVisibleRef = useRef(false)
+
+  // Observe how much of the section is on screen.
   useEffect(() => {
     if (prefersReducedMotion) return
     const el = containerRef.current
     if (!el) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          setStarted(true)
-          observer.disconnect()
-        }
-      },
-      { threshold: 0.55 },
-    )
+    const observer = new IntersectionObserver((entries) => setInView(entries[0]?.isIntersecting ?? false), {
+      threshold: 0.5,
+    })
     observer.observe(el)
     return () => observer.disconnect()
   }, [prefersReducedMotion])
 
-  // Tick the timeline forward while running, not paused, not finished.
+  // Track tab visibility so the loop never runs in the background.
   useEffect(() => {
-    if (prefersReducedMotion || !started || paused || finished) return
+    if (prefersReducedMotion) return
+    const handler = () => setTabVisible(document.visibilityState === 'visible')
+    document.addEventListener('visibilitychange', handler)
+    return () => document.removeEventListener('visibilitychange', handler)
+  }, [prefersReducedMotion])
+
+  // Every time the section transitions from not-visible to visible, start a
+  // fresh run from the first stage. Leaving view simply freezes the timers.
+  useEffect(() => {
+    if (prefersReducedMotion) return
+    const nowVisible = inView && tabVisible
+    if (nowVisible && !wasVisibleRef.current) {
+      setActiveStageIndex(0)
+      setMaxCompletedIndex(-1)
+      setStageElapsed(0)
+      setHolding(false)
+    }
+    wasVisibleRef.current = nowVisible
+  }, [inView, tabVisible, prefersReducedMotion])
+
+  // The single tick loop. Only runs while visible; never pauses on hover.
+  useEffect(() => {
+    if (prefersReducedMotion) return
+    if (!inView || !tabVisible) return
 
     const interval = setInterval(() => {
-      setElapsed((prev) => {
-        const next = Math.min(prev + TICK_MS, TOTAL_DURATION)
-        if (next >= TOTAL_DURATION) setFinished(true)
+      if (holding) {
+        setStageElapsed((prev) => {
+          const next = prev + TICK_MS
+          if (next >= HOLD_DURATION) {
+            setActiveStageIndex(0)
+            setMaxCompletedIndex(-1)
+            setHolding(false)
+            return 0
+          }
+          return next
+        })
+        return
+      }
+      if (activeStageIndex < 0) return
+      setStageElapsed((prev) => {
+        const next = prev + TICK_MS
+        if (next >= STAGE_DURATION) {
+          if (activeStageIndex < 2) {
+            setMaxCompletedIndex(activeStageIndex)
+            setActiveStageIndex(activeStageIndex + 1)
+          } else {
+            setMaxCompletedIndex(2)
+            setActiveStageIndex(-1)
+            setHolding(true)
+          }
+          return 0
+        }
         return next
       })
     }, TICK_MS)
 
     return () => clearInterval(interval)
-  }, [prefersReducedMotion, started, paused, finished])
+  }, [prefersReducedMotion, inView, tabVisible, holding, activeStageIndex])
 
-  // Fire discrete events as elapsed time crosses their threshold.
-  useEffect(() => {
-    if (prefersReducedMotion) return
-    const toFire = EVENTS.filter((e) => e.t <= elapsed && !firedRef.current.has(e.key))
-    if (toFire.length === 0) return
-    for (const e of toFire) firedRef.current.add(e.key)
-    setFlags((prev) => {
-      const next = { ...prev }
-      for (const e of toFire) next[e.key] = true
-      return next
-    })
-  }, [elapsed, prefersReducedMotion])
+  const selectStage = useCallback(
+    (index: number) => {
+      if (prefersReducedMotion) return
+      setActiveStageIndex(-1)
+      setMaxCompletedIndex(index)
+      setStageElapsed(0)
+      setHolding(true)
+    },
+    [prefersReducedMotion],
+  )
 
-  const replay = useCallback(() => {
-    firedRef.current = new Set()
-    setFlags(INITIAL_FLAGS)
-    setElapsed(0)
-    setFinished(false)
-    setPaused(false)
-    setStarted(true)
-  }, [])
-
-  const activeFlags = prefersReducedMotion ? FINAL_FLAGS : flags
-  const progressPct = prefersReducedMotion || finished ? 100 : (elapsed / TOTAL_DURATION) * 100
-  const activeStage = finished ? -1 : Math.min(2, Math.floor(elapsed / STAGE_DURATION))
-
-  function stageState(index: number): 'active' | 'done' | 'upcoming' | 'settled' {
-    if (prefersReducedMotion || finished) return 'settled'
-    if (!started) return index === 0 ? 'active' : 'upcoming'
-    if (index === activeStage) return 'active'
-    if (index < activeStage) return 'done'
+  function statusFor(index: number): StageStatus {
+    if (prefersReducedMotion) return 'done'
+    if (activeStageIndex === index) return 'active'
+    if (index <= maxCompletedIndex) return 'done'
     return 'upcoming'
   }
 
+  function flagsFor(index: number): Flags {
+    if (statusFor(index) !== 'active') return FINAL_FLAGS
+    const keys = [MATERIALS_KEYS, STRUCTURE_KEYS, PRESENTATION_KEYS][index]
+    const partial = flagsForStage(index, stageElapsed)
+    const out = { ...INITIAL_FLAGS }
+    for (const key of keys) out[key] = Boolean(partial[key])
+    return out
+  }
+
+  function segmentFillPct(index: number): number {
+    if (prefersReducedMotion) return 100
+    if (index <= maxCompletedIndex) return 100
+    if (index === activeStageIndex) return (stageElapsed / STAGE_DURATION) * 100
+    return 0
+  }
+
+  const materialsStatus = statusFor(0)
+  const structureStatus = statusFor(1)
+  const presentationStatus = statusFor(2)
+
   return (
     <section className="border-b border-border bg-background">
-      <div
-        ref={containerRef}
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-        onFocus={() => setPaused(true)}
-        onBlur={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget)) setPaused(false)
-        }}
-        className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20"
-      >
+      <div ref={containerRef} className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
         <div className="mb-6 flex max-w-2xl flex-col gap-2 md:mb-8">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">Как работает GoDeck</p>
           <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl">
@@ -199,69 +279,69 @@ export function ProductDemo() {
           </p>
         </div>
 
-        {/* Shared progress rail */}
-        <div className="mb-5 md:mb-6">
-          <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="absolute inset-y-0 left-0 rounded-full bg-primary"
-              style={{
-                width: `${progressPct}%`,
-                transition: prefersReducedMotion ? 'none' : `width ${TICK_MS}ms linear`,
-              }}
-            />
-            <span aria-hidden="true" className="absolute inset-y-0 left-1/3 w-px bg-background/70" />
-            <span aria-hidden="true" className="absolute inset-y-0 left-2/3 w-px bg-background/70" />
-          </div>
-          <div className="mt-2 flex items-center justify-between">
-            <div className="flex flex-1 justify-between text-xs font-medium">
-              {STAGE_LABELS.map((label, index) => {
-                const state = stageState(index)
-                return (
-                  <span
-                    key={label}
-                    className={cn(
-                      'transition-colors',
-                      state === 'active' && 'text-primary',
-                      state === 'done' && 'text-foreground',
-                      state === 'settled' && 'text-foreground',
-                      state === 'upcoming' && 'text-muted-foreground',
-                    )}
-                  >
-                    {label}
-                  </span>
-                )
-              })}
-            </div>
-            {finished && !prefersReducedMotion ? (
+        {/* Stage labels — each one jumps straight to that stage's finished state */}
+        <div className="mb-2 flex items-center justify-between text-xs font-medium">
+          {STAGE_LABELS.map((label, index) => {
+            const status = statusFor(index)
+            return (
               <button
+                key={label}
                 type="button"
-                onClick={replay}
-                className="ml-4 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                onClick={() => selectStage(index)}
+                aria-label={`Показать этап «${label}» целиком`}
+                className={cn(
+                  '-mx-1 -my-0.5 cursor-pointer rounded-sm px-1 py-0.5 text-left transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1',
+                  status === 'active' && 'text-primary',
+                  status === 'done' && 'text-foreground',
+                  status === 'upcoming' && 'text-muted-foreground hover:text-foreground',
+                )}
               >
-                <RotateCcw aria-hidden="true" className="size-3" />
-                Повторить
+                {label}
               </button>
-            ) : null}
-          </div>
+            )
+          })}
+        </div>
+
+        {/* Shared progress rail, split into three clickable segments (one per stage) */}
+        <div className="mb-5 flex gap-1.5 md:mb-6">
+          {[0, 1, 2].map((index) => (
+            <button
+              key={index}
+              type="button"
+              onClick={() => selectStage(index)}
+              aria-label={`Показать этап «${STAGE_LABELS[index]}» целиком`}
+              className="relative h-1.5 flex-1 cursor-pointer overflow-hidden rounded-full bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1"
+            >
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-0 left-0 rounded-full bg-primary"
+                style={{
+                  width: `${segmentFillPct(index)}%`,
+                  transition: prefersReducedMotion ? 'none' : `width ${TICK_MS}ms linear`,
+                }}
+              />
+            </button>
+          ))}
         </div>
 
         {/* Desktop / tablet: three columns */}
         <div className="hidden gap-4 sm:grid sm:grid-cols-3 lg:gap-5">
-          <MaterialsScreen state={stageState(0)} flags={activeFlags} />
-          <StructureScreen state={stageState(1)} flags={activeFlags} />
-          <PresentationScreen state={stageState(2)} flags={activeFlags} />
+          <MaterialsScreen status={materialsStatus} flags={flagsFor(0)} onSelect={() => selectStage(0)} />
+          <StructureScreen status={structureStatus} flags={flagsFor(1)} onSelect={() => selectStage(1)} />
+          <PresentationScreen status={presentationStatus} flags={flagsFor(2)} onSelect={() => selectStage(2)} />
         </div>
 
         {/* Mobile: swipe carousel */}
         <div className="-mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2 sm:hidden">
           <div className="w-[82%] shrink-0 snap-center">
-            <MaterialsScreen state={stageState(0)} flags={activeFlags} />
+            <MaterialsScreen status={materialsStatus} flags={flagsFor(0)} onSelect={() => selectStage(0)} />
           </div>
           <div className="w-[82%] shrink-0 snap-center">
-            <StructureScreen state={stageState(1)} flags={activeFlags} />
+            <StructureScreen status={structureStatus} flags={flagsFor(1)} onSelect={() => selectStage(1)} />
           </div>
           <div className="w-[82%] shrink-0 snap-center">
-            <PresentationScreen state={stageState(2)} flags={activeFlags} />
+            <PresentationScreen status={presentationStatus} flags={flagsFor(2)} onSelect={() => selectStage(2)} />
           </div>
         </div>
       </div>
@@ -270,38 +350,63 @@ export function ProductDemo() {
 }
 
 function ScreenShell({
-  state,
+  status,
   title,
   description,
+  onSelect,
+  ariaLabel,
   children,
 }: {
-  state: 'active' | 'done' | 'upcoming' | 'settled'
+  status: StageStatus
   title: string
   description: string
+  onSelect: () => void
+  ariaLabel: string
   children: ReactNode
 }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-label={ariaLabel}
       className={cn(
-        'flex aspect-[3/4] flex-col rounded-2xl border bg-card p-4 transition-[border-color,box-shadow,opacity] duration-300',
-        state === 'active' && 'border-primary shadow-[0_0_0_3px_rgba(51,92,197,0.12)]',
-        state === 'done' && 'border-border',
-        state === 'settled' && 'border-border',
-        state === 'upcoming' && 'border-border opacity-60',
+        'flex aspect-[3/4] w-full cursor-pointer flex-col rounded-2xl border bg-card p-3 text-left transition-[border-color,box-shadow] duration-300',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2',
+        status === 'active' && 'border-primary shadow-[0_0_0_3px_rgba(51,92,197,0.12)]',
+        status === 'done' && 'border-border',
+        status === 'upcoming' && 'border-border',
       )}
     >
       <h3 className="font-display text-sm font-bold leading-snug tracking-tight text-foreground text-balance">
         {title}
       </h3>
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground text-pretty">{description}</p>
-      <div className="mt-3 flex flex-1 flex-col overflow-hidden rounded-xl border border-border bg-secondary/40 p-3">
+      <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground text-pretty">{description}</p>
+      <div
+        className={cn(
+          'mt-2 flex flex-1 flex-col overflow-hidden rounded-xl border border-border bg-secondary/40 p-2.5 transition-opacity duration-300',
+          status === 'upcoming' && 'opacity-55',
+        )}
+      >
         {children}
       </div>
-    </div>
+    </button>
   )
 }
 
-function FadeIn({ show, children, className }: { show: boolean; children: ReactNode; className?: string }) {
+function FadeIn({
+  show,
+  animate,
+  children,
+  className,
+}: {
+  show: boolean
+  animate: boolean
+  children: ReactNode
+  className?: string
+}) {
+  if (!animate) {
+    return <div className={className}>{children}</div>
+  }
   return (
     <div
       className={cn('transition-[opacity,transform] duration-300 ease-out', className)}
@@ -315,9 +420,9 @@ function FadeIn({ show, children, className }: { show: boolean; children: ReactN
   )
 }
 
-function StatusPill({ show, children }: { show: boolean; children: ReactNode }) {
+function StatusPill({ show, animate, children }: { show: boolean; animate: boolean; children: ReactNode }) {
   return (
-    <FadeIn show={show} className="mt-auto pt-2">
+    <FadeIn show={show} animate={animate} className="mt-auto pt-2">
       <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
         <Check aria-hidden="true" className="size-3" />
         {children}
@@ -326,37 +431,48 @@ function StatusPill({ show, children }: { show: boolean; children: ReactNode }) 
   )
 }
 
-function MaterialsScreen({ state, flags }: { state: 'active' | 'done' | 'upcoming' | 'settled'; flags: Flags }) {
+function MaterialsScreen({
+  status,
+  flags,
+  onSelect,
+}: {
+  status: StageStatus
+  flags: Flags
+  onSelect: () => void
+}) {
+  const animate = status === 'active'
   return (
     <ScreenShell
-      state={state}
+      status={status}
+      onSelect={onSelect}
+      ariaLabel="Показать этап «Материалы» целиком"
       title="Добавь материалы и задай контекст"
       description="Опиши задачу или загрузи документы и данные. Укажи цель, аудиторию и стиль презентации."
     >
-      <FadeIn show={flags.prompt}>
-        <p className="rounded-lg bg-card px-2.5 py-2 text-[11px] leading-snug text-foreground text-pretty">
+      <FadeIn show={flags.prompt} animate={animate}>
+        <p className="rounded-lg bg-card px-2.5 py-2 text-[12px] leading-snug text-foreground text-pretty">
           Подготовь презентацию по итогам квартала для руководства
         </p>
       </FadeIn>
 
-      <div className="mt-2 flex flex-col gap-1.5">
-        <FadeIn show={flags.file1}>
+      <div className="mt-2 flex flex-col gap-1">
+        <FadeIn show={flags.file1} animate={animate}>
           <FileChip icon={FileSpreadsheet} name="Продажи_Q3.xlsx" />
         </FadeIn>
-        <FadeIn show={flags.file2}>
+        <FadeIn show={flags.file2} animate={animate}>
           <FileChip icon={FileText} name="Выводы.docx" />
         </FadeIn>
-        <FadeIn show={flags.file3}>
+        <FadeIn show={flags.file3} animate={animate}>
           <FileChip icon={Presentation} name="Корпоративный стиль.potx" />
         </FadeIn>
       </div>
 
-      <FadeIn show={flags.params} className="mt-2">
-        <div className="flex flex-wrap gap-1.5">
+      <FadeIn show={flags.params} animate={animate} className="mt-2">
+        <div className="flex flex-wrap gap-1">
           {['Руководство', 'Отчёт', '8 слайдов'].map((tag) => (
             <span
               key={tag}
-              className="rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium text-foreground"
+              className="rounded-full border border-border bg-card px-2 py-0.5 text-[9px] font-medium text-foreground"
             >
               {tag}
             </span>
@@ -364,14 +480,16 @@ function MaterialsScreen({ state, flags }: { state: 'active' | 'done' | 'upcomin
         </div>
       </FadeIn>
 
-      <StatusPill show={flags.materialsStatus}>Материалы добавлены</StatusPill>
+      <StatusPill show={flags.materialsStatus} animate={animate}>
+        Материалы добавлены
+      </StatusPill>
     </ScreenShell>
   )
 }
 
 function FileChip({ icon: Icon, name }: { icon: typeof FileText; name: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium text-foreground">
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[9px] font-medium text-foreground">
       <Icon aria-hidden="true" className="size-3 shrink-0 text-primary" />
       <span className="truncate">{name}</span>
     </span>
@@ -386,7 +504,16 @@ const OUTLINE_ITEMS: Record<string, string> = {
   e: 'План на следующий квартал',
 }
 
-function StructureScreen({ state, flags }: { state: 'active' | 'done' | 'upcoming' | 'settled'; flags: Flags }) {
+function StructureScreen({
+  status,
+  flags,
+  onSelect,
+}: {
+  status: StageStatus
+  flags: Flags
+  onSelect: () => void
+}) {
+  const animate = status === 'active'
   const order = flags.reordered ? ['a', 'c', 'b', 'd', 'e'] : ['a', 'b', 'c', 'd', 'e']
   const visible: Record<string, boolean> = {
     a: flags.outline1,
@@ -400,8 +527,11 @@ function StructureScreen({ state, flags }: { state: 'active' | 'done' | 'upcomin
   const wasReorderedRef = useRef(false)
 
   useLayoutEffect(() => {
+    if (!animate) {
+      wasReorderedRef.current = flags.reordered
+      return
+    }
     if (flags.reordered && !wasReorderedRef.current) {
-      // FLIP: animate the two swapped items from their previous position.
       for (const id of ['b', 'c']) {
         const el = itemRefs.current[id]
         const prevRect = prevRectsRef.current[id]
@@ -424,59 +554,90 @@ function StructureScreen({ state, flags }: { state: 'active' | 'done' | 'upcomin
         if (el) prevRectsRef.current[id] = el.getBoundingClientRect()
       }
     }
-  }, [flags.reordered])
+  }, [flags.reordered, animate])
 
   return (
     <ScreenShell
-      state={state}
+      status={status}
+      onSelect={onSelect}
+      ariaLabel="Показать этап «Структура» целиком"
       title="Проверь структуру"
       description="GoDeck выделит главное и предложит последовательность слайдов. При необходимости измени её перед генерацией."
     >
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-1 flex-col justify-center gap-2">
         {order.map((id, index) => (
           <div
             key={id}
             ref={(el) => {
               itemRefs.current[id] = el
             }}
-            className="transition-[opacity,transform] duration-300 ease-out"
-            style={{ opacity: visible[id] ? 1 : 0, transform: visible[id] ? 'translateY(0)' : 'translateY(6px)' }}
+            className={animate ? 'transition-[opacity,transform] duration-300 ease-out' : undefined}
+            style={
+              animate
+                ? { opacity: visible[id] ? 1 : 0, transform: visible[id] ? 'translateY(0)' : 'translateY(6px)' }
+                : undefined
+            }
           >
-            <div className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1.5">
-              <GripVertical aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
-              <span className="text-[10px] font-semibold tabular-nums text-primary">{index + 1}</span>
-              <span className="truncate text-[10px] font-medium text-foreground">{OUTLINE_ITEMS[id]}</span>
+            <div className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-2">
+              <GripVertical aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="text-[11px] font-semibold tabular-nums text-primary">{index + 1}</span>
+              <span className="truncate text-[11px] font-medium text-foreground">{OUTLINE_ITEMS[id]}</span>
             </div>
           </div>
         ))}
       </div>
 
-      <StatusPill show={flags.structureStatus}>Структура готова</StatusPill>
+      <StatusPill show={flags.structureStatus} animate={animate}>
+        Структура готова
+      </StatusPill>
     </ScreenShell>
   )
 }
 
-function PresentationScreen({ state, flags }: { state: 'active' | 'done' | 'upcoming' | 'settled'; flags: Flags }) {
+function PresentationScreen({
+  status,
+  flags,
+  onSelect,
+}: {
+  status: StageStatus
+  flags: Flags
+  onSelect: () => void
+}) {
+  const animate = status === 'active'
   return (
     <ScreenShell
-      state={state}
+      status={status}
+      onSelect={onSelect}
+      ariaLabel="Показать этап «Презентация» целиком"
       title="Получи готовую презентацию"
       description="Доработай слайды самостоятельно или через AI-чат и скачай редактируемый PowerPoint."
     >
-      <FadeIn show={flags.slideSkeleton}>
+      <div className="flex gap-1">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className={cn(
+              'h-3 flex-1 rounded-sm border border-border bg-card transition-opacity',
+              flags.slideSkeleton ? 'opacity-100' : 'opacity-0',
+            )}
+          />
+        ))}
+      </div>
+
+      <FadeIn show={flags.slideSkeleton} animate={animate} className="mt-1.5 flex flex-1">
         <div
           className={cn(
-            'rounded-lg border bg-card p-2 transition-colors',
+            'flex w-full flex-1 flex-col justify-between rounded-lg border bg-card p-2.5 transition-colors',
             flags.brandAccent ? 'border-t-2 border-t-primary border-border' : 'border-border',
           )}
         >
-          <FadeIn show={flags.slideText}>
-            <p className="text-[10px] font-bold leading-snug text-foreground text-pretty">
+          <FadeIn show={flags.slideText} animate={animate}>
+            <p className="text-[12px] font-bold leading-snug text-foreground text-pretty">
               {flags.slideUpdated ? 'Выручка выросла на 22% за квартал' : 'Итоги квартала по выручке и заявкам'}
             </p>
           </FadeIn>
-          <FadeIn show={flags.chart} className="mt-1.5">
-            <div className="flex h-10 items-end gap-1">
+          <FadeIn show={flags.chart} animate={animate} className="mt-2">
+            <div className="flex h-14 items-end gap-1.5">
               {[6, 9, 14].map((v, i) => (
                 <div
                   key={i}
@@ -489,19 +650,7 @@ function PresentationScreen({ state, flags }: { state: 'active' | 'done' | 'upco
         </div>
       </FadeIn>
 
-      <div className="mt-1.5 flex gap-1">
-        {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            className={cn(
-              'aspect-video flex-1 rounded-sm border border-border bg-card transition-opacity',
-              flags.slideSkeleton ? 'opacity-100' : 'opacity-0',
-            )}
-          />
-        ))}
-      </div>
-
-      <FadeIn show={flags.aiCommand} className="mt-auto pt-2">
+      <FadeIn show={flags.aiCommand} animate={animate} className="mt-1.5">
         <div className="flex items-start gap-1.5 rounded-md bg-card px-2 py-1.5">
           <MessageSquareText aria-hidden="true" className="mt-0.5 size-3 shrink-0 text-primary" />
           <span className="text-[10px] leading-snug text-foreground text-pretty">
@@ -510,7 +659,7 @@ function PresentationScreen({ state, flags }: { state: 'active' | 'done' | 'upco
         </div>
       </FadeIn>
 
-      <FadeIn show={flags.downloadButton} className="mt-1.5">
+      <FadeIn show={flags.downloadButton} animate={animate} className="mt-1.5">
         <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-[10px] font-medium text-primary-foreground">
           <Download aria-hidden="true" className="size-3" />
           Скачать PPTX
