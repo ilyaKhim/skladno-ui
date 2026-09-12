@@ -1,4 +1,5 @@
 import { Benefits } from '@/components/benefits'
+import { Examples } from '@/components/examples'
 import { FinalCta } from '@/components/final-cta'
 import { Hero } from '@/components/hero'
 import { Pains } from '@/components/pains'
@@ -21,6 +22,9 @@ export default function Page() {
           <Benefits />
         </Reveal>
         <ProductDemo />
+        <Reveal>
+          <Examples />
+        </Reveal>
         <Reveal>
           <FinalCta />
         </Reveal>
