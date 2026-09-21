@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
  * separate `/signup` route. Kept as a constant so it's a one-line change
  * once the real destination is finalized.
  */
-const CREATE_URL = 'https://app.godeck.ru/onboarding?returnTo=%2Fcreate'
+export const CREATE_URL = 'https://app.godeck.ru/onboarding?returnTo=%2Fcreate'
 
 const EXAMPLES = [
   'Собери коммерческое предложение по брифу клиента',

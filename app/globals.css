@@ -220,3 +220,23 @@
   .examples-fade-in {
   animation: examples-fade-in 0.3s ease-out;
   }
+
+@keyframes examples-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.examples-marquee-track {
+  width: max-content;
+  animation: examples-marquee 40s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .examples-marquee-track {
+    animation: none;
+  }
+}
