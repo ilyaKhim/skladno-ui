@@ -217,6 +217,6 @@
   }
 }
 
-.examples-fade-in {
-  animation: examples-fade-in 0.38s ease-out;
-}
+  .examples-fade-in {
+  animation: examples-fade-in 0.3s ease-out;
+  }
