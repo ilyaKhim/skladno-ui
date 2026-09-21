@@ -16,7 +16,7 @@ type Template = {
   id: string
   category: string
   name: string
-  /** Populated later with a real preview image URL. Empty renders a placeholder. */
+  /** Local preview image path. Empty renders a placeholder instead of a broken image. */
   cover: string
 }
 
@@ -32,38 +32,180 @@ const CATEGORY_DEFS: CategoryDef[] = [
   { key: 'marketing', label: 'МАРКЕТИНГ' },
 ]
 
-/** Placeholder template names only — no real designs yet, kept for aria-labels and future data swap. */
+/**
+ * Template names. The first three per category name a real downloaded
+ * preview (see COVERS below); the remaining two have no preview yet and
+ * keep a generic placeholder name.
+ */
 const TEMPLATE_NAMES: Record<string, string[]> = {
-  reports: ['Квартальный отчёт', 'Отчёт для руководства', 'Аналитический обзор', 'Годовой отчёт', 'Отчёт по продажам'],
+  reports: ['Marketing Campaign Analysis Report', 'Monthly Client Report', 'McKinsey Consulting Report', 'Годовой отчёт', 'Отчёт по продажам'],
   proposals: [
-    'Предложение для клиента',
-    'Коммерческое предложение',
-    'Ценовое предложение',
+    'Simple Business Proposal',
+    'IT Software Sales Proposal',
+    'Public Relations Proposal',
     'Предложение по проекту',
     'Партнёрское предложение',
   ],
-  strategy: ['Стратегия роста', 'Стратегический план', 'План на год', 'Дорожная карта', 'План развития'],
-  projects: ['План проекта', 'Презентация проекта', 'Старт проекта', 'Итоги проекта', 'Проектный отчёт'],
-  sales: ['Инвестиционный питч', 'Питч для инвесторов', 'Презентация продукта', 'Sales-питч', 'Питч-дек'],
-  research: ['Исследование рынка', 'Отчёт по исследованию', 'Обзор конкурентов', 'Пользовательское исследование', 'Аналитика рынка'],
-  meetings: ['Еженедельное обновление', 'Статус проекта', 'Обновление команды', 'Протокол встречи', 'Итоги спринта'],
-  marketing: ['Маркетинговый план', 'Кампания запуска', 'Контент-план', 'Бренд-презентация', 'Отчёт по кампании'],
+  strategy: [
+    'Go-To-Market Strategy',
+    'McKinsey Strategic Planning',
+    'Business Market Analysis',
+    'Дорожная карта',
+    'План развития',
+  ],
+  projects: [
+    'Project Success Story',
+    'Project Action Plan',
+    'Project Roadmap',
+    'Итоги проекта',
+    'Проектный отчёт',
+  ],
+  sales: ['Stylish Pitch Deck', 'Minimalist Pitch Deck', 'Elegant Pitch Deck', 'Sales-питч', 'Питч-дек'],
+  research: [
+    'Startup Market Research',
+    'Market Research Report',
+    'B2B Market Research',
+    'Пользовательское исследование',
+    'Аналитика рынка',
+  ],
+  meetings: [
+    'Year-end Review Business Meeting',
+    'Quarterly Business Review',
+    'Simple Meeting Agenda',
+    'Протокол встречи',
+    'Итоги спринта',
+  ],
+  marketing: [
+    'Simple Marketing Plan',
+    'Advertising and Marketing Plan',
+    'Advertising Report',
+    'Бренд-презентация',
+    'Отчёт по кампании',
+  ],
+}
+
+/**
+ * Local preview covers, downloaded from SlidesCarnival (CC BY 4.0) into
+ * /public/template-previews/. Keyed by template id (`${category}-${index+1}`).
+ * Only the first three templates per category have a downloaded cover;
+ * the rest fall back to the placeholder. Original source URLs are kept
+ * here only as a reference — never hot-linked in rendered markup.
+ */
+const COVERS: Record<string, { path: string; sourceUrl: string }> = {
+  'reports-1': {
+    path: '/template-previews/reports-marketing-campaign-analysis.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/marketing-campaign-analysis-report-presentation-0.jpg',
+  },
+  'reports-2': {
+    path: '/template-previews/reports-monthly-client-report.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Monthly-Client-Report-1.jpg',
+  },
+  'reports-3': {
+    path: '/template-previews/reports-mckinsey-consulting-report.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/McKinsey-Consulting-Report.jpg',
+  },
+  'proposals-1': {
+    path: '/template-previews/proposals-simple-business-proposal.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Simple-Business-Proposal.jpg',
+  },
+  'proposals-2': {
+    path: '/template-previews/proposals-it-software-sales-proposal.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/it-software-sales-proposal-slides-0.jpg',
+  },
+  'proposals-3': {
+    path: '/template-previews/proposals-public-relations-proposal.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Formal-Public-Relations-Proposal-Slides-1.jpg',
+  },
+  'strategy-1': {
+    path: '/template-previews/strategy-go-to-market-strategy.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Simple-Go-To-Market-Strategy-McKinsey-Slides.jpg',
+  },
+  'strategy-2': {
+    path: '/template-previews/strategy-mckinsey-strategic-planning.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Minimal-McKinsey-Strategic-Planning-Slides-1.jpg',
+  },
+  'strategy-3': {
+    path: '/template-previews/strategy-business-market-analysis.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Elegant-Business-Market-Analysis-Slides-1.jpg',
+  },
+  'projects-1': {
+    path: '/template-previews/projects-project-success-story.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Simple-Project-Success-Story-Slides-1.jpg',
+  },
+  'projects-2': {
+    path: '/template-previews/projects-project-action-plan.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Simple-Project-Action-Plan-Slides-1.jpg',
+  },
+  'projects-3': {
+    path: '/template-previews/projects-project-roadmap.jpg',
+    sourceUrl:
+      'https://www.slidescarnival.com/wp-content/uploads/Violet-Yellow-and-Green-Geometric-Project-Roadmap-Presentation-.jpg',
+  },
+  'sales-1': {
+    path: '/template-previews/sales-stylish-pitch-deck.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/1577-Emilia-Slide1.jpg',
+  },
+  'sales-2': {
+    path: '/template-previews/sales-minimalist-pitch-deck.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Geometric-Minimalist-Pitch-Deck-1.jpg',
+  },
+  'sales-3': {
+    path: '/template-previews/sales-elegant-pitch-deck.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Blue-Tarragon-and-Orange-Elegant-Pitch-Deck-Presentation-1.jpg',
+  },
+  'research-1': {
+    path: '/template-previews/research-startup-market-research.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Simple-Startup-Market-Research-Slides-1.jpg',
+  },
+  'research-2': {
+    path: '/template-previews/research-market-research-report.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Minimal-Market-Research-Report-Slides.jpg',
+  },
+  'research-3': {
+    path: '/template-previews/research-b2b-market-research.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Modern-B2B-Market-Research-Slides-1.jpg',
+  },
+  'meetings-1': {
+    path: '/template-previews/meetings-year-end-review-business-meeting.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Minimal-Year-end-Review-Business-Meeting-Slides-1.jpg',
+  },
+  'meetings-2': {
+    path: '/template-previews/meetings-quarterly-business-review.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Simple-Quarterly-Business-Review-Slides-1.jpg',
+  },
+  'meetings-3': {
+    path: '/template-previews/meetings-simple-meeting-agenda.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Simple-Meeting-Agenda-Slides-1.jpg',
+  },
+  'marketing-1': {
+    path: '/template-previews/marketing-simple-marketing-plan.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Simple-Marketing-Plan-Slides-1.jpg',
+  },
+  'marketing-2': {
+    path: '/template-previews/marketing-advertising-and-marketing-plan.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Minimal-Advertising-And-Marketing-Plan-Slides-1.jpg',
+  },
+  'marketing-3': {
+    path: '/template-previews/marketing-advertising-report.jpg',
+    sourceUrl: 'https://www.slidescarnival.com/wp-content/uploads/Bold-Modern-Advertising-Report-Slides-1.jpg',
+  },
 }
 
 /**
  * Only `id`, `category`, `name`, `cover` — the full set of fields the
- * carousel needs. `cover` is empty for now and renders a placeholder;
- * swapping in a real preview image URL later requires no component or
- * markup changes. `name` is never shown visually — only used for
- * aria-labels and future template-selection logic.
+ * carousel needs. Swapping in a different preview image later requires
+ * no component or markup changes, only an update to `COVERS`/`cover`.
  */
 const TEMPLATES: Template[] = CATEGORY_DEFS.flatMap((category) =>
-  TEMPLATE_NAMES[category.key].map((name, index) => ({
-    id: `${category.key}-${index + 1}`,
-    category: category.key,
-    name,
-    cover: '',
-  })),
+  TEMPLATE_NAMES[category.key].map((name, index) => {
+    const id = `${category.key}-${index + 1}`
+    return {
+      id,
+      category: category.key,
+      name,
+      cover: COVERS[id]?.path ?? '',
+    }
+  }),
 )
 
 const FEATURES = [
@@ -164,6 +306,27 @@ export function Examples() {
             </div>
           ))}
         </div>
+
+        <p className="mt-6 text-xs leading-relaxed text-navy-foreground/40">
+          Временные примеры основаны на шаблонах{' '}
+          <a
+            href="https://www.slidescarnival.com/"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline underline-offset-2 hover:text-navy-foreground/60"
+          >
+            SlidesCarnival
+          </a>{' '}
+          ·{' '}
+          <a
+            href="https://creativecommons.org/licenses/by/4.0/"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline underline-offset-2 hover:text-navy-foreground/60"
+          >
+            CC BY 4.0
+          </a>
+        </p>
       </div>
     </section>
   )
@@ -310,18 +473,18 @@ function TemplateCard({ template }: { template: Template }) {
       aria-label={`Открыть шаблон «${template.name}»`}
       className="w-[78%] shrink-0 text-left transition-transform duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy md:w-[45%] lg:w-[38%]"
     >
-      <TemplatePlaceholder cover={template.cover} />
+      <TemplatePlaceholder cover={template.cover} name={template.name} />
     </button>
   )
 }
 
-function TemplatePlaceholder({ cover, className }: { cover?: string; className?: string }) {
+function TemplatePlaceholder({ cover, name, className }: { cover?: string; name: string; className?: string }) {
   if (cover) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element -- cover source is not known ahead of time
+      // eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time
       <img
         src={cover || '/placeholder.svg'}
-        alt=""
+        alt={`Превью шаблона презентации «${name}»`}
         className={cn('block aspect-video w-full rounded-lg object-cover', className)}
       />
     )
