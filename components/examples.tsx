@@ -1,18 +1,11 @@
 'use client'
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from 'react'
-import { ChevronLeft, ChevronRight, Download, FileStack, FileUp, MessageSquareText, X } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Download, FileStack, FileUp, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
+import { CREATE_URL } from '@/components/hero-composer'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 type CategoryDef = {
   key: string
@@ -25,8 +18,6 @@ type Template = {
   name: string
   /** Populated later with a real preview image URL. Empty renders a placeholder. */
   cover: string
-  /** Populated later with real slide preview URLs. Empty renders a placeholder. */
-  slides: string[]
 }
 
 /** The eight demo categories, in their default cyclic order. */
@@ -41,7 +32,7 @@ const CATEGORY_DEFS: CategoryDef[] = [
   { key: 'marketing', label: 'МАРКЕТИНГ' },
 ]
 
-/** Placeholder template names only — no real designs yet, just data shape for later swap. */
+/** Placeholder template names only — no real designs yet, kept for aria-labels and future data swap. */
 const TEMPLATE_NAMES: Record<string, string[]> = {
   reports: ['Квартальный отчёт', 'Отчёт для руководства', 'Аналитический обзор', 'Годовой отчёт', 'Отчёт по продажам'],
   proposals: [
@@ -59,13 +50,19 @@ const TEMPLATE_NAMES: Record<string, string[]> = {
   marketing: ['Маркетинговый план', 'Кампания запуска', 'Контент-план', 'Бренд-презентация', 'Отчёт по кампании'],
 }
 
+/**
+ * Only `id`, `category`, `name`, `cover` — the full set of fields the
+ * carousel needs. `cover` is empty for now and renders a placeholder;
+ * swapping in a real preview image URL later requires no component or
+ * markup changes. `name` is never shown visually — only used for
+ * aria-labels and future template-selection logic.
+ */
 const TEMPLATES: Template[] = CATEGORY_DEFS.flatMap((category) =>
   TEMPLATE_NAMES[category.key].map((name, index) => ({
     id: `${category.key}-${index + 1}`,
     category: category.key,
     name,
     cover: '',
-    slides: [],
   })),
 )
 
@@ -96,11 +93,21 @@ const FLIP_TRANSITION = 'transform 620ms cubic-bezier(0.22, 1, 0.36, 1)'
 
 export function Examples() {
   const [allTemplatesOpen, setAllTemplatesOpen] = useState(false)
-  const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
-  const viewAllRef = useRef<HTMLButtonElement>(null)
+  const sectionRef = useRef<HTMLElement>(null)
+  const [inView, setInView] = useState(true)
+
+  // Pauses the continuously moving carousel while the section is scrolled
+  // out of the viewport, and resumes it when it scrolls back in.
+  useEffect(() => {
+    const el = sectionRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0.05 })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   return (
-    <section id="examples" className="border-b border-border bg-navy text-navy-foreground">
+    <section id="examples" ref={sectionRef} className="border-b border-border bg-navy text-navy-foreground">
       <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
         <div className="lg:grid lg:grid-cols-[36%_1fr] lg:items-start lg:gap-12">
           {/* Left: static heading, never moves */}
@@ -113,18 +120,34 @@ export function Examples() {
               Выбери готовый шаблон или загрузи корпоративный PPTX/POTX. GoDeck адаптирует оформление под твои
               материалы и задачу.
             </p>
-            <button
-              ref={viewAllRef}
-              type="button"
-              onClick={() => setAllTemplatesOpen(true)}
-              className="w-fit rounded-full border border-navy-foreground/20 px-5 py-2.5 text-sm font-semibold text-navy-foreground transition-colors hover:bg-navy-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
-            >
-              Просмотреть все шаблоны
-            </button>
+
+            <Popover open={allTemplatesOpen} onOpenChange={setAllTemplatesOpen}>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    className="w-fit rounded-full border border-navy-foreground/20 px-5 py-2.5 text-sm font-semibold text-navy-foreground transition-colors hover:bg-navy-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
+                  >
+                    Просмотреть все шаблоны
+                  </button>
+                }
+              />
+              <PopoverContent
+                side="bottom"
+                align="start"
+                sideOffset={12}
+                className="w-64 rounded-[20px] border-none bg-navy p-4 text-navy-foreground shadow-xl ring-1 ring-navy-foreground/15"
+              >
+                <p className="text-sm font-semibold text-navy-foreground">Все шаблоны — после регистрации</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-navy-foreground/70">
+                  Зарегистрируйтесь, чтобы просмотреть полную библиотеку шаблонов GoDeck.
+                </p>
+              </PopoverContent>
+            </Popover>
           </div>
 
-          {/* Right: cyclic category selector + carousel */}
-          <CategorySelector onOpenPreview={setPreviewTemplate} />
+          {/* Right: cyclic category selector + continuous carousel */}
+          <CategorySelector inView={inView} />
         </div>
 
         {/* Secondary feature strip */}
@@ -142,52 +165,13 @@ export function Examples() {
           ))}
         </div>
       </div>
-
-      {allTemplatesOpen ? (
-        <Modal
-          onClose={() => setAllTemplatesOpen(false)}
-          returnFocusRef={viewAllRef}
-          labelledBy="all-templates-title"
-        >
-          <div className="flex flex-col gap-5 p-6 sm:p-8">
-            <h3 id="all-templates-title" className="font-display text-xl font-bold text-navy-foreground sm:text-2xl">
-              Все шаблоны доступны в GoDeck
-            </h3>
-            <p className="text-sm leading-relaxed text-navy-foreground/70 sm:text-base">
-              Войди или зарегистрируйся, чтобы открыть полную библиотеку и использовать шаблоны для своей
-              презентации.
-            </p>
-            <div className="mt-2 flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setAllTemplatesOpen(false)}
-                className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
-              >
-                Войти или зарегистрироваться
-              </button>
-              <button
-                type="button"
-                onClick={() => setAllTemplatesOpen(false)}
-                className="rounded-full border border-navy-foreground/20 px-5 py-2.5 text-sm font-semibold text-navy-foreground transition-colors hover:bg-navy-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
-              >
-                Остаться на странице
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-
-      {previewTemplate ? (
-        <TemplatePreviewModal template={previewTemplate} onClose={() => setPreviewTemplate(null)} />
-      ) : null}
     </section>
   )
 }
 
-function CategorySelector({ onOpenPreview }: { onOpenPreview: (template: Template) => void }) {
+function CategorySelector({ inView }: { inView: boolean }) {
   const prefersReducedMotion = usePrefersReducedMotion()
   const [order, setOrder] = useState<string[]>(() => CATEGORY_DEFS.map((c) => c.key))
-  const [carouselIndex, setCarouselIndex] = useState(0)
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const prevRects = useRef<Record<string, DOMRect>>({})
 
@@ -195,18 +179,14 @@ function CategorySelector({ onOpenPreview }: { onOpenPreview: (template: Templat
   const activeCategory = CATEGORY_DEFS.find((c) => c.key === activeKey)!
   const templates = TEMPLATES.filter((t) => t.category === activeKey)
 
-  const selectCategory = useCallback(
-    (key: string) => {
-      setOrder((prev) => {
-        if (prev[0] === key) return prev
-        const idx = prev.indexOf(key)
-        if (idx === -1) return prev
-        return [...prev.slice(idx), ...prev.slice(0, idx)]
-      })
-      setCarouselIndex(0)
-    },
-    [],
-  )
+  const selectCategory = useCallback((key: string) => {
+    setOrder((prev) => {
+      if (prev[0] === key) return prev
+      const idx = prev.indexOf(key)
+      if (idx === -1) return prev
+      return [...prev.slice(idx), ...prev.slice(0, idx)]
+    })
+  }, [])
 
   // FLIP: animate every category label smoothly to its new position when `order` changes.
   useLayoutEffect(() => {
@@ -238,7 +218,12 @@ function CategorySelector({ onOpenPreview }: { onOpenPreview: (template: Templat
   }, [order, prefersReducedMotion])
 
   return (
-    <div className="flex flex-col" style={{ display: 'flex', flexDirection: 'column' }} role="group" aria-label="Категории презентаций">
+    <div
+      className="flex flex-col"
+      style={{ display: 'flex', flexDirection: 'column' }}
+      role="group"
+      aria-label="Категории презентаций"
+    >
       {order.map((key, index) => {
         const category = CATEGORY_DEFS.find((c) => c.key === key)!
         const isActive = index === 0
@@ -269,7 +254,13 @@ function CategorySelector({ onOpenPreview }: { onOpenPreview: (template: Templat
       })}
 
       <div style={{ order: 1 }} className="pb-2 pt-3 md:pb-3">
-        <TemplateCarousel key={activeKey} category={activeCategory} templates={templates} onOpenPreview={onOpenPreview} carouselIndex={carouselIndex} setCarouselIndex={setCarouselIndex} prefersReducedMotion={prefersReducedMotion} />
+        <TemplateCarousel
+          key={activeKey}
+          category={activeCategory}
+          templates={templates}
+          prefersReducedMotion={prefersReducedMotion}
+          inView={inView}
+        />
       </div>
     </div>
   )
@@ -278,214 +269,64 @@ function CategorySelector({ onOpenPreview }: { onOpenPreview: (template: Templat
 function TemplateCarousel({
   category,
   templates,
-  onOpenPreview,
-  carouselIndex,
-  setCarouselIndex,
   prefersReducedMotion,
+  inView,
 }: {
   category: CategoryDef
   templates: Template[]
-  onOpenPreview: (template: Template) => void
-  carouselIndex: number
-  setCarouselIndex: (index: number) => void
   prefersReducedMotion: boolean
+  inView: boolean
 }) {
-  const trackRef = useRef<HTMLDivElement>(null)
-  const cardRefs = useRef<Record<number, HTMLButtonElement | null>>({})
-  const dragState = useRef<{ startX: number; startScrollLeft: number; dragging: boolean } | null>(null)
-
-  const total = templates.length
-
-  const scrollToIndex = useCallback(
-    (index: number, behavior: ScrollBehavior) => {
-      cardRefs.current[index]?.scrollIntoView({ behavior, block: 'nearest', inline: 'start' })
-    },
-    [],
-  )
-
-  useEffect(() => {
-    scrollToIndex(0, 'auto')
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset to first card only when category changes
-  }, [category.key])
-
-  const goTo = useCallback(
-    (index: number) => {
-      const clamped = Math.max(0, Math.min(total - 1, index))
-      setCarouselIndex(clamped)
-      scrollToIndex(clamped, prefersReducedMotion ? 'auto' : 'smooth')
-    },
-    [total, setCarouselIndex, scrollToIndex, prefersReducedMotion],
-  )
-
-  // Keep the counter in sync with whichever card is most visible (touch swipe, native scroll).
-  useEffect(() => {
-    const track = trackRef.current
-    if (!track) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        let bestIndex: number | null = null
-        let bestRatio = 0
-        entries.forEach((entry) => {
-          const indexAttr = entry.target.getAttribute('data-index')
-          if (indexAttr === null) return
-          if (entry.intersectionRatio > bestRatio) {
-            bestRatio = entry.intersectionRatio
-            bestIndex = Number(indexAttr)
-          }
-        })
-        if (bestIndex !== null && bestRatio > 0.6) {
-          setCarouselIndex(bestIndex)
-        }
-      },
-      { root: track, threshold: [0.6, 0.75, 0.9] },
-    )
-    Object.values(cardRefs.current).forEach((el) => {
-      if (el) observer.observe(el)
-    })
-    return () => observer.disconnect()
-  }, [category.key, setCarouselIndex])
-
-  const onPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!trackRef.current) return
-    dragState.current = { startX: event.clientX, startScrollLeft: trackRef.current.scrollLeft, dragging: true }
-    trackRef.current.setPointerCapture(event.pointerId)
-  }, [])
-
-  const onPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!dragState.current?.dragging || !trackRef.current) return
-    const dx = event.clientX - dragState.current.startX
-    trackRef.current.scrollLeft = dragState.current.startScrollLeft - dx
-  }, [])
-
-  const onPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (dragState.current) dragState.current.dragging = false
-    trackRef.current?.releasePointerCapture(event.pointerId)
-  }, [])
-
-  const onKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (event.key === 'ArrowRight') {
-        event.preventDefault()
-        goTo(carouselIndex + 1)
-      } else if (event.key === 'ArrowLeft') {
-        event.preventDefault()
-        goTo(carouselIndex - 1)
-      }
-    },
-    [goTo, carouselIndex],
-  )
+  // Doubled so the marquee can loop seamlessly: translating the track by
+  // exactly -50% of its (now doubled) width always lands back on an
+  // identical frame, with no visible seam or jump.
+  const marqueeTemplates = prefersReducedMotion ? templates : [...templates, ...templates]
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-end gap-4">
-        <span className="shrink-0 text-xs tabular-nums text-navy-foreground/50">
-          {String(carouselIndex + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}
-        </span>
+    <div className="overflow-hidden">
+      <div
+        className={cn(
+          'flex w-max gap-3 sm:gap-4',
+          !prefersReducedMotion && 'examples-marquee-track examples-fade-in',
+        )}
+        style={!prefersReducedMotion ? { animationPlayState: inView ? 'running' : 'paused' } : undefined}
+        aria-label={`Шаблоны: ${category.label}`}
+      >
+        {marqueeTemplates.map((template, index) => (
+          <TemplateCard key={`${template.id}-${index}`} template={template} />
+        ))}
       </div>
-
-      <div className="flex items-center gap-2 sm:gap-3">
-        <CarouselArrow
-          direction="prev"
-          onClick={() => goTo(carouselIndex - 1)}
-          disabled={carouselIndex === 0}
-        />
-
-        <div
-          ref={trackRef}
-          role="region"
-          aria-roledescription="carousel"
-          aria-label={`Шаблоны: ${category.label}`}
-          tabIndex={0}
-          onKeyDown={onKeyDown}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
-          className={cn(
-            '-mx-1 flex flex-1 snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 sm:gap-4',
-            'cursor-grab active:cursor-grabbing',
-            !prefersReducedMotion && 'carousel-appear',
-          )}
-          style={{ scrollBehavior: prefersReducedMotion ? 'auto' : 'smooth' }}
-        >
-          {templates.map((template, index) => (
-            <TemplateCard
-              key={template.id}
-              ref={(el) => {
-                cardRefs.current[index] = el
-              }}
-              template={template}
-              index={index}
-              onOpen={() => onOpenPreview(template)}
-            />
-          ))}
-        </div>
-
-        <CarouselArrow
-          direction="next"
-          onClick={() => goTo(carouselIndex + 1)}
-          disabled={carouselIndex === total - 1}
-        />
-      </div>
-
-      <p className="text-xs font-medium text-navy-foreground/50">Редактируемый PPTX</p>
     </div>
   )
 }
 
-function CarouselArrow({
-  direction,
-  onClick,
-  disabled,
-}: {
-  direction: 'prev' | 'next'
-  onClick: () => void
-  disabled: boolean
-}) {
-  const Icon = direction === 'prev' ? ChevronLeft : ChevronRight
+function TemplateCard({ template }: { template: Template }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={direction === 'prev' ? 'Предыдущий шаблон' : 'Следующий шаблон'}
-      className={cn(
-        'flex size-9 shrink-0 items-center justify-center rounded-full border border-navy-foreground/15 bg-navy-foreground/[0.04] text-navy-foreground/70 transition-colors hover:bg-navy-foreground/10 hover:text-navy-foreground disabled:pointer-events-none disabled:opacity-30 sm:size-10',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
-      )}
-    >
-      <Icon aria-hidden="true" className="size-4" />
-    </button>
-  )
-}
-
-function TemplateCard({
-  ref,
-  template,
-  index,
-  onOpen,
-}: {
-  ref: (el: HTMLButtonElement | null) => void
-  template: Template
-  index: number
-  onOpen: () => void
-}) {
-  return (
-    <button
-      ref={ref}
-      type="button"
-      data-index={index}
-      onClick={onOpen}
+      onClick={() => {
+        window.location.href = CREATE_URL
+      }}
       aria-label={`Открыть шаблон «${template.name}»`}
-      className="group w-[82%] shrink-0 snap-start text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy md:w-[45%] lg:w-[42%]"
+      className="w-[78%] shrink-0 text-left transition-transform duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy md:w-[45%] lg:w-[38%]"
     >
-      <TemplatePlaceholder template={template} className="transition-transform duration-300 group-hover:-translate-y-1" />
-      <span className="mt-2 block truncate text-sm font-medium text-navy-foreground/85">{template.name}</span>
+      <TemplatePlaceholder cover={template.cover} />
     </button>
   )
 }
 
-function TemplatePlaceholder({ template, className }: { template: Template; className?: string }) {
+function TemplatePlaceholder({ cover, className }: { cover?: string; className?: string }) {
+  if (cover) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- cover source is not known ahead of time
+      <img
+        src={cover || '/placeholder.svg'}
+        alt=""
+        className={cn('block aspect-video w-full rounded-lg object-cover', className)}
+      />
+    )
+  }
+
   return (
     <span
       className={cn(
@@ -493,86 +334,11 @@ function TemplatePlaceholder({ template, className }: { template: Template; clas
         className,
       )}
     >
-      <span className="absolute inset-3 rounded border border-dashed border-navy-foreground/15" />
-      <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4">
-        <FileStack aria-hidden="true" className="size-6 text-navy-foreground/30" />
-        <span className="text-center text-[10px] font-medium uppercase tracking-wide text-navy-foreground/30">
-          {template.name}
-        </span>
+      <span className="absolute inset-3 flex flex-col gap-2 rounded border border-dashed border-navy-foreground/12 p-3">
+        <span className="h-2 w-1/2 rounded-full bg-navy-foreground/15" />
+        <span className="mt-1 h-1.5 w-2/3 rounded-full bg-navy-foreground/10" />
+        <span className="h-1.5 w-2/5 rounded-full bg-navy-foreground/10" />
       </span>
     </span>
-  )
-}
-
-function TemplatePreviewModal({ template, onClose }: { template: Template; onClose: () => void }) {
-  return (
-    <Modal onClose={onClose} labelledBy="template-preview-title">
-      <div className="flex flex-col gap-4 p-5 sm:p-6">
-        <div className="flex items-center justify-between gap-4">
-          <h3 id="template-preview-title" className="truncate text-base font-semibold text-navy-foreground">
-            {template.name}
-          </h3>
-        </div>
-        <TemplatePlaceholder template={template} className="w-full" />
-        <p className="text-xs font-medium text-navy-foreground/50">Редактируемый PPTX</p>
-      </div>
-    </Modal>
-  )
-}
-
-function Modal({
-  children,
-  onClose,
-  returnFocusRef,
-  labelledBy,
-}: {
-  children: ReactNode
-  onClose: () => void
-  returnFocusRef?: React.RefObject<HTMLButtonElement | null>
-  labelledBy: string
-}) {
-  const closeButtonRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    closeButtonRef.current?.focus()
-    const original = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = original
-      returnFocusRef?.current?.focus()
-    }
-  }, [returnFocusRef])
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={labelledBy}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      <div className="relative w-full max-w-md rounded-2xl bg-navy text-navy-foreground shadow-2xl ring-1 ring-navy-foreground/10">
-        <button
-          ref={closeButtonRef}
-          type="button"
-          onClick={onClose}
-          aria-label="Закрыть"
-          className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-full text-navy-foreground/60 transition-colors hover:bg-navy-foreground/10 hover:text-navy-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-        >
-          <X aria-hidden="true" className="size-4" />
-        </button>
-        {children}
-      </div>
-    </div>
   )
 }
