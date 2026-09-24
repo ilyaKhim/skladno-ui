@@ -33,6 +33,7 @@ export function SiteHeader() {
         className={cn(
           'mx-auto flex max-w-6xl items-center justify-between gap-6 px-5 transition-[height] duration-300 md:px-8',
           scrolled ? 'h-14' : 'h-16',
+          '[@media(min-width:1024px)_and_(max-height:950px)]:!h-16',
         )}
       >
         <Link

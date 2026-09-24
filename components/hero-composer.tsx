@@ -103,7 +103,7 @@ export function HeroComposer() {
 
   return (
     <div className="relative z-10 w-full max-w-2xl">
-      <div className="flex min-h-[180px] w-full flex-col gap-3 rounded-2xl border border-[#d8dee7] bg-card p-[22px] shadow-[0_2px_6px_rgba(20,32,51,0.04),0_16px_32px_-16px_rgba(20,32,51,0.08)] transition-shadow has-focus-visible:border-primary has-focus-visible:shadow-[0_2px_8px_rgba(20,32,51,0.06),0_20px_36px_-16px_rgba(51,92,197,0.16)] sm:min-h-[150px] md:min-h-[140px] md:p-6">
+      <div className="flex min-h-[180px] w-full flex-col gap-3 rounded-2xl border border-[#d8dee7] bg-card p-[22px] shadow-[0_2px_6px_rgba(20,32,51,0.04),0_16px_32px_-16px_rgba(20,32,51,0.08)] transition-shadow has-focus-visible:border-primary has-focus-visible:shadow-[0_2px_8px_rgba(20,32,51,0.06),0_20px_36px_-16px_rgba(51,92,197,0.16)] sm:min-h-[150px] md:min-h-[140px] md:p-6 [@media(min-width:1024px)_and_(max-height:950px)]:!min-h-[156px] [@media(min-width:1024px)_and_(max-height:950px)]:!gap-1 [@media(min-width:1024px)_and_(max-height:950px)]:!py-[18px]">
         <label htmlFor={textareaId} className="sr-only">
           Опишите, какую презентацию нужно подготовить
         </label>
@@ -121,12 +121,12 @@ export function HeroComposer() {
           onKeyDown={handleKeyDown}
           rows={2}
           className={cn(
-            'min-h-16 flex-1 border-none px-0 py-0 text-base shadow-none focus-visible:ring-0 md:text-base',
+            'min-h-16 flex-1 border-none px-0 py-0 text-base shadow-none focus-visible:ring-0 md:text-base [@media(min-width:1024px)_and_(max-height:950px)]:!min-h-[72px]',
             isExampleText ? 'text-muted-foreground' : 'text-foreground'
           )}
         />
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between [@media(min-width:1024px)_and_(max-height:950px)]:!h-10">
           <div className="flex items-center gap-2">
             <Popover open={moreOpen} onOpenChange={setMoreOpen}>
               <PopoverTrigger
