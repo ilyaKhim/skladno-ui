@@ -212,9 +212,13 @@ export function Examples() {
   }, [])
 
   return (
-      <section id="examples" ref={sectionRef} className="border-b border-border bg-navy text-navy-foreground scroll-mt-16">
+      <section
+        id="examples"
+        ref={sectionRef}
+        className="examples-clip border-b border-border bg-navy text-navy-foreground scroll-mt-16"
+      >
       <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
-        <div className="lg:grid lg:grid-cols-[36%_1fr] lg:items-start lg:gap-12">
+        <div className="min-w-0 lg:grid lg:grid-cols-[36%_1fr] lg:items-start lg:gap-12">
           {/* Left: static heading, never moves */}
           <div className="flex max-w-md flex-col gap-4 pb-10 lg:pb-0">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-navy-foreground/60">ШАБЛОНЫ GODECK</p>
@@ -345,8 +349,8 @@ function CategorySelector({ inView }: { inView: boolean }) {
 
   return (
     <div
-      className="flex flex-col"
-      style={{ display: 'flex', flexDirection: 'column' }}
+      className="flex min-w-0 flex-col"
+      style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
       role="group"
       aria-label="Категории презентаций"
     >
@@ -379,7 +383,7 @@ function CategorySelector({ inView }: { inView: boolean }) {
         )
       })}
 
-      <div style={{ order: 1 }} className="pb-2 pt-3 md:pb-3">
+      <div style={{ order: 1, minWidth: 0 }} className="min-w-0 pb-2 pt-3 md:pb-3">
         <TemplateCarousel
           key={activeKey}
           category={activeCategory}
@@ -409,7 +413,7 @@ function TemplateCarousel({
   const marqueeTemplates = prefersReducedMotion ? templates : [...templates, ...templates]
 
   return (
-    <div className="w-full max-w-full overflow-hidden">
+    <div className="examples-carousel-viewport">
       <div
         className={cn(
           'examples-carousel-track flex w-max',
@@ -422,6 +426,8 @@ function TemplateCarousel({
           <TemplateCard key={`${template.id}-${index}`} template={template} />
         ))}
       </div>
+      <span aria-hidden="true" className="examples-carousel-edge examples-carousel-edge--left" />
+      <span aria-hidden="true" className="examples-carousel-edge examples-carousel-edge--right" />
     </div>
   )
 }

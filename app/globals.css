@@ -243,10 +243,52 @@
 
 .examples-carousel-track {
   gap: 12px;
+  padding-block: 6px;
 }
 
 @media (min-width: 768px) {
   .examples-carousel-track {
     gap: 18px;
   }
+}
+
+/* Belt-and-suspenders clip: overflow-x: clip is preferred (keeps position:
+   sticky working elsewhere on the page); hidden is the fallback for
+   browsers that don't support clip. */
+.examples-clip {
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+.examples-carousel-viewport {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.examples-carousel-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@media (min-width: 768px) {
+  .examples-carousel-edge {
+    width: 28px;
+  }
+}
+
+.examples-carousel-edge--left {
+  left: 0;
+  background: linear-gradient(to right, var(--color-navy), transparent);
+}
+
+.examples-carousel-edge--right {
+  right: 0;
+  background: linear-gradient(to left, var(--color-navy), transparent);
 }
