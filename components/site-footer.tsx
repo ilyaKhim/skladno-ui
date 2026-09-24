@@ -1,10 +1,10 @@
 import { Wordmark } from '@/components/wordmark'
 
 const links = [
-  { href: '#examples', label: 'Примеры' },
   { href: '#how', label: 'Как это работает' },
-  { href: '#cases', label: 'Сценарии' },
-  { href: '#faq', label: 'Вопросы' },
+  { href: '#examples', label: 'Примеры' },
+  { href: '#capabilities', label: 'Возможности' },
+  { href: '#top', label: 'Наверх' },
 ]
 
 export function SiteFooter() {

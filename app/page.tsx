@@ -18,12 +18,12 @@ export default function Page() {
         <Reveal>
           <Pains />
         </Reveal>
-        <Reveal>
-          <Benefits />
-        </Reveal>
         <ProductDemo />
         <Reveal>
           <Examples />
+        </Reveal>
+        <Reveal>
+          <Benefits />
         </Reveal>
         <Reveal>
           <FinalCta />
