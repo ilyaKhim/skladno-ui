@@ -28,9 +28,31 @@ export function SiteFooter() {
           </ul>
         </nav>
 
-        <p className="text-sm text-muted-foreground">
-          {`© ${new Date().getFullYear()} GoDeck`}
-        </p>
+        <div className="flex flex-col items-start gap-1 md:items-end">
+          <p className="text-sm text-muted-foreground">
+            {`© ${new Date().getFullYear()} GoDeck`}
+          </p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground/70 md:text-xs">
+            Примеры шаблонов:{' '}
+            <a
+              href="https://www.slidescarnival.com/"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline underline-offset-2 hover:text-muted-foreground"
+            >
+              SlidesCarnival
+            </a>{' '}
+            ·{' '}
+            <a
+              href="https://creativecommons.org/licenses/by/4.0/"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline underline-offset-2 hover:text-muted-foreground"
+            >
+              CC BY 4.0
+            </a>
+          </p>
+        </div>
       </div>
     </footer>
   )
