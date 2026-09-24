@@ -30,9 +30,9 @@ export function MobileCta() {
         size="lg"
         className="w-full"
         nativeButton={false}
-        render={<a href="#create" />}
+        render={<a href="#final-cta" />}
       >
-        Создать презентацию бесплатно
+        Выбрать тариф
         <ArrowRight aria-hidden="true" className="size-4" />
       </Button>
     </div>

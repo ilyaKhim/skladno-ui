@@ -54,6 +54,10 @@ export function SiteFooter() {
           </p>
         </div>
       </div>
+
+      <p className="mt-6 text-[11px] leading-relaxed text-muted-foreground/60 md:mt-8 md:text-xs">
+        ИП Табунов · ИНН ХХХХХХХХХХХХ
+      </p>
     </footer>
   )
 }
