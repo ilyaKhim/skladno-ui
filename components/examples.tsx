@@ -33,55 +33,18 @@ const CATEGORY_DEFS: CategoryDef[] = [
 ]
 
 /**
- * Template names. The first three per category name a real downloaded
- * preview (see COVERS below); the remaining two have no preview yet and
- * keep a generic placeholder name.
+ * Template names — exactly three real, downloaded previews per category
+ * (see COVERS below). No placeholder-only entries remain.
  */
 const TEMPLATE_NAMES: Record<string, string[]> = {
-  reports: ['Marketing Campaign Analysis Report', 'Monthly Client Report', 'McKinsey Consulting Report', 'Годовой отчёт', 'Отчёт по продажам'],
-  proposals: [
-    'Simple Business Proposal',
-    'IT Software Sales Proposal',
-    'Public Relations Proposal',
-    'Предложение по проекту',
-    'Партнёрское предложение',
-  ],
-  strategy: [
-    'Go-To-Market Strategy',
-    'McKinsey Strategic Planning',
-    'Business Market Analysis',
-    'Дорожная карта',
-    'План развития',
-  ],
-  projects: [
-    'Project Success Story',
-    'Project Action Plan',
-    'Project Roadmap',
-    'Итоги проекта',
-    'Проектный отчёт',
-  ],
-  sales: ['Stylish Pitch Deck', 'Minimalist Pitch Deck', 'Elegant Pitch Deck', 'Sales-питч', 'Питч-дек'],
-  research: [
-    'Startup Market Research',
-    'Market Research Report',
-    'B2B Market Research',
-    'Пользовательское исследование',
-    'Аналитика рынка',
-  ],
-  meetings: [
-    'Year-end Review Business Meeting',
-    'Quarterly Business Review',
-    'Simple Meeting Agenda',
-    'Протокол встречи',
-    'Итоги спринта',
-  ],
-  marketing: [
-    'Simple Marketing Plan',
-    'Advertising and Marketing Plan',
-    'Advertising Report',
-    'Бренд-презентация',
-    'Отчёт по кампании',
-  ],
+  reports: ['Marketing Campaign Analysis Report', 'Monthly Client Report', 'McKinsey Consulting Report'],
+  proposals: ['Simple Business Proposal', 'IT Software Sales Proposal', 'Public Relations Proposal'],
+  strategy: ['Go-To-Market Strategy', 'McKinsey Strategic Planning', 'Business Market Analysis'],
+  projects: ['Project Success Story', 'Project Action Plan', 'Project Roadmap'],
+  sales: ['Stylish Pitch Deck', 'Minimalist Pitch Deck', 'Elegant Pitch Deck'],
+  research: ['Startup Market Research', 'Market Research Report', 'B2B Market Research'],
+  meetings: ['Year-end Review Business Meeting', 'Quarterly Business Review', 'Simple Meeting Agenda'],
+  marketing: ['Simple Marketing Plan', 'Advertising and Marketing Plan', 'Advertising Report'],
 }
 
 /**
@@ -446,10 +409,10 @@ function TemplateCarousel({
   const marqueeTemplates = prefersReducedMotion ? templates : [...templates, ...templates]
 
   return (
-    <div className="overflow-hidden">
+    <div className="w-full max-w-full overflow-hidden">
       <div
         className={cn(
-          'flex w-max gap-3 sm:gap-4',
+          'examples-carousel-track flex w-max',
           !prefersReducedMotion && 'examples-marquee-track examples-fade-in',
         )}
         style={!prefersReducedMotion ? { animationPlayState: inView ? 'running' : 'paused' } : undefined}
@@ -471,7 +434,8 @@ function TemplateCard({ template }: { template: Template }) {
         window.location.href = CREATE_URL
       }}
       aria-label={`Открыть шаблон «${template.name}»`}
-      className="w-[78%] shrink-0 text-left transition-transform duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy md:w-[45%] lg:w-[38%]"
+      style={{ flex: '0 0 auto', width: 'clamp(220px, 19vw, 250px)' }}
+      className="text-left transition-transform duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
     >
       <TemplatePlaceholder cover={template.cover} name={template.name} />
     </button>
@@ -479,29 +443,29 @@ function TemplateCard({ template }: { template: Template }) {
 }
 
 function TemplatePlaceholder({ cover, name, className }: { cover?: string; name: string; className?: string }) {
-  if (cover) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time
-      <img
-        src={cover || '/placeholder.svg'}
-        alt={`Превью шаблона презентации «${name}»`}
-        className={cn('block aspect-video w-full rounded-lg object-cover', className)}
-      />
-    )
-  }
-
   return (
     <span
       className={cn(
-        'relative block aspect-video overflow-hidden rounded-lg border border-navy-foreground/12 bg-navy-foreground/[0.05]',
+        'block overflow-hidden rounded-[12px] border p-[5px]',
+        'border-white/20 bg-white/[0.06] shadow-[0_10px_26px_rgba(0,0,0,0.20)]',
         className,
       )}
+      style={{ aspectRatio: '16 / 9' }}
     >
-      <span className="absolute inset-3 flex flex-col gap-2 rounded border border-dashed border-navy-foreground/12 p-3">
-        <span className="h-2 w-1/2 rounded-full bg-navy-foreground/15" />
-        <span className="mt-1 h-1.5 w-2/3 rounded-full bg-navy-foreground/10" />
-        <span className="h-1.5 w-2/5 rounded-full bg-navy-foreground/10" />
-      </span>
+      {cover ? (
+        // eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time
+        <img
+          src={cover || '/placeholder.svg'}
+          alt={`Превью шаблона презентации «${name}»`}
+          className="block h-full w-full rounded-[8px] object-contain"
+        />
+      ) : (
+        <span className="relative flex h-full w-full flex-col gap-2 rounded-[8px] border border-dashed border-navy-foreground/12 bg-navy-foreground/[0.05] p-3">
+          <span className="h-2 w-1/2 rounded-full bg-navy-foreground/15" />
+          <span className="mt-1 h-1.5 w-2/3 rounded-full bg-navy-foreground/10" />
+          <span className="h-1.5 w-2/5 rounded-full bg-navy-foreground/10" />
+        </span>
+      )}
     </span>
   )
 }
