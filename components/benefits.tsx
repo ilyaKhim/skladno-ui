@@ -32,14 +32,12 @@ export function Benefits() {
   const activeKey = benefits[active].key
 
   return (
-    <section id="capabilities" className="border-b border-border bg-navy text-navy-foreground scroll-mt-16">
+    <section id="capabilities" className="border-b border-border bg-[#F5F7FB] text-navy scroll-mt-16">
       <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
         <div className="flex max-w-2xl flex-col gap-3 pb-6 md:pb-8">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-navy-foreground/60">
-            Что меняется с GoDeck
-          </p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-navy/50">Что меняется с GoDeck</p>
           <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl">
-            <span className="text-navy-foreground">{'Создавай презентации, которые '}</span>
+            <span className="text-navy">{'Создавай презентации, которые '}</span>
             <span className="accent-presentations-text">хочется показывать</span>
           </h2>
         </div>
@@ -49,7 +47,7 @@ export function Benefits() {
           <div
             key={activeKey}
             className={cn(
-              'flex aspect-[4/3] w-full items-center justify-center rounded-2xl border border-navy-foreground/15 bg-navy-foreground/[0.04] p-6',
+              'flex aspect-[4/3] w-full items-center justify-center rounded-2xl border border-navy/10 bg-white p-6 shadow-[0_10px_30px_rgba(22,45,78,0.06)]',
               !prefersReducedMotion && 'tab-fade-in',
             )}
           >
@@ -73,7 +71,7 @@ export function Benefits() {
                 <h3
                   className={cn(
                     'font-display text-lg font-bold leading-snug tracking-tight text-balance transition-colors',
-                    active === index ? 'text-navy-foreground' : 'text-navy-foreground/90',
+                    active === index ? 'text-navy' : 'text-navy/80',
                   )}
                 >
                   {benefit.title}
@@ -81,7 +79,7 @@ export function Benefits() {
                 <p
                   className={cn(
                     'text-sm leading-relaxed text-pretty transition-colors',
-                    active === index ? 'text-navy-foreground/70' : 'text-navy-foreground/60',
+                    active === index ? 'text-slate-600' : 'text-slate-500',
                   )}
                 >
                   {benefit.description}
@@ -95,18 +93,16 @@ export function Benefits() {
         <div className="flex flex-col gap-8 md:hidden">
           {benefits.map((benefit) => (
             <div key={benefit.key} className="flex flex-col gap-4">
-              <div className="flex aspect-[4/3] w-full items-center justify-center rounded-2xl border border-navy-foreground/15 bg-navy-foreground/[0.04] p-5">
+              <div className="flex aspect-[4/3] w-full items-center justify-center rounded-2xl border border-navy/10 bg-white p-5 shadow-[0_10px_30px_rgba(22,45,78,0.06)]">
                 {benefit.key === 'structure' ? <StructureVisual /> : null}
                 {benefit.key === 'audience' ? <AudienceVisual /> : null}
                 {benefit.key === 'brand' ? <BrandVisual /> : null}
               </div>
               <div className="border-l-2 border-primary pl-4">
-                <h3 className="font-display text-lg font-bold leading-snug tracking-tight text-balance text-navy-foreground">
+                <h3 className="font-display text-lg font-bold leading-snug tracking-tight text-balance text-navy">
                   {benefit.title}
                 </h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-navy-foreground/70 text-pretty">
-                  {benefit.description}
-                </p>
+                <p className="mt-1.5 text-sm leading-relaxed text-slate-600 text-pretty">{benefit.description}</p>
               </div>
             </div>
           ))}
