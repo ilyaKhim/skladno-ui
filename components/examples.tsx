@@ -273,27 +273,6 @@ export function Examples() {
             </div>
           ))}
         </div>
-
-        <p className="mt-6 text-xs leading-relaxed text-navy-foreground/40">
-          Временные примеры основаны на шаблонах{' '}
-          <a
-            href="https://www.slidescarnival.com/"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="underline underline-offset-2 hover:text-navy-foreground/60"
-          >
-            SlidesCarnival
-          </a>{' '}
-          ·{' '}
-          <a
-            href="https://creativecommons.org/licenses/by/4.0/"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="underline underline-offset-2 hover:text-navy-foreground/60"
-          >
-            CC BY 4.0
-          </a>
-        </p>
       </div>
     </section>
   )
