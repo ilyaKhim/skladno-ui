@@ -267,7 +267,7 @@ export function ProductDemo() {
   const presentationStatus = statusFor(2)
 
   return (
-    <section className="border-b border-border bg-background">
+      <section id="how" className="border-b border-border bg-background scroll-mt-16">
       <div ref={containerRef} className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
         <div className="mb-6 flex max-w-2xl flex-col gap-2 md:mb-8">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">Как работает GoDeck</p>

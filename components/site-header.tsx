@@ -10,7 +10,6 @@ const nav = [
   { href: '#how', label: 'Как работает' },
   { href: '#examples', label: 'Примеры' },
   { href: '#capabilities', label: 'Возможности' },
-  { href: '#faq', label: 'Вопросы' },
 ]
 
 export function SiteHeader() {

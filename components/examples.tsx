@@ -212,7 +212,7 @@ export function Examples() {
   }, [])
 
   return (
-    <section id="examples" ref={sectionRef} className="border-b border-border bg-navy text-navy-foreground">
+      <section id="examples" ref={sectionRef} className="border-b border-border bg-navy text-navy-foreground scroll-mt-16">
       <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
         <div className="lg:grid lg:grid-cols-[36%_1fr] lg:items-start lg:gap-12">
           {/* Left: static heading, never moves */}

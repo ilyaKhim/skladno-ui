@@ -32,7 +32,7 @@ export function Benefits() {
   const activeKey = benefits[active].key
 
   return (
-    <section className="border-b border-border bg-navy text-navy-foreground">
+    <section id="capabilities" className="border-b border-border bg-navy text-navy-foreground scroll-mt-16">
       <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
         <div className="flex max-w-2xl flex-col gap-3 pb-6 md:pb-8">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-navy-foreground/60">
