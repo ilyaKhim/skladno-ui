@@ -232,13 +232,10 @@
 
 .examples-marquee-track {
   width: max-content;
-  animation: examples-marquee 60s linear infinite;
-}
-
-@media (min-width: 1024px) {
-  .examples-marquee-track {
-    animation-duration: 90s;
-  }
+  /* Duration is recalculated in JS from the measured track width so the
+     visual speed stays constant (~60px/s) regardless of card size or
+     category. This is only a fallback for the first paint. */
+  animation: examples-marquee 30s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

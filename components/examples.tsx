@@ -195,7 +195,6 @@ const FEATURES = [
 ] as const
 
 export function Examples() {
-  const [allTemplatesOpen, setAllTemplatesOpen] = useState(false)
   const [activeKey, setActiveKey] = useState<string>(CATEGORY_DEFS[0].key)
   const sectionRef = useRef<HTMLElement>(null)
   const [inView, setInView] = useState(true)
@@ -222,41 +221,15 @@ export function Examples() {
     >
       <div className="mx-auto max-w-6xl px-5 py-12 md:px-8 md:py-16">
         {/* Compact full-width intro row */}
-        <div className="flex flex-col gap-4 border-b border-navy-foreground/10 pb-8 md:flex-row md:items-end md:justify-between md:gap-8">
-          <div className="flex max-w-2xl flex-col gap-3">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-navy-foreground/60">ШАБЛОНЫ GODECK</p>
-            <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl">
-              Шаблоны для любой бизнес-задачи
-            </h2>
-            <p className="text-base leading-relaxed text-navy-foreground/70 text-pretty">
-              Выбери готовый шаблон или загрузи корпоративный PPTX/POTX. GoDeck адаптирует оформление под твои
-              материалы и задачу.
-            </p>
-          </div>
-
-          <Popover open={allTemplatesOpen} onOpenChange={setAllTemplatesOpen}>
-            <PopoverTrigger
-              render={
-                <button
-                  type="button"
-                  className="w-fit shrink-0 rounded-full border border-navy-foreground/20 px-5 py-2.5 text-sm font-semibold text-navy-foreground transition-colors hover:bg-navy-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
-                >
-                  Просмотреть все шаблоны
-                </button>
-              }
-            />
-            <PopoverContent
-              side="bottom"
-              align="end"
-              sideOffset={12}
-              className="w-64 rounded-[20px] border-none bg-navy p-4 text-navy-foreground shadow-xl ring-1 ring-navy-foreground/15"
-            >
-              <p className="text-sm font-semibold text-navy-foreground">Все шаблоны — после регистрации</p>
-              <p className="mt-1.5 text-xs leading-relaxed text-navy-foreground/70">
-                Зарегистрируйтесь, чтобы просмотреть полную библиотеку шаблонов GoDeck.
-              </p>
-            </PopoverContent>
-          </Popover>
+        <div className="flex max-w-2xl flex-col gap-3 border-b border-navy-foreground/10 pb-8">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-navy-foreground/60">ШАБЛОНЫ GODECK</p>
+          <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl">
+            Шаблоны для любой бизнес-задачи
+          </h2>
+          <p className="text-base leading-relaxed text-navy-foreground/70 text-pretty">
+            Выбери готовый шаблон или загрузи корпоративный PPTX/POTX. GoDeck адаптирует оформление под твои
+            материалы и задачу.
+          </p>
         </div>
 
         {/* Categories (left) + large template gallery (right) */}
@@ -287,38 +260,35 @@ export function Examples() {
             </div>
           </nav>
 
-          {/* Tablet/desktop: vertical category navigation */}
-          <nav aria-label="Категории презентаций" className="hidden md:flex md:flex-col md:gap-1">
-            {CATEGORY_DEFS.map((category) => {
-              const isActive = category.key === activeKey
-              return (
-                <button
-                  key={category.key}
-                  type="button"
-                  onClick={() => setActiveKey(category.key)}
-                  aria-current={isActive ? 'true' : undefined}
-                  className={cn(
-                    'block w-full rounded-r-md border-l-2 py-2.5 pl-3 pr-2 text-left text-sm font-semibold leading-snug transition-colors duration-300 md:text-[0.9rem] lg:text-[0.95rem]',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy',
-                    isActive
-                      ? 'border-primary bg-primary/10 text-navy-foreground'
-                      : 'border-transparent text-navy-foreground/75 hover:bg-navy-foreground/5 hover:text-navy-foreground/90',
-                  )}
-                >
-                  {category.label}
-                </button>
-              )
-            })}
-          </nav>
+          {/* Tablet/desktop: vertical category navigation + "view all" action */}
+          <div className="hidden md:flex md:flex-col">
+            <nav aria-label="Категории презентаций" className="flex flex-col gap-1">
+              {CATEGORY_DEFS.map((category) => {
+                const isActive = category.key === activeKey
+                return (
+                  <button
+                    key={category.key}
+                    type="button"
+                    onClick={() => setActiveKey(category.key)}
+                    aria-current={isActive ? 'true' : undefined}
+                    className={cn(
+                      'block w-full rounded-r-md border-l-[3px] py-2.5 pl-3 pr-2 text-left text-sm font-semibold leading-snug transition-colors duration-300 md:text-[0.9rem] lg:text-[0.95rem]',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy',
+                      isActive
+                        ? 'border-orange-500 bg-primary/10 text-navy-foreground'
+                        : 'border-transparent text-navy-foreground/75 hover:bg-navy-foreground/5 hover:text-navy-foreground/90',
+                    )}
+                  >
+                    {category.label}
+                  </button>
+                )
+              })}
+            </nav>
+            <AllTemplatesButton className="mt-6 w-full md:mt-8" />
+          </div>
 
-          {/* Gallery: active category label + large continuous carousel */}
+          {/* Gallery: large continuous carousel, top-aligned with the category list */}
           <div className="min-w-0">
-            <div className="mb-3 flex items-center gap-2 md:mb-4">
-              <span aria-hidden="true" className="h-4 w-0.5 shrink-0 rounded-full bg-primary" />
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-foreground/70 md:text-sm">
-                {activeCategory.label}
-              </p>
-            </div>
             <TemplateCarousel
               key={activeKey}
               category={activeCategory}
@@ -326,6 +296,7 @@ export function Examples() {
               prefersReducedMotion={prefersReducedMotion}
               inView={inView}
             />
+            <AllTemplatesButton className="mt-6 w-full md:hidden" />
           </div>
         </div>
 
@@ -348,6 +319,43 @@ export function Examples() {
   )
 }
 
+/** Target marquee speed in px/s, kept constant regardless of how many
+ *  templates are in the active category (see TemplateCarousel below). */
+const MARQUEE_SPEED_PX_PER_SECOND = 60
+
+function AllTemplatesButton({ className }: { className?: string }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            className={cn(
+              'shrink-0 rounded-full border border-navy-foreground/20 px-5 py-2.5 text-sm font-semibold text-navy-foreground transition-colors hover:bg-navy-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy',
+              className,
+            )}
+          >
+            Просмотреть все шаблоны
+          </button>
+        }
+      />
+      <PopoverContent
+        side="bottom"
+        align="start"
+        sideOffset={12}
+        className="w-64 rounded-[20px] border-none bg-navy p-4 text-navy-foreground shadow-xl ring-1 ring-navy-foreground/15"
+      >
+        <p className="text-sm font-semibold text-navy-foreground">Все шаблоны — после регистрации</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-navy-foreground/70">
+          Зарегистрируйтесь, чтобы просмотреть полную библиотеку шаблонов GoDeck.
+        </p>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 function TemplateCarousel({
   category,
   templates,
@@ -359,6 +367,33 @@ function TemplateCarousel({
   prefersReducedMotion: boolean
   inView: boolean
 }) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  // Falls back to a sane default duration until the track is measured on
+  // mount; recalculated below so the visual speed stays constant (~60px/s)
+  // regardless of card size or how many templates the category has.
+  const [durationSeconds, setDurationSeconds] = useState(30)
+
+  useEffect(() => {
+    if (prefersReducedMotion) return
+    const track = trackRef.current
+    if (!track) return
+
+    const measure = () => {
+      // The track is duplicated for a seamless loop, so its scrollWidth is
+      // 2x one full pass. translateX(-50%) always travels exactly one pass
+      // (half the track), which is what the duration below must cover.
+      const onePassWidth = track.scrollWidth / 2
+      if (onePassWidth > 0) {
+        setDurationSeconds(onePassWidth / MARQUEE_SPEED_PX_PER_SECOND)
+      }
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(track)
+    return () => observer.disconnect()
+  }, [prefersReducedMotion, templates])
+
   // Doubled so the marquee can loop seamlessly: translating the track by
   // exactly -50% of its (now doubled) width always lands back on an
   // identical frame, with no visible seam or jump. When reduced motion is
@@ -370,11 +405,16 @@ function TemplateCarousel({
       className={cn('examples-carousel-viewport', prefersReducedMotion && 'examples-carousel-viewport--scrollable')}
     >
       <div
+        ref={trackRef}
         className={cn(
           'examples-carousel-track flex w-max',
           !prefersReducedMotion && 'examples-marquee-track examples-fade-in',
         )}
-        style={!prefersReducedMotion ? { animationPlayState: inView ? 'running' : 'paused' } : undefined}
+        style={
+          !prefersReducedMotion
+            ? { animationPlayState: inView ? 'running' : 'paused', animationDuration: `${durationSeconds}s` }
+            : undefined
+        }
         aria-label={`Шаблоны: ${category.label}`}
       >
         {marqueeTemplates.map((template, index) => (
