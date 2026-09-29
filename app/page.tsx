@@ -1,3 +1,4 @@
+import { BackToTop } from '@/components/back-to-top'
 import { Benefits } from '@/components/benefits'
 import { Examples } from '@/components/examples'
 import { FinalCta } from '@/components/final-cta'
@@ -31,6 +32,7 @@ export default function Page() {
       </main>
       <SiteFooter />
       <MobileCta />
+      <BackToTop />
     </>
   )
 }
