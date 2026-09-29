@@ -4,7 +4,6 @@ const links = [
   { href: '#how', label: 'Как это работает' },
   { href: '#examples', label: 'Примеры' },
   { href: '#capabilities', label: 'Возможности' },
-  { href: '#top', label: 'Наверх' },
 ]
 
 export function SiteFooter() {

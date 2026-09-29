@@ -6,25 +6,26 @@ type Plan = {
   name: string
   tagline: string
   price: string
-  period: string
+  period?: string
   features: readonly string[]
+  cta: string
 }
 
 const PLANS: readonly Plan[] = [
   {
-    name: 'Разовая презентация',
-    tagline: 'Для одной конкретной задачи',
-    price: 'XXX ₽',
-    period: 'за одну презентацию',
+    name: 'Демо',
+    tagline: 'Чтобы попробовать GoDeck на реальной задаче',
+    price: '0 ₽',
     features: [
-      'Структура на основе ваших материалов',
-      'Редактируемые слайды в PPTX',
-      'Готовый или корпоративный стиль',
+      'Одна демонстрационная презентация',
+      'Доступ к базовым шаблонам',
+      'Знакомство с процессом создания презентации',
     ],
+    cta: 'Попробовать бесплатно',
   },
   {
     name: 'Подписка',
-    tagline: 'Для регулярной работы',
+    tagline: 'Для регулярной работы с презентациями',
     price: 'X XXX ₽',
     period: 'в месяц',
     features: [
@@ -32,6 +33,7 @@ const PLANS: readonly Plan[] = [
       'Все шаблоны и корпоративный стиль',
       'Правки через AI-чат и экспорт в PPTX',
     ],
+    cta: 'Оформить подписку',
   },
 ] as const
 
@@ -45,20 +47,20 @@ export function FinalCta() {
 
       <div className="relative mx-auto flex max-w-[1200px] flex-col gap-10 px-5 py-16 md:gap-12 md:px-8 md:py-[88px] lg:py-24">
         <div className="flex flex-col gap-3 text-center md:mx-auto md:max-w-2xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-navy-foreground/60">Тарифы</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-navy-foreground/60">Начни сейчас</p>
           <h2 className="font-display text-[2rem] font-bold leading-[1.1] tracking-tight text-balance md:text-[2.75rem] md:leading-[1.08]">
-            Выберите подходящий тариф
+            Не начинай следующую презентацию с пустого слайда
           </h2>
           <p className="text-base leading-relaxed text-navy-foreground/70 text-pretty md:text-lg">
-            Одна презентация для конкретной задачи или подписка для регулярной работы.
+            Попробуй GoDeck на демо или выбери подписку для регулярной работы.
           </p>
         </div>
 
-        <div className="grid gap-5 md:grid-cols-2 md:gap-6">
+        <div className="grid gap-5 md:grid-cols-2 md:gap-6 md:items-stretch">
           {PLANS.map((plan) => (
             <div
               key={plan.name}
-              className="flex flex-col gap-6 rounded-3xl border border-navy-foreground/[0.16] bg-navy-foreground/[0.07] p-7 md:p-8"
+              className="flex h-full flex-col gap-6 rounded-3xl border border-navy-foreground/[0.16] bg-navy-foreground/[0.07] p-7 md:p-8"
             >
               <div className="flex flex-col gap-1.5">
                 <h3 className="font-display text-xl font-semibold text-navy-foreground md:text-2xl">{plan.name}</h3>
@@ -67,7 +69,7 @@ export function FinalCta() {
 
               <div className="flex items-baseline gap-2">
                 <span className="font-display text-3xl font-bold text-navy-foreground md:text-4xl">{plan.price}</span>
-                <span className="text-sm text-navy-foreground/60">{plan.period}</span>
+                {plan.period ? <span className="text-sm text-navy-foreground/60">{plan.period}</span> : null}
               </div>
 
               <ul className="flex flex-1 flex-col gap-3">
@@ -82,7 +84,7 @@ export function FinalCta() {
               </ul>
 
               <Button size="lg" className="w-full gap-1.5" nativeButton={false} render={<a href={CREATE_URL} />}>
-                Выбрать тариф
+                {plan.cta}
                 <ArrowRight aria-hidden="true" className="size-4" />
               </Button>
             </div>
