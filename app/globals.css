@@ -232,7 +232,13 @@
 
 .examples-marquee-track {
   width: max-content;
-  animation: examples-marquee 40s linear infinite;
+  animation: examples-marquee 60s linear infinite;
+}
+
+@media (min-width: 1024px) {
+  .examples-marquee-track {
+    animation-duration: 90s;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -242,13 +248,45 @@
 }
 
 .examples-carousel-track {
-  gap: 12px;
+  gap: 16px;
   padding-block: 6px;
 }
 
 @media (min-width: 768px) {
   .examples-carousel-track {
-    gap: 18px;
+    gap: 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .examples-carousel-track {
+    gap: 24px;
+  }
+}
+
+/* Large template preview cards: ~1.7-2 visible at once, scaling down
+   through tablet and mobile while always leaving a meaningful peek of
+   the next card. */
+.examples-template-card {
+  flex: 0 0 auto;
+  width: min(80vw, 320px);
+}
+
+@media (min-width: 640px) {
+  .examples-template-card {
+    width: min(68vw, 420px);
+  }
+}
+
+@media (min-width: 768px) {
+  .examples-template-card {
+    width: clamp(340px, 46vw, 460px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .examples-template-card {
+    width: clamp(480px, 42vw, 600px);
   }
 }
 
@@ -266,6 +304,27 @@
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
+}
+
+/* Used only when prefers-reduced-motion is on: auto-scroll is disabled,
+   so the viewport becomes manually scrollable/swipeable instead. */
+.examples-carousel-viewport--scrollable {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+}
+
+.examples-carousel-viewport--scrollable .examples-carousel-track > * {
+  scroll-snap-align: start;
+}
+
+.examples-chip-row {
+  scrollbar-width: none;
+}
+
+.examples-chip-row::-webkit-scrollbar {
+  display: none;
 }
 
 .examples-carousel-edge {

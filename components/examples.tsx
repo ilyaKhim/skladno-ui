@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Download, FileStack, FileUp, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
@@ -194,12 +194,12 @@ const FEATURES = [
   },
 ] as const
 
-const FLIP_TRANSITION = 'transform 620ms cubic-bezier(0.22, 1, 0.36, 1)'
-
 export function Examples() {
   const [allTemplatesOpen, setAllTemplatesOpen] = useState(false)
+  const [activeKey, setActiveKey] = useState<string>(CATEGORY_DEFS[0].key)
   const sectionRef = useRef<HTMLElement>(null)
   const [inView, setInView] = useState(true)
+  const prefersReducedMotion = usePrefersReducedMotion()
 
   // Pauses the continuously moving carousel while the section is scrolled
   // out of the viewport, and resumes it when it scrolls back in.
@@ -211,16 +211,19 @@ export function Examples() {
     return () => observer.disconnect()
   }, [])
 
+  const activeCategory = CATEGORY_DEFS.find((c) => c.key === activeKey)!
+  const templates = TEMPLATES.filter((t) => t.category === activeKey)
+
   return (
-      <section
-        id="examples"
-        ref={sectionRef}
-        className="examples-clip border-b border-border bg-navy text-navy-foreground scroll-mt-16"
-      >
-      <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
-        <div className="min-w-0 lg:grid lg:grid-cols-[36%_1fr] lg:items-start lg:gap-12">
-          {/* Left: static heading, never moves */}
-          <div className="flex max-w-md flex-col gap-4 pb-10 lg:pb-0">
+    <section
+      id="examples"
+      ref={sectionRef}
+      className="examples-clip border-b border-border bg-navy text-navy-foreground scroll-mt-16"
+    >
+      <div className="mx-auto max-w-6xl px-5 py-12 md:px-8 md:py-16">
+        {/* Compact full-width intro row */}
+        <div className="flex flex-col gap-4 border-b border-navy-foreground/10 pb-8 md:flex-row md:items-end md:justify-between md:gap-8">
+          <div className="flex max-w-2xl flex-col gap-3">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-navy-foreground/60">ШАБЛОНЫ GODECK</p>
             <h2 className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl">
               Шаблоны для любой бизнес-задачи
@@ -229,38 +232,105 @@ export function Examples() {
               Выбери готовый шаблон или загрузи корпоративный PPTX/POTX. GoDeck адаптирует оформление под твои
               материалы и задачу.
             </p>
-
-            <Popover open={allTemplatesOpen} onOpenChange={setAllTemplatesOpen}>
-              <PopoverTrigger
-                render={
-                  <button
-                    type="button"
-                    className="w-fit rounded-full border border-navy-foreground/20 px-5 py-2.5 text-sm font-semibold text-navy-foreground transition-colors hover:bg-navy-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
-                  >
-                    Просмотреть все шаблоны
-                  </button>
-                }
-              />
-              <PopoverContent
-                side="bottom"
-                align="start"
-                sideOffset={12}
-                className="w-64 rounded-[20px] border-none bg-navy p-4 text-navy-foreground shadow-xl ring-1 ring-navy-foreground/15"
-              >
-                <p className="text-sm font-semibold text-navy-foreground">Все шаблоны — после регистрации</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-navy-foreground/70">
-                  Зарегистрируйтесь, чтобы просмотреть полную библиотеку шаблонов GoDeck.
-                </p>
-              </PopoverContent>
-            </Popover>
           </div>
 
-          {/* Right: cyclic category selector + continuous carousel */}
-          <CategorySelector inView={inView} />
+          <Popover open={allTemplatesOpen} onOpenChange={setAllTemplatesOpen}>
+            <PopoverTrigger
+              render={
+                <button
+                  type="button"
+                  className="w-fit shrink-0 rounded-full border border-navy-foreground/20 px-5 py-2.5 text-sm font-semibold text-navy-foreground transition-colors hover:bg-navy-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
+                >
+                  Просмотреть все шаблоны
+                </button>
+              }
+            />
+            <PopoverContent
+              side="bottom"
+              align="end"
+              sideOffset={12}
+              className="w-64 rounded-[20px] border-none bg-navy p-4 text-navy-foreground shadow-xl ring-1 ring-navy-foreground/15"
+            >
+              <p className="text-sm font-semibold text-navy-foreground">Все шаблоны — после регистрации</p>
+              <p className="mt-1.5 text-xs leading-relaxed text-navy-foreground/70">
+                Зарегистрируйтесь, чтобы просмотреть полную библиотеку шаблонов GoDeck.
+              </p>
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        {/* Categories (left) + large template gallery (right) */}
+        <div className="pt-8 md:grid md:grid-cols-[200px_1fr] md:items-start md:gap-8 lg:grid-cols-[280px_1fr] lg:gap-10">
+          {/* Mobile: horizontally scrollable category chips */}
+          <nav aria-label="Категории презентаций" className="mb-5 md:hidden">
+            <div className="examples-chip-row flex gap-2 overflow-x-auto pb-1">
+              {CATEGORY_DEFS.map((category) => {
+                const isActive = category.key === activeKey
+                return (
+                  <button
+                    key={category.key}
+                    type="button"
+                    onClick={() => setActiveKey(category.key)}
+                    aria-current={isActive ? 'true' : undefined}
+                    className={cn(
+                      'shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors duration-300',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy',
+                      isActive
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-navy-foreground/15 bg-navy-foreground/5 text-navy-foreground/75 hover:text-navy-foreground/90',
+                    )}
+                  >
+                    {category.label}
+                  </button>
+                )
+              })}
+            </div>
+          </nav>
+
+          {/* Tablet/desktop: vertical category navigation */}
+          <nav aria-label="Категории презентаций" className="hidden md:flex md:flex-col md:gap-1">
+            {CATEGORY_DEFS.map((category) => {
+              const isActive = category.key === activeKey
+              return (
+                <button
+                  key={category.key}
+                  type="button"
+                  onClick={() => setActiveKey(category.key)}
+                  aria-current={isActive ? 'true' : undefined}
+                  className={cn(
+                    'block w-full rounded-r-md border-l-2 py-2.5 pl-3 pr-2 text-left text-sm font-semibold leading-snug transition-colors duration-300 md:text-[0.9rem] lg:text-[0.95rem]',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy',
+                    isActive
+                      ? 'border-primary bg-primary/10 text-navy-foreground'
+                      : 'border-transparent text-navy-foreground/75 hover:bg-navy-foreground/5 hover:text-navy-foreground/90',
+                  )}
+                >
+                  {category.label}
+                </button>
+              )
+            })}
+          </nav>
+
+          {/* Gallery: active category label + large continuous carousel */}
+          <div className="min-w-0">
+            <div className="mb-3 flex items-center gap-2 md:mb-4">
+              <span aria-hidden="true" className="h-4 w-0.5 shrink-0 rounded-full bg-primary" />
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-foreground/70 md:text-sm">
+                {activeCategory.label}
+              </p>
+            </div>
+            <TemplateCarousel
+              key={activeKey}
+              category={activeCategory}
+              templates={templates}
+              prefersReducedMotion={prefersReducedMotion}
+              inView={inView}
+            />
+          </div>
         </div>
 
         {/* Secondary feature strip */}
-        <div className="mt-12 grid grid-cols-2 gap-6 border-t border-navy-foreground/10 pt-8 md:mt-16 md:grid-cols-4 md:gap-8 md:pt-10">
+        <div className="mt-10 grid grid-cols-2 gap-6 border-t border-navy-foreground/10 pt-8 md:mt-14 md:grid-cols-4 md:gap-8 md:pt-10">
           {FEATURES.map((feature) => (
             <div key={feature.label} className="flex items-start gap-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-navy-foreground/10">
@@ -278,103 +348,6 @@ export function Examples() {
   )
 }
 
-function CategorySelector({ inView }: { inView: boolean }) {
-  const prefersReducedMotion = usePrefersReducedMotion()
-  const [order, setOrder] = useState<string[]>(() => CATEGORY_DEFS.map((c) => c.key))
-  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const prevRects = useRef<Record<string, DOMRect>>({})
-
-  const activeKey = order[0]
-  const activeCategory = CATEGORY_DEFS.find((c) => c.key === activeKey)!
-  const templates = TEMPLATES.filter((t) => t.category === activeKey)
-
-  const selectCategory = useCallback((key: string) => {
-    setOrder((prev) => {
-      if (prev[0] === key) return prev
-      const idx = prev.indexOf(key)
-      if (idx === -1) return prev
-      return [...prev.slice(idx), ...prev.slice(0, idx)]
-    })
-  }, [])
-
-  // FLIP: animate every category label smoothly to its new position when `order` changes.
-  useLayoutEffect(() => {
-    const newRects: Record<string, DOMRect> = {}
-    order.forEach((key) => {
-      const el = itemRefs.current[key]
-      if (el) newRects[key] = el.getBoundingClientRect()
-    })
-
-    if (!prefersReducedMotion) {
-      order.forEach((key) => {
-        const el = itemRefs.current[key]
-        const prev = prevRects.current[key]
-        const next = newRects[key]
-        if (!el || !prev || !next) return
-        const dy = prev.top - next.top
-        if (Math.abs(dy) < 0.5) return
-        el.style.transition = 'none'
-        el.style.transform = `translateY(${dy}px)`
-        requestAnimationFrame(() => {
-          el.style.transition = FLIP_TRANSITION
-          el.style.transform = ''
-        })
-      })
-    }
-
-    prevRects.current = newRects
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- rects captured imperatively per render
-  }, [order, prefersReducedMotion])
-
-  return (
-    <div
-      className="flex min-w-0 flex-col"
-      style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
-      role="group"
-      aria-label="Категории презентаций"
-    >
-      {order.map((key, index) => {
-        const category = CATEGORY_DEFS.find((c) => c.key === key)!
-        const isActive = index === 0
-        return (
-          <div
-            key={key}
-            ref={(el) => {
-              itemRefs.current[key] = el
-            }}
-            style={{ order: index * 2 }}
-          >
-            <button
-              type="button"
-              onClick={() => selectCategory(key)}
-              aria-current={isActive ? 'true' : undefined}
-              className={cn(
-                'block w-fit rounded-sm py-1.5 text-left font-display font-bold leading-snug tracking-tight transition-all duration-500 ease-out',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy',
-                isActive
-                  ? 'accent-presentations-text text-2xl md:text-3xl lg:text-[2rem]'
-                  : 'text-xl text-navy-foreground/55 hover:text-navy-foreground/85 md:text-2xl',
-              )}
-            >
-              {category.label}
-            </button>
-          </div>
-        )
-      })}
-
-      <div style={{ order: 1, minWidth: 0 }} className="min-w-0 pb-2 pt-3 md:pb-3">
-        <TemplateCarousel
-          key={activeKey}
-          category={activeCategory}
-          templates={templates}
-          prefersReducedMotion={prefersReducedMotion}
-          inView={inView}
-        />
-      </div>
-    </div>
-  )
-}
-
 function TemplateCarousel({
   category,
   templates,
@@ -388,11 +361,14 @@ function TemplateCarousel({
 }) {
   // Doubled so the marquee can loop seamlessly: translating the track by
   // exactly -50% of its (now doubled) width always lands back on an
-  // identical frame, with no visible seam or jump.
+  // identical frame, with no visible seam or jump. When reduced motion is
+  // on, the track is left un-doubled and made manually scrollable instead.
   const marqueeTemplates = prefersReducedMotion ? templates : [...templates, ...templates]
 
   return (
-    <div className="examples-carousel-viewport">
+    <div
+      className={cn('examples-carousel-viewport', prefersReducedMotion && 'examples-carousel-viewport--scrollable')}
+    >
       <div
         className={cn(
           'examples-carousel-track flex w-max',
@@ -419,8 +395,7 @@ function TemplateCard({ template }: { template: Template }) {
         window.location.href = CREATE_URL
       }}
       aria-label={`Открыть шаблон «${template.name}»`}
-      style={{ flex: '0 0 auto', width: 'clamp(220px, 19vw, 250px)' }}
-      className="text-left transition-transform duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
+      className="examples-template-card text-left transition-transform duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
     >
       <TemplatePlaceholder cover={template.cover} name={template.name} />
     </button>
@@ -431,8 +406,8 @@ function TemplatePlaceholder({ cover, name, className }: { cover?: string; name:
   return (
     <span
       className={cn(
-        'block overflow-hidden rounded-[12px] border p-[5px]',
-        'border-white/20 bg-white/[0.06] shadow-[0_10px_26px_rgba(0,0,0,0.20)]',
+        'block overflow-hidden rounded-[16px] border p-[6px]',
+        'border-white/20 bg-white/[0.06] shadow-[0_14px_32px_rgba(0,0,0,0.24)]',
         className,
       )}
       style={{ aspectRatio: '16 / 9' }}
@@ -442,10 +417,10 @@ function TemplatePlaceholder({ cover, name, className }: { cover?: string; name:
         <img
           src={cover || '/placeholder.svg'}
           alt={`Превью шаблона презентации «${name}»`}
-          className="block h-full w-full rounded-[8px] object-contain"
+          className="block h-full w-full rounded-[10px] object-contain"
         />
       ) : (
-        <span className="relative flex h-full w-full flex-col gap-2 rounded-[8px] border border-dashed border-navy-foreground/12 bg-navy-foreground/[0.05] p-3">
+        <span className="relative flex h-full w-full flex-col gap-2 rounded-[10px] border border-dashed border-navy-foreground/12 bg-navy-foreground/[0.05] p-3">
           <span className="h-2 w-1/2 rounded-full bg-navy-foreground/15" />
           <span className="mt-1 h-1.5 w-2/3 rounded-full bg-navy-foreground/10" />
           <span className="h-1.5 w-2/5 rounded-full bg-navy-foreground/10" />
