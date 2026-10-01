@@ -7,6 +7,7 @@ export type TemplateCategoryKey =
   | 'research'
   | 'meetings'
   | 'marketing'
+  | 'training'
 
 export type TemplateStatus = 'published' | 'draft'
 
@@ -45,6 +46,7 @@ export const TEMPLATE_CATEGORIES: TemplateCategoryDef[] = [
   { key: 'research', label: 'Исследования' },
   { key: 'meetings', label: 'Совещания и обновления' },
   { key: 'marketing', label: 'Маркетинг' },
+  { key: 'training', label: 'Обучение и инструкции' },
 ]
 
 export const ALL_TEMPLATES_CATEGORY_KEY = 'all' as const
@@ -336,7 +338,7 @@ export const TEMPLATES: TemplateRecord[] = [
     description: 'Исследование B2B-рынка: сегменты клиентов, потребности и конкурентное окружение.',
     cover: '/template-previews/research-b2b-market-research.jpg',
     slides: makeSlide('/template-previews/research-b2b-market-research.jpg'),
-    tags: ['Исследова��ие', 'B2B', 'Сегменты'],
+    tags: ['Исследова����ие', 'B2B', 'Сегменты'],
     status: 'published',
     useCases: [
       'Анализ B2B-сегментов перед запуском продукта',
@@ -438,6 +440,43 @@ export const TEMPLATES: TemplateRecord[] = [
       'Отчёт по рекламному бюджету',
       'Анализ эффективности рекламных каналов',
       'Презентация результатов кампании клиенту',
+    ],
+  },
+  {
+    id: 'training-1',
+    slug: 'bold-geometric-fraction-flashcards',
+    title: 'Bold Geometric Fraction Flashcards',
+    category: 'training',
+    description: 'Яркий геометрический шаблон карточек для объяснения и закрепления дробей.',
+    cover: '/template-previews/bold-geometric-fraction-flashcards/slide-01.webp',
+    slides: [
+      '/template-previews/bold-geometric-fraction-flashcards/slide-01.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-02.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-03.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-04.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-05.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-06.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-07.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-08.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-09.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-10.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-11.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-12.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-13.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-14.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-15.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-16.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-17.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-18.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-19.webp',
+      '/template-previews/bold-geometric-fraction-flashcards/slide-20.webp',
+    ],
+    tags: ['Обучение', 'Математика', 'Карточки'],
+    status: 'published',
+    useCases: [
+      'Объяснение дробей на уроке или тренинге',
+      'Практические задания и самостоятельная работа',
+      'Карточки для повторения материала',
     ],
   },
 ]
