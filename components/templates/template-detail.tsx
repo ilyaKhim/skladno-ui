@@ -20,6 +20,8 @@ export function TemplateDetail({
   const hasMultipleSlides = slides.length > 1
   const [activeIndex, setActiveIndex] = useState(0)
   const touchStartXRef = useRef<number | null>(null)
+  const desktopThumbRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const mobileThumbRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   function goTo(index: number) {
     setActiveIndex(((index % slides.length) + slides.length) % slides.length)
@@ -35,6 +37,11 @@ export function TemplateDetail({
     return () => window.removeEventListener('keydown', handleKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex, hasMultipleSlides])
+
+  useEffect(() => {
+    desktopThumbRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    mobileThumbRefs.current[activeIndex]?.scrollIntoView({ inline: 'nearest', behavior: 'smooth' })
+  }, [activeIndex])
 
   function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
     touchStartXRef.current = event.touches[0]?.clientX ?? null
@@ -64,110 +71,166 @@ export function TemplateDetail({
             Все шаблоны
           </Link>
 
-          <div className="mt-6 grid gap-10 md:grid-cols-[1fr_360px] md:items-start lg:gap-14">
-            <div className="flex min-w-0 flex-col gap-4">
-              <div
-                className="relative overflow-hidden rounded-2xl border border-border bg-card p-2 md:p-3"
-                style={{ aspectRatio: '16 / 9' }}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time */}
-                <img
-                  src={slides[activeIndex] || '/placeholder.svg'}
-                  alt={`Слайд ${activeIndex + 1} из ${slides.length} шаблона «${template.title}»`}
-                  className="block h-full w-full rounded-xl object-contain"
-                />
-                {hasMultipleSlides ? (
-                  <>
-                    <button
-                      type="button"
-                      aria-label="Предыдущий слайд"
-                      onClick={() => goTo(activeIndex - 1)}
-                      className="absolute left-2 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    >
-                      <ChevronLeft aria-hidden="true" className="size-5" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Следующий слайд"
-                      onClick={() => goTo(activeIndex + 1)}
-                      className="absolute right-2 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    >
-                      <ChevronRight aria-hidden="true" className="size-5" />
-                    </button>
-                  </>
-                ) : null}
-              </div>
-
+          {/* Slide viewer: large active slide + thumbnail panel (desktop) */}
+          <div
+            className={cn(
+              'mt-6 grid items-stretch gap-4 md:gap-5',
+              hasMultipleSlides && 'md:grid-cols-[1.7fr_1fr]',
+            )}
+          >
+            <div
+              className="relative overflow-hidden rounded-2xl border border-border bg-card p-2 shadow-sm md:p-3"
+              style={{ aspectRatio: '16 / 9' }}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time */}
+              <img
+                src={slides[activeIndex] || '/placeholder.svg'}
+                alt={`Слайд ${activeIndex + 1} из ${slides.length} шаблона «${template.title}»`}
+                loading="eager"
+                fetchPriority="high"
+                className="block h-full w-full rounded-xl object-contain"
+              />
               {hasMultipleSlides ? (
-                <div role="listbox" aria-label="Слайды шаблона" className="flex gap-2 overflow-x-auto pb-1">
+                <>
+                  <button
+                    type="button"
+                    aria-label="Предыдущий слайд"
+                    onClick={() => goTo(activeIndex - 1)}
+                    className="absolute left-2 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    <ChevronLeft aria-hidden="true" className="size-5" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Следующий слайд"
+                    onClick={() => goTo(activeIndex + 1)}
+                    className="absolute right-2 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    <ChevronRight aria-hidden="true" className="size-5" />
+                  </button>
+                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-background/90 px-2.5 py-1 text-xs font-medium text-foreground shadow-sm">
+                    {activeIndex + 1} / {slides.length}
+                  </span>
+                </>
+              ) : null}
+            </div>
+
+            {hasMultipleSlides ? (
+              <div className="hidden min-h-0 md:block">
+                <div
+                  role="listbox"
+                  aria-label="Слайды шаблона"
+                  className="grid h-full max-h-full grid-cols-2 gap-2 overflow-y-auto pr-1 lg:grid-cols-3"
+                >
                   {slides.map((slide, index) => (
                     <button
                       key={`${slide}-${index}`}
+                      ref={(el) => {
+                        desktopThumbRefs.current[index] = el
+                      }}
                       type="button"
                       role="option"
                       aria-selected={index === activeIndex}
                       aria-label={`Слайд ${index + 1}`}
                       onClick={() => goTo(index)}
-                      style={{ width: 96, aspectRatio: '16 / 9' }}
+                      style={{ aspectRatio: '16 / 9' }}
                       className={cn(
-                        'shrink-0 overflow-hidden rounded-lg border-2 p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                        'h-fit overflow-hidden rounded-lg border-2 p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
                         index === activeIndex ? 'border-primary' : 'border-border hover:border-muted-foreground/40',
                       )}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time */}
-                      <img src={slide || '/placeholder.svg'} alt="" className="h-full w-full rounded-md object-contain" />
+                      <img
+                        src={slide || '/placeholder.svg'}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full rounded-md object-contain"
+                      />
                     </button>
                   ))}
                 </div>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-6">
-              <div className="flex flex-col gap-3">
-                <span className="text-xs font-medium uppercase tracking-[0.14em] text-primary">
-                  {getCategoryLabel(template.category)}
-                </span>
-                <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-balance md:text-3xl">
-                  {template.title}
-                </h1>
-                <div className="flex flex-wrap gap-1.5">
-                  {template.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-base leading-relaxed text-muted-foreground text-pretty">{template.description}</p>
               </div>
+            ) : null}
+          </div>
 
-              {template.useCases.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  <p className="text-sm font-semibold text-foreground">Подходит для:</p>
-                  <ul className="flex flex-col gap-1.5">
-                    {template.useCases.map((useCase) => (
-                      <li key={useCase} className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
-                        {useCase}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              <Button
-                size="lg"
-                nativeButton={false}
-                render={<a href={useTemplateUrl} />}
-                className="hidden w-full md:flex"
-              >
-                Использовать этот шаблон
-              </Button>
+          {/* Mobile thumbnail strip */}
+          {hasMultipleSlides ? (
+            <div role="listbox" aria-label="Слайды шаблона" className="mt-3 flex gap-2 overflow-x-auto pb-1 md:hidden">
+              {slides.map((slide, index) => (
+                <button
+                  key={`mobile-${slide}-${index}`}
+                  ref={(el) => {
+                    mobileThumbRefs.current[index] = el
+                  }}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  aria-label={`Слайд ${index + 1}`}
+                  onClick={() => goTo(index)}
+                  style={{ width: 96, aspectRatio: '16 / 9' }}
+                  className={cn(
+                    'shrink-0 overflow-hidden rounded-lg border-2 p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                    index === activeIndex ? 'border-primary' : 'border-border hover:border-muted-foreground/40',
+                  )}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time */}
+                  <img
+                    src={slide || '/placeholder.svg'}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full rounded-md object-contain"
+                  />
+                </button>
+              ))}
             </div>
+          ) : null}
+
+          {/* Template info */}
+          <div className="mt-10 flex max-w-2xl flex-col gap-6">
+            <div className="flex flex-col gap-3">
+              <span className="text-xs font-medium uppercase tracking-[0.14em] text-primary">
+                {getCategoryLabel(template.category)}
+              </span>
+              <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-balance md:text-3xl">
+                {template.title}
+              </h1>
+              <div className="flex flex-wrap gap-1.5">
+                {template.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              <p className="text-base leading-relaxed text-muted-foreground text-pretty">{template.description}</p>
+            </div>
+
+            {template.useCases.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-semibold text-foreground">Подходит для:</p>
+                <ul className="flex flex-col gap-1.5">
+                  {template.useCases.map((useCase) => (
+                    <li key={useCase} className="flex items-start gap-2 text-sm text-muted-foreground">
+                      <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
+                      {useCase}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <Button
+              size="lg"
+              nativeButton={false}
+              render={<a href={useTemplateUrl} />}
+              className="hidden w-full md:flex md:w-fit"
+            >
+              Использовать этот шаблон
+            </Button>
           </div>
         </div>
       </section>
