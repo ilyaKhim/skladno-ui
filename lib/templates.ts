@@ -336,7 +336,7 @@ export const TEMPLATES: TemplateRecord[] = [
     description: 'Исследование B2B-рынка: сегменты клиентов, потребности и конкурентное окружение.',
     cover: '/template-previews/research-b2b-market-research.jpg',
     slides: makeSlide('/template-previews/research-b2b-market-research.jpg'),
-    tags: ['Исследование', 'B2B', 'Сегменты'],
+    tags: ['Исследова��ие', 'B2B', 'Сегменты'],
     status: 'published',
     useCases: [
       'Анализ B2B-сегментов перед запуском продукта',
