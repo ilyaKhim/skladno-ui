@@ -100,10 +100,10 @@ export function TemplateDetail({
           </Link>
 
           {/* Slide viewer: large active slide + two-column thumbnail gallery (Pitch-style) */}
-          <div className="mt-6 flex min-w-0 flex-col gap-4 min-[900px]:flex-row min-[900px]:items-stretch min-[900px]:gap-5">
+          <div className="mt-6 flex min-w-0 flex-col gap-4 min-[900px]:flex-row min-[900px]:items-start min-[900px]:gap-5">
             <div
               ref={mainSlideRef}
-              className="relative min-w-0 overflow-hidden rounded-2xl border border-border shadow-sm min-[900px]:flex-1"
+              className="relative min-w-0 w-full self-start overflow-hidden rounded-2xl border border-border shadow-sm min-[900px]:flex-1"
               style={{ aspectRatio: '16 / 9' }}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
