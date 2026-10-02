@@ -19,9 +19,26 @@ export function TemplateDetail({
   const slides = template.slides.length > 0 ? template.slides : [template.cover]
   const hasMultipleSlides = slides.length > 1
   const [activeIndex, setActiveIndex] = useState(0)
+  const [mainSlideHeight, setMainSlideHeight] = useState<number | null>(null)
   const touchStartXRef = useRef<number | null>(null)
+  const mainSlideRef = useRef<HTMLDivElement | null>(null)
   const desktopThumbRefs = useRef<(HTMLButtonElement | null)[]>([])
   const mobileThumbRefs = useRef<(HTMLButtonElement | null)[]>([])
+
+  // Mirror the main slide's rendered height onto the desktop thumbnail panel so the
+  // two-column grid can distribute 20+ thumbnails within a definite height, instead
+  // of letting their intrinsic image sizes inflate the row (which also stretches the
+  // main slide away from its 16:9 aspect ratio).
+  useEffect(() => {
+    const node = mainSlideRef.current
+    if (!node || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect.height
+      if (height) setMainSlideHeight(height)
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
 
   function goTo(index: number) {
     setActiveIndex(((index % slides.length) + slides.length) % slides.length)
@@ -72,14 +89,10 @@ export function TemplateDetail({
           </Link>
 
           {/* Slide viewer: large active slide + thumbnail panel (desktop) */}
-          <div
-            className={cn(
-              'mt-6 grid items-stretch gap-4 md:gap-5',
-              hasMultipleSlides && 'md:grid-cols-[1.7fr_1fr]',
-            )}
-          >
+          <div className="mt-6 flex flex-col gap-4 xl:flex-row xl:items-stretch xl:gap-5">
             <div
-              className="relative overflow-hidden rounded-2xl border border-border bg-card p-2 shadow-sm md:p-3"
+              ref={mainSlideRef}
+              className="relative min-w-0 overflow-hidden rounded-2xl border border-border bg-card p-2 shadow-sm md:p-3 xl:flex-1"
               style={{ aspectRatio: '16 / 9' }}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
@@ -118,11 +131,15 @@ export function TemplateDetail({
             </div>
 
             {hasMultipleSlides ? (
-              <div className="hidden min-h-0 md:block">
+              <div
+                className="hidden min-h-0 xl:block xl:w-[280px] xl:shrink-0"
+                style={mainSlideHeight ? { height: mainSlideHeight } : undefined}
+              >
                 <div
                   role="listbox"
                   aria-label="Слайды шаблона"
-                  className="grid h-full max-h-full grid-cols-2 gap-2 overflow-y-auto pr-1 lg:grid-cols-3"
+                  className="grid h-full max-h-full auto-cols-fr grid-flow-col grid-cols-2 gap-1.5 overflow-y-auto"
+                  style={{ gridTemplateRows: `repeat(${Math.ceil(slides.length / 2)}, minmax(0, 1fr))` }}
                 >
                   {slides.map((slide, index) => (
                     <button
@@ -135,9 +152,8 @@ export function TemplateDetail({
                       aria-selected={index === activeIndex}
                       aria-label={`Слайд ${index + 1}`}
                       onClick={() => goTo(index)}
-                      style={{ aspectRatio: '16 / 9' }}
                       className={cn(
-                        'h-fit overflow-hidden rounded-lg border-2 p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                        'flex min-h-0 items-center justify-center overflow-hidden rounded-lg border-2 p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
                         index === activeIndex ? 'border-primary' : 'border-border hover:border-muted-foreground/40',
                       )}
                     >
@@ -155,9 +171,9 @@ export function TemplateDetail({
             ) : null}
           </div>
 
-          {/* Mobile thumbnail strip */}
+          {/* Compact/mobile thumbnail strip (below xl) */}
           {hasMultipleSlides ? (
-            <div role="listbox" aria-label="Слайды шаблона" className="mt-3 flex gap-2 overflow-x-auto pb-1 md:hidden">
+            <div role="listbox" aria-label="Слайды шаблона" className="mt-3 flex gap-2 overflow-x-auto pb-1 xl:hidden">
               {slides.map((slide, index) => (
                 <button
                   key={`mobile-${slide}-${index}`}
