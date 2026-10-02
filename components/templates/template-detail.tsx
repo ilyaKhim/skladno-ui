@@ -140,12 +140,10 @@ export function TemplateDetail({
 
             {hasMultipleSlides ? (
               <div
-                className="min-h-0 min-w-0 basis-[clamp(260px,36%,420px)] h-[42dvh] min-[900px]:h-[min(480px,70vh)] min-[900px]:shrink-0"
+                className="min-h-0 min-w-0 basis-[clamp(260px,36%,420px)] h-[42dvh] overflow-y-auto overflow-x-hidden overscroll-y-contain pr-1 min-[900px]:h-[min(480px,70vh)] min-[900px]:shrink-0 [scrollbar-gutter:stable]"
                 style={{ height: isDesktopLayout ? mainSlideHeight ?? undefined : undefined }}
               >
-                <div
-                  className="grid h-full min-h-0 grid-cols-2 content-start gap-3 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-1 max-[479px]:grid-cols-1 [scrollbar-gutter:stable]"
-                >
+                <div className="grid grid-cols-2 content-start items-start gap-3 max-[479px]:grid-cols-1">
                   {slides.map((slide, index) => (
                     <button
                       key={`${slide}-${index}`}
@@ -158,7 +156,7 @@ export function TemplateDetail({
                       onClick={() => goTo(index)}
                       style={{ aspectRatio: '16 / 9' }}
                       className={cn(
-                        'flex w-full items-center justify-center overflow-hidden rounded-lg border-2 bg-muted/20 p-1 transition-[border-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                        'flex w-full shrink-0 grow-0 items-center justify-center overflow-hidden rounded-lg border-2 bg-muted/20 p-1 transition-[border-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
                         index === activeIndex
                           ? 'border-primary shadow-[0_0_0_3px_color-mix(in_srgb,var(--primary)_20%,transparent)]'
                           : 'border-border hover:border-muted-foreground/40',
