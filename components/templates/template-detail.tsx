@@ -20,15 +20,16 @@ export function TemplateDetail({
   const hasMultipleSlides = slides.length > 1
   const [activeIndex, setActiveIndex] = useState(0)
   const [mainSlideHeight, setMainSlideHeight] = useState<number | null>(null)
+  // The thumbnail panel only mirrors the main slide's height at the desktop
+  // (side-by-side) layout. Below that breakpoint the panel stacks under the
+  // main slide and gets its own capped height instead.
+  const [isDesktopLayout, setIsDesktopLayout] = useState(false)
   const touchStartXRef = useRef<number | null>(null)
   const mainSlideRef = useRef<HTMLDivElement | null>(null)
-  const desktopThumbRefs = useRef<(HTMLButtonElement | null)[]>([])
-  const mobileThumbRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const thumbRefs = useRef<(HTMLButtonElement | null)[]>([])
 
-  // Mirror the main slide's rendered height onto the desktop thumbnail panel so the
-  // two-column grid can distribute 20+ thumbnails within a definite height, instead
-  // of letting their intrinsic image sizes inflate the row (which also stretches the
-  // main slide away from its 16:9 aspect ratio).
+  // Mirror the main slide's rendered height onto the thumbnail panel so its
+  // scroll area matches the visual height of the active slide exactly.
   useEffect(() => {
     const node = mainSlideRef.current
     if (!node || typeof ResizeObserver === 'undefined') return
@@ -38,6 +39,14 @@ export function TemplateDetail({
     })
     observer.observe(node)
     return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 900px)')
+    const update = () => setIsDesktopLayout(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
   }, [])
 
   function goTo(index: number) {
@@ -56,8 +65,7 @@ export function TemplateDetail({
   }, [activeIndex, hasMultipleSlides])
 
   useEffect(() => {
-    desktopThumbRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    mobileThumbRefs.current[activeIndex]?.scrollIntoView({ inline: 'nearest', behavior: 'smooth' })
+    thumbRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [activeIndex])
 
   function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
@@ -88,11 +96,11 @@ export function TemplateDetail({
             Все шаблоны
           </Link>
 
-          {/* Slide viewer: large active slide + thumbnail panel (desktop) */}
-          <div className="mt-6 flex flex-col gap-4 xl:flex-row xl:items-stretch xl:gap-5">
+          {/* Slide viewer: large active slide + two-column thumbnail gallery (Pitch-style) */}
+          <div className="mt-6 flex min-w-0 flex-col gap-4 min-[900px]:flex-row min-[900px]:items-stretch min-[900px]:gap-5">
             <div
               ref={mainSlideRef}
-              className="relative min-w-0 overflow-hidden rounded-2xl border border-border bg-card p-2 shadow-sm md:p-3 xl:flex-1"
+              className="relative min-w-0 overflow-hidden rounded-2xl border border-border bg-card p-2 shadow-sm md:p-3 min-[900px]:flex-1"
               style={{ aspectRatio: '16 / 9' }}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
@@ -132,29 +140,28 @@ export function TemplateDetail({
 
             {hasMultipleSlides ? (
               <div
-                className="hidden min-h-0 xl:block xl:w-[280px] xl:shrink-0"
-                style={mainSlideHeight ? { height: mainSlideHeight } : undefined}
+                className="min-h-0 min-w-0 basis-[clamp(260px,36%,420px)] h-[42dvh] min-[900px]:h-[min(480px,70vh)] min-[900px]:shrink-0"
+                style={{ height: isDesktopLayout ? mainSlideHeight ?? undefined : undefined }}
               >
                 <div
-                  role="listbox"
-                  aria-label="Слайды шаблона"
-                  className="grid h-full max-h-full auto-cols-fr grid-flow-col grid-cols-2 gap-1.5 overflow-y-auto"
-                  style={{ gridTemplateRows: `repeat(${Math.ceil(slides.length / 2)}, minmax(0, 1fr))` }}
+                  className="grid h-full min-h-0 grid-cols-2 content-start gap-3 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-1 max-[479px]:grid-cols-1 [scrollbar-gutter:stable]"
                 >
                   {slides.map((slide, index) => (
                     <button
                       key={`${slide}-${index}`}
                       ref={(el) => {
-                        desktopThumbRefs.current[index] = el
+                        thumbRefs.current[index] = el
                       }}
                       type="button"
-                      role="option"
-                      aria-selected={index === activeIndex}
-                      aria-label={`Слайд ${index + 1}`}
+                      aria-label={`Открыть слайд ${index + 1}`}
+                      aria-current={index === activeIndex ? 'true' : undefined}
                       onClick={() => goTo(index)}
+                      style={{ aspectRatio: '16 / 9' }}
                       className={cn(
-                        'flex min-h-0 items-center justify-center overflow-hidden rounded-lg border-2 p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-                        index === activeIndex ? 'border-primary' : 'border-border hover:border-muted-foreground/40',
+                        'flex w-full items-center justify-center overflow-hidden rounded-lg border-2 bg-muted/20 p-1 transition-[border-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                        index === activeIndex
+                          ? 'border-primary shadow-[0_0_0_3px_color-mix(in_srgb,var(--primary)_20%,transparent)]'
+                          : 'border-border hover:border-muted-foreground/40',
                       )}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time */}
@@ -170,38 +177,6 @@ export function TemplateDetail({
               </div>
             ) : null}
           </div>
-
-          {/* Compact/mobile thumbnail strip (below xl) */}
-          {hasMultipleSlides ? (
-            <div role="listbox" aria-label="Слайды шаблона" className="mt-3 flex gap-2 overflow-x-auto pb-1 xl:hidden">
-              {slides.map((slide, index) => (
-                <button
-                  key={`mobile-${slide}-${index}`}
-                  ref={(el) => {
-                    mobileThumbRefs.current[index] = el
-                  }}
-                  type="button"
-                  role="option"
-                  aria-selected={index === activeIndex}
-                  aria-label={`Слайд ${index + 1}`}
-                  onClick={() => goTo(index)}
-                  style={{ width: 96, aspectRatio: '16 / 9' }}
-                  className={cn(
-                    'shrink-0 overflow-hidden rounded-lg border-2 p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-                    index === activeIndex ? 'border-primary' : 'border-border hover:border-muted-foreground/40',
-                  )}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time */}
-                  <img
-                    src={slide || '/placeholder.svg'}
-                    alt=""
-                    loading="lazy"
-                    className="h-full w-full rounded-md object-contain"
-                  />
-                </button>
-              ))}
-            </div>
-          ) : null}
 
           {/* Template info */}
           <div className="mt-10 flex max-w-2xl flex-col gap-6">
