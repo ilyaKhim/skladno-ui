@@ -100,10 +100,10 @@ export function TemplateDetail({
           </Link>
 
           {/* Slide viewer: large active slide + two-column thumbnail gallery (Pitch-style) */}
-          <div className="mt-6 flex min-w-0 flex-col gap-4 min-[900px]:flex-row min-[900px]:items-stretch min-[900px]:gap-5">
+          <div className="mt-6 flex min-w-0 flex-col gap-4 min-[900px]:flex-row min-[900px]:items-start min-[900px]:gap-5">
             <div
               ref={mainSlideRef}
-              className="relative min-w-0 overflow-hidden rounded-2xl border border-border bg-card p-2 shadow-sm md:p-3 min-[900px]:flex-1"
+              className="relative min-w-0 w-full self-start overflow-hidden rounded-2xl border border-border shadow-sm min-[900px]:flex-1"
               style={{ aspectRatio: '16 / 9' }}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
@@ -114,7 +114,7 @@ export function TemplateDetail({
                 alt={`Слайд ${activeIndex + 1} из ${slides.length} шаблона «${template.title}»`}
                 loading="eager"
                 fetchPriority="high"
-                className="block h-full w-full rounded-xl object-contain"
+                className="block h-full w-full object-contain"
               />
               {hasMultipleSlides ? (
                 <>
@@ -148,31 +148,35 @@ export function TemplateDetail({
               >
                 <div className="grid grid-cols-2 content-start items-start gap-3 max-[479px]:grid-cols-1">
                   {slides.map((slide, index) => (
-                    <button
+                    // Outer wrapper reserves the selection ring's space so it never
+                    // overlaps the thumbnail image and never shifts the grid layout.
+                    <div
                       key={`${slide}-${index}`}
-                      ref={(el) => {
-                        thumbRefs.current[index] = el
-                      }}
-                      type="button"
-                      aria-label={`Открыть слайд ${index + 1}`}
-                      aria-current={index === activeIndex ? 'true' : undefined}
-                      onClick={() => goTo(index)}
-                      style={{ aspectRatio: '16 / 9' }}
                       className={cn(
-                        'flex w-full shrink-0 grow-0 items-center justify-center overflow-hidden rounded-lg border-2 bg-muted/20 p-1 transition-[border-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-                        index === activeIndex
-                          ? 'border-primary shadow-[0_0_0_3px_color-mix(in_srgb,var(--primary)_20%,transparent)]'
-                          : 'border-border hover:border-muted-foreground/40',
+                        'rounded-xl p-[3px] transition-colors',
+                        index === activeIndex ? 'bg-primary' : 'bg-transparent',
                       )}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time */}
-                      <img
-                        src={slide || '/placeholder.svg'}
-                        alt=""
-                        loading="lazy"
-                        className="h-full w-full rounded-md object-contain"
-                      />
-                    </button>
+                      <button
+                        ref={(el) => {
+                          thumbRefs.current[index] = el
+                        }}
+                        type="button"
+                        aria-label={`Открыть слайд ${index + 1}`}
+                        aria-current={index === activeIndex ? 'true' : undefined}
+                        onClick={() => goTo(index)}
+                        style={{ aspectRatio: '16 / 9' }}
+                        className="flex w-full shrink-0 grow-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/20 transition-colors hover:border-muted-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time */}
+                        <img
+                          src={slide || '/placeholder.svg'}
+                          alt=""
+                          loading="lazy"
+                          className="h-full w-full object-contain"
+                        />
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
