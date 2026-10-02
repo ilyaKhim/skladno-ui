@@ -29,12 +29,15 @@ export function TemplateDetail({
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   // Mirror the main slide's rendered height onto the thumbnail panel so its
-  // scroll area matches the visual height of the active slide exactly.
+  // scroll area matches the visual height of the active slide exactly. Use
+  // getBoundingClientRect (border-box) rather than ResizeObserver's
+  // content-box contentRect, since the main slide frame has its own border
+  // and padding that must be included for the panel's bottom edge to align.
   useEffect(() => {
     const node = mainSlideRef.current
     if (!node || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver((entries) => {
-      const height = entries[0]?.contentRect.height
+    const observer = new ResizeObserver(() => {
+      const height = node.getBoundingClientRect().height
       if (height) setMainSlideHeight(height)
     })
     observer.observe(node)
@@ -185,16 +188,6 @@ export function TemplateDetail({
               <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-balance md:text-3xl">
                 {template.title}
               </h1>
-              <div className="flex flex-wrap gap-1.5">
-                {template.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
               <p className="text-base leading-relaxed text-muted-foreground text-pretty">{template.description}</p>
             </div>
 
