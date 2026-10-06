@@ -17,14 +17,9 @@ export interface TemplateRecord {
   title: string
   category: TemplateCategoryKey
   description: string
-  /** 16:9 cover image, shown in the catalog card and as the first slide. */
+  /** First 16:9 slide, also shown as the catalog cover. */
   cover: string
-  /**
-   * Ordered slide images for the detail-page viewer. Currently equal to
-   * `[cover]` for every template — only the cover exists so far. Add more
-   * local image paths here later to enable the multi-slide viewer; no
-   * component changes are required.
-   */
+  /** Ordered WebP slide images for the detail-page viewer. */
   slides: string[]
   tags: string[]
   status: TemplateStatus
@@ -51,14 +46,17 @@ export const TEMPLATE_CATEGORIES: TemplateCategoryDef[] = [
 
 export const ALL_TEMPLATES_CATEGORY_KEY = 'all' as const
 
-function makeSlide(cover: string): string[] {
-  return [cover]
+function slidePath(slug: string, slideNumber: number): string {
+  return `/template-previews/${slug}/slide-${String(slideNumber).padStart(2, '0')}.webp`
+}
+
+function makeSlides(slug: string, slideCount: number): string[] {
+  return Array.from({ length: slideCount }, (_, index) => slidePath(slug, index + 1))
 }
 
 /**
- * Local template records. Covers reuse the same images already downloaded
- * into /public/template-previews/ for the homepage carousel — no new
- * assets are introduced here.
+ * Local template records. Each published template points to its complete
+ * ordered WebP slide set under /public/template-previews/<slug>/.
  */
 export const TEMPLATES: TemplateRecord[] = [
   {
@@ -68,8 +66,8 @@ export const TEMPLATES: TemplateRecord[] = [
     category: 'reports',
     description:
       'Разбор результатов маркетинговой кампании: цели, метрики, выводы и рекомендации на следующий период.',
-    cover: '/template-previews/reports-marketing-campaign-analysis.jpg',
-    slides: makeSlide('/template-previews/reports-marketing-campaign-analysis.jpg'),
+    cover: slidePath('reports-marketing-campaign-analysis', 1),
+    slides: makeSlides('reports-marketing-campaign-analysis', 14),
     tags: ['Отчёт', 'Маркетинг', 'Метрики'],
     status: 'published',
     useCases: [
@@ -84,8 +82,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Monthly Client Report',
     category: 'reports',
     description: 'Ежемесячный отчёт для клиента: статус работ, ключевые показатели и следующие шаги.',
-    cover: '/template-previews/reports-monthly-client-report.jpg',
-    slides: makeSlide('/template-previews/reports-monthly-client-report.jpg'),
+    cover: slidePath('reports-monthly-client-report', 1),
+    slides: makeSlides('reports-monthly-client-report', 15),
     tags: ['Отчёт', 'Клиенты', 'Ежемесячно'],
     status: 'published',
     useCases: [
@@ -100,8 +98,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'McKinsey Consulting Report',
     category: 'reports',
     description: 'Строгий консалтинговый формат для аналитических отчётов с акцентом на структуру и данные.',
-    cover: '/template-previews/reports-mckinsey-consulting-report.jpg',
-    slides: makeSlide('/template-previews/reports-mckinsey-consulting-report.jpg'),
+    cover: slidePath('reports-mckinsey-consulting-report', 1),
+    slides: makeSlides('reports-mckinsey-consulting-report', 8),
     tags: ['Отчёт', 'Консалтинг', 'Аналитика'],
     status: 'published',
     useCases: [
@@ -116,8 +114,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Simple Business Proposal',
     category: 'proposals',
     description: 'Лаконичное коммерческое предложение: суть услуги, условия и следующий шаг для клиента.',
-    cover: '/template-previews/proposals-simple-business-proposal.jpg',
-    slides: makeSlide('/template-previews/proposals-simple-business-proposal.jpg'),
+    cover: slidePath('proposals-simple-business-proposal', 1),
+    slides: makeSlides('proposals-simple-business-proposal', 17),
     tags: ['КП', 'Бизнес', 'Продажи'],
     status: 'published',
     useCases: [
@@ -132,8 +130,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'IT Software Sales Proposal',
     category: 'proposals',
     description: 'Коммерческое предложение для IT- и software-продуктов: функциональность, тарифы, внедрение.',
-    cover: '/template-previews/proposals-it-software-sales-proposal.jpg',
-    slides: makeSlide('/template-previews/proposals-it-software-sales-proposal.jpg'),
+    cover: slidePath('proposals-it-software-sales-proposal', 1),
+    slides: makeSlides('proposals-it-software-sales-proposal', 14),
     tags: ['КП', 'IT', 'SaaS'],
     status: 'published',
     useCases: [
@@ -148,8 +146,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Public Relations Proposal',
     category: 'proposals',
     description: 'Предложение по PR-услугам: стратегия коммуникаций, каналы и ожидаемый результат.',
-    cover: '/template-previews/proposals-public-relations-proposal.jpg',
-    slides: makeSlide('/template-previews/proposals-public-relations-proposal.jpg'),
+    cover: slidePath('proposals-public-relations-proposal', 1),
+    slides: makeSlides('proposals-public-relations-proposal', 19),
     tags: ['КП', 'PR', 'Коммуникации'],
     status: 'published',
     useCases: [
@@ -164,8 +162,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Go-To-Market Strategy',
     category: 'strategy',
     description: 'План выхода продукта на рынок: целевая аудитория, каналы, сроки и метрики успеха.',
-    cover: '/template-previews/strategy-go-to-market-strategy.jpg',
-    slides: makeSlide('/template-previews/strategy-go-to-market-strategy.jpg'),
+    cover: slidePath('strategy-go-to-market-strategy', 1),
+    slides: makeSlides('strategy-go-to-market-strategy', 15),
     tags: ['Стратегия', 'GTM', 'Продукт'],
     status: 'published',
     useCases: [
@@ -180,8 +178,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'McKinsey Strategic Planning',
     category: 'strategy',
     description: 'Формат стратегического планирования с акцентом на структуру, приоритеты и дорожную карту.',
-    cover: '/template-previews/strategy-mckinsey-strategic-planning.jpg',
-    slides: makeSlide('/template-previews/strategy-mckinsey-strategic-planning.jpg'),
+    cover: slidePath('strategy-mckinsey-strategic-planning', 1),
+    slides: makeSlides('strategy-mckinsey-strategic-planning', 15),
     tags: ['Стратегия', 'Планирование', 'Консалтинг'],
     status: 'published',
     useCases: [
@@ -196,8 +194,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Business Market Analysis',
     category: 'strategy',
     description: 'Анализ рынка и конкурентов для обоснования стратегических решений.',
-    cover: '/template-previews/strategy-business-market-analysis.jpg',
-    slides: makeSlide('/template-previews/strategy-business-market-analysis.jpg'),
+    cover: slidePath('strategy-business-market-analysis', 1),
+    slides: makeSlides('strategy-business-market-analysis', 20),
     tags: ['Стратегия', 'Рынок', 'Конкуренты'],
     status: 'published',
     useCases: [
@@ -212,8 +210,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Project Success Story',
     category: 'projects',
     description: 'Презентация успешного кейса: задача, решение и измеримый результат проекта.',
-    cover: '/template-previews/projects-project-success-story.jpg',
-    slides: makeSlide('/template-previews/projects-project-success-story.jpg'),
+    cover: slidePath('projects-project-success-story', 1),
+    slides: makeSlides('projects-project-success-story', 20),
     tags: ['Проект', 'Кейс', 'Результат'],
     status: 'published',
     useCases: [
@@ -228,8 +226,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Project Action Plan',
     category: 'projects',
     description: 'План действий по проекту: задачи, ответственные и сроки на каждом этапе.',
-    cover: '/template-previews/projects-project-action-plan.jpg',
-    slides: makeSlide('/template-previews/projects-project-action-plan.jpg'),
+    cover: slidePath('projects-project-action-plan', 1),
+    slides: makeSlides('projects-project-action-plan', 19),
     tags: ['Проект', 'План', 'Задачи'],
     status: 'published',
     useCases: [
@@ -244,8 +242,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Project Roadmap',
     category: 'projects',
     description: 'Дорожная карта проекта с этапами, milestone-ами и сроками выполнения.',
-    cover: '/template-previews/projects-project-roadmap.jpg',
-    slides: makeSlide('/template-previews/projects-project-roadmap.jpg'),
+    cover: slidePath('projects-project-roadmap', 1),
+    slides: makeSlides('projects-project-roadmap', 21),
     tags: ['Проект', 'Roadmap', 'Сроки'],
     status: 'published',
     useCases: [
@@ -260,8 +258,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Stylish Pitch Deck',
     category: 'sales',
     description: 'Питч-дек в ярком стиле для презентации продукта или бизнеса инвесторам.',
-    cover: '/template-previews/sales-stylish-pitch-deck.jpg',
-    slides: makeSlide('/template-previews/sales-stylish-pitch-deck.jpg'),
+    cover: slidePath('sales-stylish-pitch-deck', 1),
+    slides: makeSlides('sales-stylish-pitch-deck', 38),
     tags: ['Питч', 'Инвесторы', 'Продукт'],
     status: 'published',
     useCases: [
@@ -276,8 +274,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Minimalist Pitch Deck',
     category: 'sales',
     description: 'Минималистичный питч-дек, где акцент на фактах и цифрах, а не на оформлении.',
-    cover: '/template-previews/sales-minimalist-pitch-deck.jpg',
-    slides: makeSlide('/template-previews/sales-minimalist-pitch-deck.jpg'),
+    cover: slidePath('sales-minimalist-pitch-deck', 1),
+    slides: makeSlides('sales-minimalist-pitch-deck', 18),
     tags: ['Питч', 'Минимализм', 'Продажи'],
     status: 'published',
     useCases: [
@@ -292,8 +290,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Elegant Pitch Deck',
     category: 'sales',
     description: 'Элегантный питч-дек для брендов и продуктов с фокусом на визуальную подачу.',
-    cover: '/template-previews/sales-elegant-pitch-deck.jpg',
-    slides: makeSlide('/template-previews/sales-elegant-pitch-deck.jpg'),
+    cover: slidePath('sales-elegant-pitch-deck', 1),
+    slides: makeSlides('sales-elegant-pitch-deck', 34),
     tags: ['Питч', 'Бренд', 'Дизайн'],
     status: 'published',
     useCases: ['Презентация бренда партнёрам', 'Питч премиального продукта', 'Дек для встречи с инвестором'],
@@ -304,8 +302,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Startup Market Research',
     category: 'research',
     description: 'Исследование рынка для стартапа: объём рынка, аудитория и точки роста.',
-    cover: '/template-previews/research-startup-market-research.jpg',
-    slides: makeSlide('/template-previews/research-startup-market-research.jpg'),
+    cover: slidePath('research-startup-market-research', 1),
+    slides: makeSlides('research-startup-market-research', 20),
     tags: ['Исследование', 'Стартап', 'Рынок'],
     status: 'published',
     useCases: [
@@ -320,8 +318,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Market Research Report',
     category: 'research',
     description: 'Развёрнутый отчёт по исследованию рынка с выводами и рекомендациями.',
-    cover: '/template-previews/research-market-research-report.jpg',
-    slides: makeSlide('/template-previews/research-market-research-report.jpg'),
+    cover: slidePath('research-market-research-report', 1),
+    slides: makeSlides('research-market-research-report', 19),
     tags: ['Исследование', 'Отчёт', 'Данные'],
     status: 'published',
     useCases: [
@@ -336,8 +334,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'B2B Market Research',
     category: 'research',
     description: 'Исследование B2B-рынка: сегменты клиентов, потребности и конкурентное окружение.',
-    cover: '/template-previews/research-b2b-market-research.jpg',
-    slides: makeSlide('/template-previews/research-b2b-market-research.jpg'),
+    cover: slidePath('research-b2b-market-research', 1),
+    slides: makeSlides('research-b2b-market-research', 20),
     tags: ['Исследова����ие', 'B2B', 'Сегменты'],
     status: 'published',
     useCases: [
@@ -352,8 +350,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Year-end Review Business Meeting',
     category: 'meetings',
     description: 'Итоги года для команды или совета директоров: результаты, цифры и планы на следующий год.',
-    cover: '/template-previews/meetings-year-end-review-business-meeting.jpg',
-    slides: makeSlide('/template-previews/meetings-year-end-review-business-meeting.jpg'),
+    cover: slidePath('meetings-year-end-review-business-meeting', 1),
+    slides: makeSlides('meetings-year-end-review-business-meeting', 14),
     tags: ['Совещание', 'Итоги года', 'Отчёт'],
     status: 'published',
     useCases: [
@@ -368,8 +366,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Quarterly Business Review',
     category: 'meetings',
     description: 'Квартальный обзор бизнеса: показатели, статус целей и приоритеты на следующий квартал.',
-    cover: '/template-previews/meetings-quarterly-business-review.jpg',
-    slides: makeSlide('/template-previews/meetings-quarterly-business-review.jpg'),
+    cover: slidePath('meetings-quarterly-business-review', 1),
+    slides: makeSlides('meetings-quarterly-business-review', 17),
     tags: ['Совещание', 'QBR', 'Показатели'],
     status: 'published',
     useCases: [
@@ -385,7 +383,7 @@ export const TEMPLATES: TemplateRecord[] = [
     category: 'meetings',
     description: 'Простая структура повестки встречи: темы, тайминг и ответственные.',
     cover: '/template-previews/meetings-simple-meeting-agenda.jpg',
-    slides: makeSlide('/template-previews/meetings-simple-meeting-agenda.jpg'),
+    slides: ['/template-previews/meetings-simple-meeting-agenda.jpg'],
     tags: ['Совещание', 'Повестка', 'Планирование'],
     status: 'published',
     useCases: [
@@ -401,7 +399,7 @@ export const TEMPLATES: TemplateRecord[] = [
     category: 'marketing',
     description: 'Простой маркетинговый план: цели, аудитория, каналы и бюджет на период.',
     cover: '/template-previews/marketing-simple-marketing-plan.jpg',
-    slides: makeSlide('/template-previews/marketing-simple-marketing-plan.jpg'),
+    slides: ['/template-previews/marketing-simple-marketing-plan.jpg'],
     tags: ['Маркетинг', 'План', 'Каналы'],
     status: 'published',
     useCases: [
@@ -416,8 +414,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Advertising and Marketing Plan',
     category: 'marketing',
     description: 'Комплексный план рекламы и маркетинга: стратегия, каналы, календарь активностей.',
-    cover: '/template-previews/marketing-advertising-and-marketing-plan.jpg',
-    slides: makeSlide('/template-previews/marketing-advertising-and-marketing-plan.jpg'),
+    cover: slidePath('marketing-advertising-and-marketing-plan', 1),
+    slides: makeSlides('marketing-advertising-and-marketing-plan', 21),
     tags: ['Маркетинг', 'Реклама', 'Календарь'],
     status: 'published',
     useCases: [
@@ -432,8 +430,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Advertising Report',
     category: 'marketing',
     description: 'Отчёт по рекламным активностям: результаты кампаний, расходы и эффективность каналов.',
-    cover: '/template-previews/marketing-advertising-report.jpg',
-    slides: makeSlide('/template-previews/marketing-advertising-report.jpg'),
+    cover: slidePath('marketing-advertising-report', 1),
+    slides: makeSlides('marketing-advertising-report', 21),
     tags: ['Маркетинг', 'Реклама', 'Отчёт'],
     status: 'published',
     useCases: [
@@ -448,29 +446,8 @@ export const TEMPLATES: TemplateRecord[] = [
     title: 'Bold Geometric Fraction Flashcards',
     category: 'training',
     description: 'Яркий геометрический шаблон карточек для объяснения и закрепления дробей.',
-    cover: '/template-previews/bold-geometric-fraction-flashcards/slide-01.webp',
-    slides: [
-      '/template-previews/bold-geometric-fraction-flashcards/slide-01.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-02.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-03.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-04.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-05.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-06.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-07.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-08.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-09.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-10.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-11.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-12.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-13.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-14.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-15.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-16.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-17.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-18.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-19.webp',
-      '/template-previews/bold-geometric-fraction-flashcards/slide-20.webp',
-    ],
+    cover: slidePath('bold-geometric-fraction-flashcards', 1),
+    slides: makeSlides('bold-geometric-fraction-flashcards', 20),
     tags: ['Обучение', 'Математика', 'Карточки'],
     status: 'published',
     useCases: [
