@@ -385,7 +385,7 @@ export const TEMPLATES: TemplateRecord[] = [
     cover: '/template-previews/meetings-simple-meeting-agenda.jpg',
     slides: ['/template-previews/meetings-simple-meeting-agenda.jpg'],
     tags: ['Совещание', 'Повестка', 'Планирование'],
-    status: 'published',
+    status: 'draft',
     useCases: [
       'Повестка регулярной встречи команды',
       'Планирование рабочей сессии',
@@ -401,7 +401,7 @@ export const TEMPLATES: TemplateRecord[] = [
     cover: '/template-previews/marketing-simple-marketing-plan.jpg',
     slides: ['/template-previews/marketing-simple-marketing-plan.jpg'],
     tags: ['Маркетинг', 'План', 'Каналы'],
-    status: 'published',
+    status: 'draft',
     useCases: [
       'Маркетинговый план на квартал',
       'Презентация плана продвижения руководству',

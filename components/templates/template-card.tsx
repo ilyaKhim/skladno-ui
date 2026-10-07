@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getCategoryLabel, type TemplateRecord } from '@/lib/templates'
+import { getTemplateAssetUrl } from '@/lib/template-assets'
 
 export function TemplateCard({ template }: { template: TemplateRecord }) {
   return (
@@ -14,7 +15,7 @@ export function TemplateCard({ template }: { template: TemplateRecord }) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- local file path, known at build time */}
         <img
-          src={template.cover || '/placeholder.svg'}
+          src={template.cover ? getTemplateAssetUrl(template.cover) : '/placeholder.svg'}
           alt={`Превью шаблона презентации «${template.title}»`}
           className="block h-full w-full rounded-lg object-contain transition-transform duration-300 group-hover:scale-[1.04]"
         />

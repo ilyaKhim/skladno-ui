@@ -41,10 +41,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare clean static export
+        run: |
+          rm -rf .next out
+          printf '{"sha":"%s","builtAt":"%s"}\n' \
+            "$GITHUB_SHA" \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > public/deploy-version.json
+
       - name: Build static site
         run: pnpm build
         env:
           STATIC_EXPORT: '1'
+          NEXT_PUBLIC_TEMPLATE_GIT_REF: ${{ github.sha }}
+
+      - name: Validate static export
+        run: |
+          test -f out/deploy-version.json
+          grep -Fq "$GITHUB_SHA" out/deploy-version.json
+          test -f out/template-previews/reports-marketing-campaign-analysis/slide-02.webp
+          grep -RFq "slide-02.webp" out/templates/reports-marketing-campaign-analysis/
 
       - name: Validate destination
         run: |
@@ -72,6 +88,25 @@ jobs:
 
       - name: Deploy to REG.RU
         run: |
-          rsync -az --delete \
+          rsync -az --delete --checksum \
             -e "ssh -p ${REG_PORT:-22}" \
             out/ "$REG_USER@$REG_HOST:$REG_DEPLOY_PATH/"
+
+      - name: Verify public deployment
+        run: |
+          version_url="https://www.ilkhim.ru/deploy-version.json?sha=$GITHUB_SHA"
+          asset_url="https://www.ilkhim.ru/template-previews/reports-marketing-campaign-analysis/slide-02.webp?sha=$GITHUB_SHA"
+
+          for attempt in 1 2 3 4 5 6; do
+            if curl --fail --silent --show-error "$version_url" | grep -Fq "$GITHUB_SHA" && \
+               curl --fail --silent --show-error --head "$asset_url" >/dev/null; then
+              echo "Production serves commit $GITHUB_SHA"
+              exit 0
+            fi
+            echo "Production is not updated yet (attempt $attempt/6)"
+            sleep 10
+          done
+
+          echo "REG.RU deploy completed, but www.ilkhim.ru does not serve commit $GITHUB_SHA"
+          echo "Check that REG_DEPLOY_PATH points to the document root used by www.ilkhim.ru"
+          exit 1

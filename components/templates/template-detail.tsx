@@ -1,12 +1,17 @@
 'use client'
 
-import { useEffect, useRef, useState, type TouchEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { CREATE_URL } from '@/components/hero-composer'
 import { getCategoryLabel, type TemplateRecord } from '@/lib/templates'
+import {
+  getTemplateAssetUrl,
+  getTemplateSlidesManifestUrl,
+  isTemplateSlidesManifest,
+} from '@/lib/template-assets'
 import { TemplateCard } from '@/components/templates/template-card'
 
 export function TemplateDetail({
@@ -16,7 +21,11 @@ export function TemplateDetail({
   template: TemplateRecord
   related: TemplateRecord[]
 }) {
-  const slides = template.slides.length > 0 ? template.slides : [template.cover]
+  const fallbackSlides = useMemo(
+    () => (template.slides.length > 0 ? template.slides : [template.cover]).map(getTemplateAssetUrl),
+    [template.cover, template.slides],
+  )
+  const [slides, setSlides] = useState(fallbackSlides)
   const hasMultipleSlides = slides.length > 1
   const [activeIndex, setActiveIndex] = useState(0)
   const [mainSlideHeight, setMainSlideHeight] = useState<number | null>(null)
@@ -27,6 +36,34 @@ export function TemplateDetail({
   const touchStartXRef = useRef<number | null>(null)
   const mainSlideRef = useRef<HTMLDivElement | null>(null)
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([])
+
+  // Read the committed manifest at runtime so the deployed viewer always
+  // reflects the slide list stored in Git. The compiled list remains a safe
+  // fallback for templates that do not have a manifest yet.
+  useEffect(() => {
+    const controller = new AbortController()
+    setSlides(fallbackSlides)
+    setActiveIndex(0)
+
+    fetch(getTemplateSlidesManifestUrl(template.slug), {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Template manifest returned ${response.status}`)
+        return response.json() as Promise<unknown>
+      })
+      .then((manifest) => {
+        if (!isTemplateSlidesManifest(manifest) || manifest.slug !== template.slug) return
+        setSlides(manifest.slides.map(getTemplateAssetUrl))
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        // The local list is intentionally retained when GitHub is unavailable.
+      })
+
+    return () => controller.abort()
+  }, [fallbackSlides, template.slug])
 
   // Mirror the main slide's rendered height onto the thumbnail panel so its
   // scroll area matches the visual height of the active slide exactly. Use

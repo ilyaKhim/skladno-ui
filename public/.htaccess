@@ -9,6 +9,10 @@ RewriteRule ^ https://www.ilkhim.ru%{REQUEST_URI} [R=308,L]
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
   Header always set Content-Security-Policy-Report-Only "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self'"
+
+  <FilesMatch "\.(?:html|json)$">
+    Header always set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
 </IfModule>
 
 <IfModule mod_expires.c>
@@ -18,6 +22,7 @@ RewriteRule ^ https://www.ilkhim.ru%{REQUEST_URI} [R=308,L]
   ExpiresByType font/woff2 "access plus 1 year"
   ExpiresByType image/svg+xml "access plus 1 month"
   ExpiresByType image/png "access plus 1 month"
+  ExpiresByType image/webp "access plus 1 year"
 </IfModule>
 
 <IfModule mod_deflate.c>
