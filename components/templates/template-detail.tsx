@@ -37,6 +37,15 @@ export function TemplateDetail({
   const mainSlideRef = useRef<HTMLDivElement | null>(null)
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([])
 
+  // Clicking a template card from the catalog always lands on a fresh
+  // instance of this page (new slug), so force the viewport to the top
+  // instantly instead of inheriting any scroll position Next.js or the
+  // browser tries to restore. The `behavior: 'auto'` option overrides the
+  // global `scroll-behavior: smooth` CSS so this never animates.
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }, [template.slug])
+
   // Read the committed manifest at runtime so the deployed viewer always
   // reflects the slide list stored in Git. The compiled list remains a safe
   // fallback for templates that do not have a manifest yet.

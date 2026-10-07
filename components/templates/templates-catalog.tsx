@@ -63,6 +63,8 @@ export function TemplatesCatalog() {
       }
 
       const queryString = params.toString()
+      // scroll: false keeps the user anchored to the catalog grid instead of
+      // jumping back up to the hero whenever a filter changes.
       router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
     },
     [category, pathname, query, router, searchParams],
@@ -93,7 +95,7 @@ export function TemplatesCatalog() {
 
   return (
     <section className="bg-background">
-      <div className="mx-auto max-w-6xl px-5 py-10 md:px-8 md:py-14">
+      <div className="mx-auto max-w-[1360px] px-5 py-8 md:px-8 md:py-10">
         <div className="relative w-full md:max-w-sm">
           <Search
             aria-hidden="true"
@@ -109,54 +111,52 @@ export function TemplatesCatalog() {
           />
         </div>
 
-        <nav
-          aria-label="Категории шаблонов"
-          className="examples-chip-row -mx-5 mt-6 overflow-x-auto px-5 pb-1 md:mx-0 md:overflow-visible md:px-0"
-        >
-          <div className="flex gap-2 whitespace-nowrap md:flex-wrap md:whitespace-normal">
-            {CATEGORY_OPTIONS.map((option) => {
-              const isActive = option.key === category
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => handleCategoryChange(option.key)}
-                  aria-current={isActive ? 'true' : undefined}
-                  className={cn(
-                    'shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2',
-                    isActive
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-card text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {option.label}
-                </button>
-              )
-            })}
-          </div>
-        </nav>
+        <div className="mt-8 flex flex-col gap-8 md:flex-row md:items-start md:gap-8 lg:gap-10">
+          <nav
+            aria-label="Категории шаблонов"
+            className="examples-chip-row -mx-5 overflow-x-auto px-5 pb-1 md:sticky md:top-20 md:mx-0 md:w-[220px] md:shrink-0 md:overflow-visible md:px-0 lg:w-[240px]"
+          >
+            <div className="flex gap-2 whitespace-nowrap md:flex-col md:gap-1 md:whitespace-normal">
+              {CATEGORY_OPTIONS.map((option) => {
+                const isActive = option.key === category
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => handleCategoryChange(option.key)}
+                    aria-current={isActive ? 'true' : undefined}
+                    className={cn(
+                      'shrink-0 rounded-full border px-4 py-2 text-left text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 md:w-full md:rounded-md md:border-0 md:border-l-2 md:px-3 md:py-2',
+                      isActive
+                        ? 'border-primary bg-primary text-primary-foreground md:border-l-primary md:bg-primary/10 md:text-primary'
+                        : 'border-border bg-card text-muted-foreground hover:text-foreground md:border-l-transparent md:bg-transparent md:text-foreground md:hover:bg-muted',
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+          </nav>
 
-        <p className="mt-6 text-sm text-muted-foreground" role="status">
-          {filteredTemplates.length > 0
-            ? `Найдено шаблонов: ${filteredTemplates.length}`
-            : 'По вашему запросу ничего не найдено'}
-        </p>
-
-        {filteredTemplates.length > 0 ? (
-          <ul className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredTemplates.map((template) => (
-              <li key={template.id}>
-                <TemplateCard template={template} />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="mt-4 rounded-2xl border border-dashed border-border bg-card p-10 text-center">
-            <p className="text-sm text-muted-foreground">
-              Попробуйте изменить запрос или выбрать другую категорию.
-            </p>
+          <div className="min-w-0 flex-1">
+            {filteredTemplates.length > 0 ? (
+              <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-5 lg:gap-6">
+                {filteredTemplates.map((template) => (
+                  <li key={template.id}>
+                    <TemplateCard template={template} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Попробуйте изменить запрос или выбрать другую категорию.
+                </p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </section>
   )
