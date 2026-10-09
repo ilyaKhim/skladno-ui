@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { LayoutGrid } from 'lucide-react'
 import { Wordmark } from '@/components/wordmark'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -10,7 +11,6 @@ import { cn } from '@/lib/utils'
 const nav = [
   { href: '/#how', label: 'Как работает' },
   { href: '/#examples', label: 'Примеры' },
-  { href: '/templates', label: 'Шаблоны', internal: true },
   { href: '/#capabilities', label: 'Возможности' },
 ]
 
@@ -48,31 +48,37 @@ export function SiteHeader() {
         </Link>
         <nav aria-label="Основная навигация" className="hidden lg:block">
           <ul className="flex items-center gap-6">
-            {nav.map((item) => {
-              const className = 'text-sm text-muted-foreground transition-colors hover:text-foreground'
-              return (
-                <li key={item.href}>
-                  {item.internal ? (
-                    <Link
-                      href={item.href}
-                      aria-current={isTemplatesActive ? 'page' : undefined}
-                      className={cn(className, isTemplatesActive && 'text-foreground')}
-                    >
-                      {item.label}
-                    </Link>
-                  ) : (
-                    <a href={item.href} className={className}>
-                      {item.label}
-                    </a>
-                  )}
-                </li>
-              )
-            })}
+            {nav.map((item) => (
+              <li key={item.href}>
+                <a
+                  href={item.href}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {item.label}
+                </a>
+              </li>
+            ))}
           </ul>
         </nav>
-        <div className="flex items-center gap-3">
-        <Button size="sm" nativeButton={false} render={<a href="#create" />}>
-          Создать презентацию
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            aria-label="Шаблоны"
+            aria-current={isTemplatesActive ? 'page' : undefined}
+            render={<Link href="/templates" scroll={true} />}
+            className={cn(
+              'text-muted-foreground',
+              isTemplatesActive &&
+                'border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
+            )}
+          >
+            <LayoutGrid aria-hidden="true" />
+            <span className="hidden sm:inline">Шаблоны</span>
+          </Button>
+          <Button size="sm" nativeButton={false} render={<a href="#create" />}>
+            Создать презентацию
           </Button>
         </div>
       </div>
