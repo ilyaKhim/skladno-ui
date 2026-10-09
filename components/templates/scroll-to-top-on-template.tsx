@@ -3,7 +3,7 @@
 import { useLayoutEffect } from 'react'
 import { usePathname } from 'next/navigation'
 
-const TEMPLATE_DETAIL_PATH = /^\/templates\/[^/]+\/?$/
+const TEMPLATES_PATH = /^\/templates(\/[^/]+)?\/?$/
 
 function resetScroll() {
   const root = document.documentElement
@@ -20,14 +20,16 @@ export function ScrollToTopOnTemplate() {
   const pathname = usePathname()
 
   useLayoutEffect(() => {
-    if (!TEMPLATE_DETAIL_PATH.test(pathname)) return
+    if (!TEMPLATES_PATH.test(pathname)) return
 
     resetScroll()
     // Next.js may restore or scroll-into-view after the first commit.
-    const frame = requestAnimationFrame(() => {
-      resetScroll()
-    })
-    return () => cancelAnimationFrame(frame)
+    const frame = requestAnimationFrame(resetScroll)
+    const late = window.setTimeout(resetScroll, 120)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(late)
+    }
   }, [pathname])
 
   return null
