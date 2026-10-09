@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { SiteFooter } from '@/components/site-footer'
 import { SiteHeader } from '@/components/site-header'
+import { ScrollToTopOnTemplate } from '@/components/templates/scroll-to-top-on-template'
 import { TemplateDetail } from '@/components/templates/template-detail'
 import { getPublishedTemplates, getRelatedTemplates, getTemplateBySlug } from '@/lib/templates'
 
@@ -43,6 +44,7 @@ export default async function TemplateDetailPage({
 
   return (
     <>
+      <ScrollToTopOnTemplate />
       <SiteHeader />
       <main>
         <TemplateDetail template={template} related={related} />
