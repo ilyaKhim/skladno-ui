@@ -2,17 +2,21 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Wordmark } from '@/components/wordmark'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const nav = [
-  { href: '#how', label: 'Как работает' },
-  { href: '#examples', label: 'Примеры' },
-  { href: '#capabilities', label: 'Возможности' },
+  { href: '/#how', label: 'Как работает' },
+  { href: '/#examples', label: 'Примеры' },
+  { href: '/templates', label: 'Шаблоны', internal: true },
+  { href: '/#capabilities', label: 'Возможности' },
 ]
 
 export function SiteHeader() {
+  const pathname = usePathname()
+  const isTemplatesActive = pathname === '/templates' || pathname.startsWith('/templates/')
   const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
@@ -44,16 +48,26 @@ export function SiteHeader() {
         </Link>
         <nav aria-label="Основная навигация" className="hidden lg:block">
           <ul className="flex items-center gap-6">
-            {nav.map((item) => (
-              <li key={item.href}>
-                <a
-                  href={item.href}
-                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
+            {nav.map((item) => {
+              const className = 'text-sm text-muted-foreground transition-colors hover:text-foreground'
+              return (
+                <li key={item.href}>
+                  {item.internal ? (
+                    <Link
+                      href={item.href}
+                      aria-current={isTemplatesActive ? 'page' : undefined}
+                      className={cn(className, isTemplatesActive && 'text-foreground')}
+                    >
+                      {item.label}
+                    </Link>
+                  ) : (
+                    <a href={item.href} className={className}>
+                      {item.label}
+                    </a>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </nav>
         <div className="flex items-center gap-3">
