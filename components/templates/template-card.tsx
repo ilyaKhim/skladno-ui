@@ -1,13 +1,18 @@
 import Link from 'next/link'
 import type { TemplateRecord } from '@/lib/templates'
 import { getTemplateAssetUrl } from '@/lib/template-assets'
+import { cn } from '@/lib/utils'
+import { focusRing } from '@/lib/focus-ring'
 
 export function TemplateCard({ template }: { template: TemplateRecord }) {
   return (
     <Link
       href={`/templates/${template.slug}`}
       aria-label={`Открыть шаблон «${template.title}»`}
-      className="group flex h-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2"
+      className={cn(
+        'group flex h-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-md',
+        focusRing,
+      )}
     >
       <span
         className="block overflow-hidden border-b border-border bg-muted p-3"

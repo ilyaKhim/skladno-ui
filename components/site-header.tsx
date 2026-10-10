@@ -7,6 +7,7 @@ import { LayoutGrid } from 'lucide-react'
 import { Wordmark } from '@/components/wordmark'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { focusRing } from '@/lib/focus-ring'
 
 const nav = [
   { href: '/#how', label: 'Как работает' },
@@ -41,8 +42,9 @@ export function SiteHeader() {
         )}
       >
         <Link
-          href="#top"
-          className="shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-ring"
+          href={pathname === '/' ? '/#top' : '/'}
+          aria-label="GoDeck — на главную"
+          className={cn('shrink-0 rounded-sm', focusRing)}
         >
           <Wordmark />
         </Link>
@@ -52,7 +54,10 @@ export function SiteHeader() {
               <li key={item.href}>
                 <a
                   href={item.href}
-                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  className={cn(
+                    'rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground',
+                    focusRing,
+                  )}
                 >
                   {item.label}
                 </a>
@@ -70,6 +75,7 @@ export function SiteHeader() {
             render={<Link href="/templates" scroll={true} />}
             className={cn(
               'text-muted-foreground',
+              focusRing,
               isTemplatesActive &&
                 'border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
             )}
@@ -77,7 +83,7 @@ export function SiteHeader() {
             <LayoutGrid aria-hidden="true" />
             <span className="hidden sm:inline">Шаблоны</span>
           </Button>
-          <Button size="sm" nativeButton={false} render={<a href="#create" />}>
+          <Button size="sm" nativeButton={false} className={focusRing} render={<a href="#create" />}>
             Создать презентацию
           </Button>
         </div>
