@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Search } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { Search, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { focusRing } from '@/lib/focus-ring'
 import { TEMPLATE_CATEGORIES, getPublishedTemplates, type TemplateCategoryKey } from '@/lib/templates'
 import { TemplateCard } from '@/components/templates/template-card'
 
@@ -14,6 +15,8 @@ const CATEGORY_OPTIONS: { key: CategoryFilter; label: string }[] = [
   { key: 'all', label: 'Все шаблоны' },
   ...TEMPLATE_CATEGORIES.map((category) => ({ key: category.key as CategoryFilter, label: category.label })),
 ]
+
+const POPULAR_QUERIES = ['Отчёт', 'Коммерческое предложение', 'Стратегия', 'Питч', 'Маркетинг']
 
 const PUBLISHED_TEMPLATES = getPublishedTemplates()
 
@@ -25,6 +28,7 @@ export function TemplatesCatalog() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const categoryFromUrl = searchParams.get('category')
   const queryFromUrl = searchParams.get('q') ?? ''
@@ -32,6 +36,8 @@ export function TemplatesCatalog() {
   const [category, setCategory] = useState<CategoryFilter>(
     isCategoryFilter(categoryFromUrl) ? categoryFromUrl : 'all',
   )
+  // `draft` is what is typed in the field; `query` is the applied search.
+  const [draft, setDraft] = useState(queryFromUrl)
   const [query, setQuery] = useState(queryFromUrl)
 
   // Keeps local state in sync when the URL changes from outside this
@@ -42,15 +48,14 @@ export function TemplatesCatalog() {
 
   useEffect(() => {
     setQuery(queryFromUrl)
+    setDraft(queryFromUrl)
   }, [queryFromUrl])
 
   const updateUrl = useCallback(
-    (next: { category?: CategoryFilter; q?: string }) => {
+    (nextCategory: CategoryFilter, nextQuery: string) => {
       const params = new URLSearchParams(searchParams.toString())
-      const nextCategory = next.category ?? category
-      const nextQuery = next.q ?? query
 
-      if (nextCategory && nextCategory !== 'all') {
+      if (nextCategory !== 'all') {
         params.set('category', nextCategory)
       } else {
         params.delete('category')
@@ -63,21 +68,34 @@ export function TemplatesCatalog() {
       }
 
       const queryString = params.toString()
-      // scroll: false keeps the user anchored to the catalog grid instead of
-      // jumping back up to the hero whenever a filter changes.
+      // scroll: false keeps the page position when a filter changes.
       router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
     },
-    [category, pathname, query, router, searchParams],
+    [pathname, router, searchParams],
   )
+
+  function applySearch(value: string) {
+    const next = value.trim()
+    setDraft(value)
+    setQuery(next)
+    updateUrl(category, next)
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    applySearch(draft)
+  }
+
+  function handleClear() {
+    setDraft('')
+    setQuery('')
+    updateUrl(category, '')
+    inputRef.current?.focus()
+  }
 
   function handleCategoryChange(key: CategoryFilter) {
     setCategory(key)
-    updateUrl({ category: key })
-  }
-
-  function handleQueryChange(value: string) {
-    setQuery(value)
-    updateUrl({ q: value })
+    updateUrl(key, query)
   }
 
   const filteredTemplates = useMemo(() => {
@@ -96,27 +114,82 @@ export function TemplatesCatalog() {
   return (
     <section className="bg-background">
       <div className="mx-auto max-w-[1360px] px-5 py-8 md:px-8 md:py-10">
-        <div className="relative w-full md:max-w-sm">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(event) => handleQueryChange(event.target.value)}
-            placeholder="Поиск по названию или задаче"
-            aria-label="Поиск шаблона по названию или назначению"
-            className="h-10 pl-9"
-          />
+        <div className="mx-auto w-full max-w-[1040px] px-1">
+          <form role="search" onSubmit={handleSubmit} className="flex items-center gap-3 md:gap-5">
+            <div className="relative min-w-0 flex-1">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
+              />
+              <input
+                ref={inputRef}
+                type="text"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                enterKeyHint="search"
+                autoComplete="off"
+                placeholder="Например: отчёт, коммерческое предложение, стратегия…"
+                aria-label="Поиск шаблона по названию или назначению"
+                className={cn(
+                  'h-12 w-full rounded-xl border border-border bg-muted/50 pl-12 pr-12 text-base text-foreground placeholder:text-muted-foreground focus-visible:border-primary md:h-14',
+                  focusRing,
+                )}
+              />
+              {draft ? (
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  aria-label="Очистить поиск"
+                  className={cn(
+                    'absolute right-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                    focusRing,
+                  )}
+                >
+                  <X aria-hidden="true" className="size-4" />
+                </button>
+              ) : null}
+            </div>
+            <Button
+              type="submit"
+              className={cn(
+                'h-12 shrink-0 rounded-xl px-5 text-base font-semibold hover:brightness-90 md:h-14 md:px-9',
+                focusRing,
+              )}
+            >
+              Найти
+            </Button>
+          </form>
+
+          <div
+            role="group"
+            aria-labelledby="popular-queries-label"
+            className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
+          >
+            <span id="popular-queries-label" className="font-semibold text-foreground">
+              Популярные запросы:
+            </span>
+            {POPULAR_QUERIES.map((popular) => (
+              <button
+                key={popular}
+                type="button"
+                onClick={() => applySearch(popular)}
+                className={cn(
+                  'rounded-sm py-1 text-muted-foreground transition-colors hover:text-primary',
+                  focusRing,
+                )}
+              >
+                {popular}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="mt-8 flex flex-col gap-8 md:flex-row md:items-start md:gap-8 lg:gap-10">
+        <div className="mt-8 flex flex-col gap-8 md:mt-10 md:flex-row md:items-start md:gap-8 lg:gap-10">
           <nav
             aria-label="Категории шаблонов"
-            className="examples-chip-row -mx-5 overflow-x-auto px-5 pb-1 md:sticky md:top-20 md:mx-0 md:w-[220px] md:shrink-0 md:overflow-visible md:px-0 lg:w-[240px]"
+            className="examples-chip-row -mx-5 overflow-x-auto px-5 py-1.5 md:sticky md:top-20 md:mx-0 md:w-[220px] md:shrink-0 md:overflow-visible md:px-0 md:py-0 lg:w-[240px]"
           >
-            <div className="flex gap-2 whitespace-nowrap md:flex-col md:gap-1 md:whitespace-normal">
+            <div className="flex gap-2 whitespace-nowrap md:flex-col md:gap-1.5 md:whitespace-normal">
               {CATEGORY_OPTIONS.map((option) => {
                 const isActive = option.key === category
                 return (
@@ -124,9 +197,10 @@ export function TemplatesCatalog() {
                     key={option.key}
                     type="button"
                     onClick={() => handleCategoryChange(option.key)}
-                    aria-current={isActive ? 'true' : undefined}
+                    aria-pressed={isActive}
                     className={cn(
-                      'shrink-0 rounded-full border px-4 py-2 text-left text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 md:w-full md:rounded-md md:border-0 md:border-l-2 md:px-3 md:py-2',
+                      'shrink-0 rounded-full border px-4 py-2 text-left text-sm font-medium transition-colors duration-200 md:w-full md:rounded-md md:border-0 md:border-l-2 md:px-3 md:py-2',
+                      focusRing,
                       isActive
                         ? 'border-primary bg-primary text-primary-foreground md:border-l-primary md:bg-primary/10 md:text-primary'
                         : 'border-border bg-card text-muted-foreground hover:text-foreground md:border-l-transparent md:bg-transparent md:text-foreground md:hover:bg-muted',
@@ -149,9 +223,9 @@ export function TemplatesCatalog() {
                 ))}
               </ul>
             ) : (
-              <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center">
+              <div role="status" className="rounded-2xl bg-muted p-10 text-center">
                 <p className="text-sm text-muted-foreground">
-                  Попробуйте изменить запрос или выбрать другую категорию.
+                  Ничего не найдено. Попробуйте другой запрос.
                 </p>
               </div>
             )}

@@ -1,9 +1,11 @@
 import { Wordmark } from '@/components/wordmark'
+import { cn } from '@/lib/utils'
+import { focusRing } from '@/lib/focus-ring'
 
 const links = [
-  { href: '#how', label: 'Как это работает' },
-  { href: '#examples', label: 'Примеры' },
-  { href: '#capabilities', label: 'Возможности' },
+  { href: '/#how', label: 'Как это работает' },
+  { href: '/#examples', label: 'Примеры' },
+  { href: '/#capabilities', label: 'Возможности' },
 ]
 
 export function SiteFooter() {
@@ -18,7 +20,10 @@ export function SiteFooter() {
               <li key={link.href}>
                 <a
                   href={link.href}
-                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  className={cn(
+                    'rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground',
+                    focusRing,
+                  )}
                 >
                   {link.label}
                 </a>
@@ -37,7 +42,7 @@ export function SiteFooter() {
               href="https://www.slidescarnival.com/"
               target="_blank"
               rel="noreferrer noopener"
-              className="underline underline-offset-2 hover:text-muted-foreground"
+              className={cn('rounded-sm underline underline-offset-2 hover:text-muted-foreground', focusRing)}
             >
               SlidesCarnival
             </a>{' '}
@@ -46,7 +51,7 @@ export function SiteFooter() {
               href="https://creativecommons.org/licenses/by/4.0/"
               target="_blank"
               rel="noreferrer noopener"
-              className="underline underline-offset-2 hover:text-muted-foreground"
+              className={cn('rounded-sm underline underline-offset-2 hover:text-muted-foreground', focusRing)}
             >
               CC BY 4.0
             </a>
