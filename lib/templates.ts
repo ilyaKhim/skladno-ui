@@ -116,7 +116,7 @@ export const TEMPLATES: TemplateRecord[] = [
     description: 'Лаконичное коммерческое предложение: суть услуги, условия и следующий шаг для клиента.',
     cover: slidePath('proposals-simple-business-proposal', 1),
     slides: makeSlides('proposals-simple-business-proposal', 17),
-    tags: ['КП', 'Бизнес', 'Продажи'],
+    tags: ['КП', 'Коммерческое предложение', 'Бизнес', 'Продажи'],
     status: 'published',
     useCases: [
       'Коммерческое предложение новому клиенту',
@@ -132,7 +132,7 @@ export const TEMPLATES: TemplateRecord[] = [
     description: 'Коммерческое предложение для IT- и software-продуктов: функциональность, тарифы, внедрение.',
     cover: slidePath('proposals-it-software-sales-proposal', 1),
     slides: makeSlides('proposals-it-software-sales-proposal', 14),
-    tags: ['КП', 'IT', 'SaaS'],
+    tags: ['КП', 'Коммерческое предложение', 'IT', 'SaaS'],
     status: 'published',
     useCases: [
       'Продажа программного продукта',
@@ -148,7 +148,7 @@ export const TEMPLATES: TemplateRecord[] = [
     description: 'Предложение по PR-услугам: стратегия коммуникаций, каналы и ожидаемый результат.',
     cover: slidePath('proposals-public-relations-proposal', 1),
     slides: makeSlides('proposals-public-relations-proposal', 19),
-    tags: ['КП', 'PR', 'Коммуникации'],
+    tags: ['КП', 'Коммерческое предложение', 'PR', 'Коммуникации'],
     status: 'published',
     useCases: [
       'Предложение PR-стратегии клиенту',
@@ -260,7 +260,7 @@ export const TEMPLATES: TemplateRecord[] = [
     description: 'Питч-дек в ярком стиле для презентации продукта или бизнеса инвесторам.',
     cover: slidePath('sales-stylish-pitch-deck', 1),
     slides: makeSlides('sales-stylish-pitch-deck', 38),
-    tags: ['Питч', 'Инвесторы', 'Продукт'],
+    tags: ['Питч', 'Pitch', 'Инвесторы', 'Продукт'],
     status: 'published',
     useCases: [
       'Питч стартапа инвесторам',
@@ -276,7 +276,7 @@ export const TEMPLATES: TemplateRecord[] = [
     description: 'Минималистичный питч-дек, где акцент на фактах и цифрах, а не на оформлении.',
     cover: slidePath('sales-minimalist-pitch-deck', 1),
     slides: makeSlides('sales-minimalist-pitch-deck', 18),
-    tags: ['Питч', 'Минимализм', 'Продажи'],
+    tags: ['Питч', 'Pitch', 'Минимализм', 'Продажи'],
     status: 'published',
     useCases: [
       'Короткий питч на встрече',
@@ -292,7 +292,7 @@ export const TEMPLATES: TemplateRecord[] = [
     description: 'Элегантный питч-дек для брендов и продуктов с фокусом на визуальную подачу.',
     cover: slidePath('sales-elegant-pitch-deck', 1),
     slides: makeSlides('sales-elegant-pitch-deck', 34),
-    tags: ['Питч', 'Бренд', 'Дизайн'],
+    tags: ['Питч', 'Pitch', 'Бренд', 'Дизайн'],
     status: 'published',
     useCases: ['Презентация бренда партнёрам', 'Питч премиального продукта', 'Дек для встречи с инвестором'],
   },
@@ -336,7 +336,7 @@ export const TEMPLATES: TemplateRecord[] = [
     description: 'Исследование B2B-рынка: сегменты клиентов, потребности и конкурентное окружение.',
     cover: slidePath('research-b2b-market-research', 1),
     slides: makeSlides('research-b2b-market-research', 20),
-    tags: ['Исследова����ие', 'B2B', 'Сегменты'],
+    tags: ['Исследование', 'B2B', 'Сегменты'],
     status: 'published',
     useCases: [
       'Анализ B2B-сегментов перед запуском продукта',

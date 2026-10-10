@@ -6,6 +6,7 @@ import { Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { focusRing } from '@/lib/focus-ring'
+import { buildTemplateSearchIndex, matchesSearchQuery } from '@/lib/search'
 import { TEMPLATE_CATEGORIES, getPublishedTemplates, type TemplateCategoryKey } from '@/lib/templates'
 import { TemplateCard } from '@/components/templates/template-card'
 
@@ -19,6 +20,10 @@ const CATEGORY_OPTIONS: { key: CategoryFilter; label: string }[] = [
 const POPULAR_QUERIES = ['Отчёт', 'Коммерческое предложение', 'Стратегия', 'Питч', 'Маркетинг']
 
 const PUBLISHED_TEMPLATES = getPublishedTemplates()
+
+const SEARCH_INDEX = new Map(
+  PUBLISHED_TEMPLATES.map((template) => [template.slug, buildTemplateSearchIndex(template)]),
+)
 
 function isCategoryFilter(value: string | null): value is CategoryFilter {
   return value !== null && CATEGORY_OPTIONS.some((option) => option.key === value)
@@ -98,18 +103,15 @@ export function TemplatesCatalog() {
     updateUrl(key, query)
   }
 
-  const filteredTemplates = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase()
-    return PUBLISHED_TEMPLATES.filter((template) => {
-      const matchesCategory = category === 'all' || template.category === category
-      if (!matchesCategory) return false
-      if (!normalizedQuery) return true
-      const haystack = [template.title, template.description, ...template.tags, ...template.useCases]
-        .join(' ')
-        .toLowerCase()
-      return haystack.includes(normalizedQuery)
-    })
-  }, [category, query])
+  const filteredTemplates = useMemo(
+    () =>
+      PUBLISHED_TEMPLATES.filter((template) => {
+        const matchesCategory = category === 'all' || template.category === category
+        if (!matchesCategory) return false
+        return matchesSearchQuery(SEARCH_INDEX.get(template.slug) ?? '', query)
+      }),
+    [category, query],
+  )
 
   return (
     <section className="bg-background">
