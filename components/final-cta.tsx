@@ -26,7 +26,7 @@ const PLANS: readonly Plan[] = [
   {
     name: 'Подписка',
     tagline: 'Для регулярной работы с презентациями',
-    price: 'X XXX ₽',
+    price: '1 499 ₽',
     period: 'в месяц',
     features: [
       'Презентации для регулярных рабочих задач',
@@ -42,10 +42,10 @@ export function FinalCta() {
     <section id="final-cta" className="relative overflow-hidden border-b border-border bg-navy text-navy-foreground scroll-mt-16">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-1/3 right-0 size-[560px] rounded-full bg-primary/25 blur-[120px]"
+        className="pointer-events-none absolute -top-1/3 right-0 size-140 rounded-full bg-primary/25 blur-[120px]"
       />
 
-      <div className="relative mx-auto flex max-w-[1200px] flex-col gap-10 px-5 py-16 md:gap-12 md:px-8 md:py-[88px] lg:py-24">
+      <div className="relative mx-auto flex max-w-300 flex-col gap-10 px-5 py-16 md:gap-12 md:px-8 md:py-22 lg:py-24">
         <div className="flex flex-col gap-3 text-center md:mx-auto md:max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-navy-foreground/60">Начни сейчас</p>
           <h2 className="font-display text-[2rem] font-bold leading-[1.1] tracking-tight text-balance md:text-[2.75rem] md:leading-[1.08]">
@@ -60,7 +60,7 @@ export function FinalCta() {
           {PLANS.map((plan) => (
             <div
               key={plan.name}
-              className="flex h-full flex-col gap-6 rounded-3xl border border-navy-foreground/[0.16] bg-navy-foreground/[0.07] p-7 md:p-8"
+              className="flex h-full flex-col gap-6 rounded-3xl border border-navy-foreground/16 bg-navy-foreground/[0.07] p-7 md:p-8"
             >
               <div className="flex flex-col gap-1.5">
                 <h3 className="font-display text-xl font-semibold text-navy-foreground md:text-2xl">{plan.name}</h3>
