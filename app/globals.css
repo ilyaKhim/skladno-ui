@@ -297,11 +297,15 @@
 
 .examples-carousel-viewport {
   position: relative;
-  width: 100%;
-  max-width: 100%;
+  /* 4px side padding offset by an equal negative margin leaves room for the
+  focus ring (2px ring + 2px offset) without moving or resizing the cards. */
+  width: calc(100% + 8px);
+  max-width: calc(100% + 8px);
   min-width: 0;
+  margin-inline: -4px;
+  padding-inline: 4px;
   overflow: hidden;
-}
+  }
 
 /* Used only when prefers-reduced-motion is on: auto-scroll is disabled,
    so the viewport becomes manually scrollable/swipeable instead. */
