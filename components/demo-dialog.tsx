@@ -13,7 +13,7 @@ function CalendarFrame() {
   const [loaded, setLoaded] = useState(false)
 
   return (
-    <div className="relative min-h-0 flex-1 bg-background">
+    <div className="relative min-h-0 flex-1 overflow-hidden bg-background">
       {!loaded && (
         <div role="status" className="absolute inset-0 z-10 flex flex-col gap-5 bg-background p-6 sm:p-8">
           <span className="sr-only">Загружаем календарь записи…</span>
@@ -38,7 +38,8 @@ function CalendarFrame() {
       <iframe
         src={PLANERKA_DEMO_URL}
         title="Запись на демо GoDeck"
-        loading="lazy"
+        scrolling="yes"
+        loading="eager"
         allow="clipboard-write; payment; fullscreen"
         onLoad={() => setLoaded(true)}
         className="block h-full w-full border-0"
@@ -61,39 +62,45 @@ export function DemoDialog({
       <DialogContent
         finalFocus={finalFocus}
         className={cn(
-          'h-[min(800px,calc(100dvh-48px))] w-[min(1100px,calc(100vw-48px))]',
-          'max-sm:top-0 max-sm:left-0 max-sm:h-dvh max-sm:w-screen max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0',
+          'h-[calc(100dvh-24px)] max-h-[calc(100dvh-24px)] min-h-0 w-[min(1200px,calc(100vw-32px))] max-w-none gap-0 p-0',
+          'max-sm:top-0 max-sm:left-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-screen max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0',
           'max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]',
         )}
       >
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-          <div className="flex min-w-0 flex-col gap-1">
-            <DialogTitle>Записаться на демо GoDeck</DialogTitle>
-            <DialogDescription>
-              Выберите удобное время — покажем продукт и ответим на вопросы
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3 sm:px-6">
+          <div className="flex min-w-0 items-baseline gap-3">
+            <DialogTitle className="shrink-0">
+              <span className="sm:hidden">Запись на демо</span>
+              <span className="hidden sm:inline">Записаться на демо GoDeck</span>
+            </DialogTitle>
+            <DialogDescription className="hidden truncate md:block [@media(max-height:799px)]:hidden">
+              Выберите удобное время
             </DialogDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             <a
               href={PLANERKA_DEMO_URL}
               target="_blank"
               rel="noopener noreferrer"
               className={cn(
-                'mt-1 inline-flex w-fit items-center gap-1 rounded-sm text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground',
+                'inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground max-sm:size-9 max-sm:justify-center max-sm:px-0',
                 focusRing,
               )}
             >
-              Открыть в новой вкладке
-              <ExternalLink aria-hidden="true" className="size-3.5" />
+              <span className="max-sm:sr-only">Открыть отдельно</span>
+              <ExternalLink aria-hidden="true" className="size-4" />
+              <span className="sr-only">(в новой вкладке)</span>
             </a>
+            <DialogClose
+              aria-label="Закрыть"
+              className={cn(
+                'inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                focusRing,
+              )}
+            >
+              <X aria-hidden="true" className="size-5" />
+            </DialogClose>
           </div>
-          <DialogClose
-            aria-label="Закрыть"
-            className={cn(
-              'inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-              focusRing,
-            )}
-          >
-            <X aria-hidden="true" className="size-5" />
-          </DialogClose>
         </div>
         <CalendarFrame />
       </DialogContent>
