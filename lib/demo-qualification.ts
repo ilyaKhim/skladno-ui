@@ -201,22 +201,38 @@ export function saveDemoQualification(data: DemoQualification): void {
   }
 }
 
-export type DemoQualificationPayload = {
-  source: 'demo-modal'
-  submittedAt: string
-  answers: DemoQualification
+export const PLANERKA_DEMO_URL =
+  process.env.NEXT_PUBLIC_PLANERKA_DEMO_URL ?? 'https://planerka.app/ilya-himchenko-flk6ha/30min'
+
+const PLANERKA_QUALIFICATION_PARAM = 'qualification'
+const SUMMARY_SOURCE = 'Источник: GoDeck landing'
+
+export const SKIPPED_QUALIFICATION_SUMMARY = `Анкета пропущена | ${SUMMARY_SOURCE}`
+
+function labelFor(step: DemoQuestionStep, value: string | undefined): string {
+  return DEMO_QUESTIONS[step].options.find((option) => option.value === value)?.label ?? ''
 }
 
-export function buildDemoQualificationPayload(data: DemoQualification): DemoQualificationPayload {
-  return { source: 'demo-modal', submittedAt: new Date().toISOString(), answers: data }
+export function buildQualificationSummary(data: DemoQualification): string {
+  const useCases = data.useCases.map((value) => labelFor('use-case', value)).filter(Boolean)
+
+  return [
+    `Роль: ${labelFor('role', data.role)}`,
+    `Презентации: ${useCases.join(', ')}`,
+    `Основная проблема: ${labelFor('pain', data.pain)}`,
+    `Частота: ${labelFor('frequency', data.frequency)}`,
+    `Масштаб: ${labelFor('team', data.teamSize)}`,
+    SUMMARY_SOURCE,
+  ].join(' | ')
 }
 
-/**
- * Single entry point for passing qualification answers on. It intentionally sends nothing yet:
- * connect a webhook or CRM here (e.g. POST the payload to a route handler) without touching the UI.
- * It must never block the booking flow, so callers do not depend on the result.
- */
-export async function submitDemoQualification(data: DemoQualification): Promise<void> {
-  const payload = buildDemoQualificationPayload(data)
-  void payload
+/** The only place that turns a qualification summary into a Planerka booking URL. */
+export function buildPlanerkaBookingUrl(summary: string): string {
+  const url = new URL(PLANERKA_DEMO_URL)
+  url.searchParams.set(PLANERKA_QUALIFICATION_PARAM, summary)
+  return url.toString()
+}
+
+export function getPlanerkaBookingUrl(data: DemoQualification, skipped: boolean): string {
+  return buildPlanerkaBookingUrl(skipped ? SKIPPED_QUALIFICATION_SUMMARY : buildQualificationSummary(data))
 }

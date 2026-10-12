@@ -1,29 +1,27 @@
 'use client'
 
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { ArrowLeft, ChevronLeft, ExternalLink, X } from 'lucide-react'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { CalendarFrame, PLANERKA_DEMO_URL } from '@/components/demo/calendar-frame'
+import { CalendarFrame } from '@/components/demo/calendar-frame'
 import { IntroStep } from '@/components/demo/intro-step'
 import { QuestionStep } from '@/components/demo/question-step'
 import { ResultStep } from '@/components/demo/result-step'
 import {
   DEMO_QUESTION_STEPS,
   EMPTY_QUALIFICATION,
+  getPlanerkaBookingUrl,
   isQualificationComplete,
   isQuestionAnswered,
   loadDemoQualification,
   saveDemoQualification,
-  submitDemoQualification,
   type DemoModalStep,
   type DemoQualification,
   type DemoQuestionStep,
 } from '@/lib/demo-qualification'
 import { cn } from '@/lib/utils'
 import { focusRing } from '@/lib/focus-ring'
-
-export { PLANERKA_DEMO_URL }
 
 const QUESTION_COUNT = DEMO_QUESTION_STEPS.length
 
@@ -47,6 +45,7 @@ export function DemoDialog({
 }) {
   const [step, setStep] = useState<DemoModalStep>('intro')
   const [data, setData] = useState<DemoQualification>(EMPTY_QUALIFICATION)
+  const [skipped, setSkipped] = useState(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
 
   useEffect(() => {
@@ -70,6 +69,7 @@ export function DemoDialog({
   }, [step, open])
 
   const booking = step === 'booking'
+  const bookingUrl = useMemo(() => getPlanerkaBookingUrl(data, skipped), [data, skipped])
   const questionIndex = isQuestionStep(step) ? DEMO_QUESTION_STEPS.indexOf(step) : -1
 
   function updateData(patch: Partial<DemoQualification>) {
@@ -89,7 +89,12 @@ export function DemoDialog({
   }
 
   function continueToBooking() {
-    submitDemoQualification(data).catch(() => {})
+    setSkipped(false)
+    setStep('booking')
+  }
+
+  function skipToBooking() {
+    setSkipped(true)
     setStep('booking')
   }
 
@@ -98,7 +103,10 @@ export function DemoDialog({
       open={open}
       onOpenChange={onOpenChange}
       onOpenChangeComplete={(isOpen) => {
-        if (!isOpen) setStep('intro')
+        if (!isOpen) {
+          setStep('intro')
+          setSkipped(false)
+        }
       }}
     >
       <DialogContent
@@ -151,7 +159,7 @@ export function DemoDialog({
                   <span className="hidden sm:inline">Вернуться к ответам</span>
                 </button>
                 <a
-                  href={PLANERKA_DEMO_URL}
+                  href={bookingUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={cn(
@@ -191,7 +199,7 @@ export function DemoDialog({
             <IntroStep
               headingRef={headingRef}
               onStart={() => setStep('role')}
-              onSkip={() => setStep('booking')}
+              onSkip={skipToBooking}
             />
           )}
           {isQuestionStep(step) && (
@@ -220,7 +228,7 @@ export function DemoDialog({
               onEdit={() => setStep('role')}
             />
           )}
-          {booking && <CalendarFrame />}
+          {booking && <CalendarFrame src={bookingUrl} />}
         </div>
       </DialogContent>
     </Dialog>

@@ -2,10 +2,7 @@
 
 import { useState } from 'react'
 
-export const PLANERKA_DEMO_URL =
-  process.env.NEXT_PUBLIC_PLANERKA_DEMO_URL ?? 'https://planerka.app/ilya-himchenko-flk6ha/30min'
-
-export function CalendarFrame() {
+export function CalendarFrame({ src }: { src: string }) {
   const [loaded, setLoaded] = useState(false)
 
   return (
@@ -32,7 +29,7 @@ export function CalendarFrame() {
         </div>
       )}
       <iframe
-        src={PLANERKA_DEMO_URL}
+        src={src}
         title="Запись на демо GoDeck"
         scrolling="yes"
         loading="eager"
