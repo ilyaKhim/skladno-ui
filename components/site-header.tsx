@@ -7,7 +7,7 @@ import { Menu, X } from 'lucide-react'
 import { Wordmark } from '@/components/wordmark'
 import { Button } from '@/components/ui/button'
 import { CREATE_URL } from '@/components/hero-composer'
-import { DemoDialog } from '@/components/demo-dialog'
+import { useDemoDialog } from '@/components/demo-dialog-provider'
 import { cn } from '@/lib/utils'
 import { focusRing } from '@/lib/focus-ring'
 
@@ -32,12 +32,11 @@ export function SiteHeader() {
   const isTemplatesActive = pathname === '/templates' || pathname.startsWith('/templates/')
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [demoOpen, setDemoOpen] = useState(false)
+  const { openDemo: openDemoDialog } = useDemoDialog()
 
   const headerRef = useRef<HTMLElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const demoButtonRef = useRef<HTMLButtonElement>(null)
-  const demoReturnFocusRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
@@ -72,11 +71,13 @@ export function SiteHeader() {
     }
   }, [menuOpen])
 
-  const openDemo = useCallback((returnTo: HTMLElement | null) => {
-    demoReturnFocusRef.current = returnTo
-    setMenuOpen(false)
-    setDemoOpen(true)
-  }, [])
+  const openDemo = useCallback(
+    (returnTo: HTMLElement | null) => {
+      setMenuOpen(false)
+      openDemoDialog(returnTo)
+    },
+    [openDemoDialog],
+  )
 
   return (
     <header
@@ -206,8 +207,6 @@ export function SiteHeader() {
           </nav>
         </div>
       )}
-
-      <DemoDialog open={demoOpen} onOpenChange={setDemoOpen} finalFocus={demoReturnFocusRef} />
     </header>
   )
 }

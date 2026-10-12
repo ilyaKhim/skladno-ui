@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter, Manrope } from 'next/font/google'
+import { DemoDialogProvider } from '@/components/demo-dialog-provider'
 import './globals.css'
 
 const manrope = Manrope({
@@ -42,7 +43,7 @@ export default function RootLayout({
   return (
     <html lang="ru" className={`bg-background ${manrope.variable} ${inter.variable}`}>
       <body className="font-sans antialiased">
-        {children}
+        <DemoDialogProvider>{children}</DemoDialogProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

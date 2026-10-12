@@ -1,6 +1,7 @@
 import { ArrowRight, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CREATE_URL } from '@/components/hero-composer'
+import { DemoOfferPanel } from '@/components/demo-offer-panel'
 
 type Plan = {
   name: string
@@ -13,8 +14,8 @@ type Plan = {
 
 const PLANS: readonly Plan[] = [
   {
-    name: 'Демо',
-    tagline: 'Чтобы попробовать GoDeck на реальной задаче',
+    name: 'Пробная версия',
+    tagline: 'Чтобы самостоятельно попробовать GoDeck на реальной задаче',
     price: '0 ₽',
     features: [
       'Одна демонстрационная презентация',
@@ -52,43 +53,47 @@ export function FinalCta() {
             Не начинай следующую презентацию с пустого слайда
           </h2>
           <p className="text-base leading-relaxed text-navy-foreground/70 text-pretty md:text-lg">
-            Попробуй GoDeck на демо или выбери подписку для регулярной работы.
+            Попробуй GoDeck самостоятельно или выбери подписку для регулярной работы.
           </p>
         </div>
 
-        <div className="grid gap-5 md:grid-cols-2 md:gap-6 md:items-stretch">
-          {PLANS.map((plan) => (
-            <div
-              key={plan.name}
-              className="flex h-full flex-col gap-6 rounded-3xl border border-navy-foreground/16 bg-navy-foreground/[0.07] p-7 md:p-8"
-            >
-              <div className="flex flex-col gap-1.5">
-                <h3 className="font-display text-xl font-semibold text-navy-foreground md:text-2xl">{plan.name}</h3>
-                <p className="text-sm text-navy-foreground/60">{plan.tagline}</p>
+        <div className="flex flex-col gap-5 md:gap-6">
+          <DemoOfferPanel />
+
+          <div className="grid gap-5 md:grid-cols-2 md:gap-6 md:items-stretch">
+            {PLANS.map((plan) => (
+              <div
+                key={plan.name}
+                className="flex h-full flex-col gap-6 rounded-3xl border border-navy-foreground/16 bg-navy-foreground/[0.07] p-7 md:p-8"
+              >
+                <div className="flex flex-col gap-1.5">
+                  <h3 className="font-display text-xl font-semibold text-navy-foreground md:text-2xl">{plan.name}</h3>
+                  <p className="text-sm text-navy-foreground/60">{plan.tagline}</p>
+                </div>
+
+                <div className="flex items-baseline gap-2">
+                  <span className="font-display text-3xl font-bold text-navy-foreground md:text-4xl">{plan.price}</span>
+                  {plan.period ? <span className="text-sm text-navy-foreground/60">{plan.period}</span> : null}
+                </div>
+
+                <ul className="flex flex-1 flex-col gap-3">
+                  {plan.features.map((feature) => (
+                    <li key={feature} className="flex items-start gap-3">
+                      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-navy-foreground/10">
+                        <Check aria-hidden="true" className="size-3 text-navy-foreground/80" />
+                      </span>
+                      <p className="text-sm leading-relaxed text-navy-foreground/75 text-pretty">{feature}</p>
+                    </li>
+                  ))}
+                </ul>
+
+                <Button size="lg" className="w-full gap-1.5" nativeButton={false} render={<a href={CREATE_URL} />}>
+                  {plan.cta}
+                  <ArrowRight aria-hidden="true" className="size-4" />
+                </Button>
               </div>
-
-              <div className="flex items-baseline gap-2">
-                <span className="font-display text-3xl font-bold text-navy-foreground md:text-4xl">{plan.price}</span>
-                {plan.period ? <span className="text-sm text-navy-foreground/60">{plan.period}</span> : null}
-              </div>
-
-              <ul className="flex flex-1 flex-col gap-3">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-3">
-                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-navy-foreground/10">
-                      <Check aria-hidden="true" className="size-3 text-navy-foreground/80" />
-                    </span>
-                    <p className="text-sm leading-relaxed text-navy-foreground/75 text-pretty">{feature}</p>
-                  </li>
-                ))}
-              </ul>
-
-              <Button size="lg" className="w-full gap-1.5" nativeButton={false} render={<a href={CREATE_URL} />}>
-                {plan.cta}
-                <ArrowRight aria-hidden="true" className="size-4" />
-              </Button>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </section>
