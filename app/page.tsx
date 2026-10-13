@@ -19,10 +19,10 @@ export default function Page() {
         <Reveal>
           <Pains />
         </Reveal>
-        <ProductDemo />
         <Reveal>
           <Examples />
         </Reveal>
+        <ProductDemo />
         <Reveal>
           <Benefits />
         </Reveal>

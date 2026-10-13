@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
+import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useDemoDialog } from '@/components/demo-dialog-provider'
 import { focusRing } from '@/lib/focus-ring'
@@ -14,29 +15,30 @@ export function DemoOfferPanel() {
     <div
       aria-labelledby="demo-offer-title"
       role="group"
-      className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-slate-900 md:flex-row md:items-center md:justify-between md:gap-8 md:px-7 md:py-5"
+      className="flex flex-col items-start gap-3 rounded-2xl border border-navy-foreground/12 bg-navy-foreground/[0.04] px-5 py-4 md:flex-row md:items-center md:justify-between md:gap-6 md:px-6"
     >
-      <div className="flex flex-col gap-1">
-        <h3 id="demo-offer-title" className="font-display text-lg font-semibold leading-snug text-balance">
-          Хотите увидеть GoDeck на своей задаче?
+      <div className="flex flex-col gap-0.5">
+        <h3 id="demo-offer-title" className="font-display text-base font-semibold leading-snug text-balance">
+          Хотите посмотреть GoDeck на своих материалах?
         </h3>
-        <p className="text-sm leading-relaxed text-slate-600 text-pretty md:max-w-xl">
-          За 15 минут покажем, как GoDeck работает с вашими материалами, и ответим на вопросы.
+        <p className="text-sm leading-relaxed text-navy-foreground/65 text-pretty">
+          Проведём 15-минутное демо и ответим на вопросы.
         </p>
       </div>
 
       <Button
         ref={buttonRef}
         type="button"
-        size="lg"
         variant="outline"
         className={cn(
-          'w-full shrink-0 border-slate-300 bg-white text-slate-900 hover:bg-slate-100 hover:text-slate-900 md:w-auto',
+          'shrink-0 gap-1.5 border-navy-foreground/30 bg-transparent text-navy-foreground hover:bg-navy-foreground/10 hover:text-navy-foreground',
           focusRing,
+          'focus-visible:ring-offset-navy',
         )}
         onClick={() => openDemo(buttonRef.current)}
       >
         Записаться на демо
+        <ArrowRight aria-hidden="true" className="size-3.5" />
       </Button>
     </div>
   )

@@ -58,8 +58,6 @@ export function FinalCta() {
         </div>
 
         <div className="flex flex-col gap-5 md:gap-6">
-          <DemoOfferPanel />
-
           <div className="grid gap-5 md:grid-cols-2 md:gap-6 md:items-stretch">
             {PLANS.map((plan) => (
               <div
@@ -94,6 +92,8 @@ export function FinalCta() {
               </div>
             ))}
           </div>
+
+          <DemoOfferPanel />
         </div>
       </div>
     </section>
