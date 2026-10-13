@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Download, FileStack, FileUp, MessageSquareText } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { focusRing } from '@/lib/focus-ring'
@@ -27,29 +26,6 @@ const CATEGORY_DEFS: CategoryDef[] = [
 
 /** Single source of truth shared with the /templates catalog: published records only. */
 const PUBLISHED_TEMPLATES = getPublishedTemplates()
-
-const FEATURES = [
-  {
-    icon: FileUp,
-    label: 'Любые исходники',
-    caption: 'Начинай с PDF, DOCX, XLSX или существующей презентации.',
-  },
-  {
-    icon: FileStack,
-    label: 'Готовый или корпоративный шаблон',
-    caption: 'Выбирай встроенный стиль или загружай собственный PPTX/POTX.',
-  },
-  {
-    icon: MessageSquareText,
-    label: 'Правки через AI-чат',
-    caption: 'Меняй текст, структуру и акценты без ручной пересборки слайдов.',
-  },
-  {
-    icon: Download,
-    label: 'Редактируемый PowerPoint',
-    caption: 'Скачивай PPTX и продолжай работать с каждым элементом.',
-  },
-] as const
 
 export function Examples() {
   const [activeKey, setActiveKey] = useState<string>(CATEGORY_DEFS[0].key)
@@ -151,21 +127,6 @@ export function Examples() {
               inView={inView}
             />
           </div>
-        </div>
-
-        {/* Secondary feature strip */}
-        <div className="mt-10 grid grid-cols-2 gap-6 border-t border-navy-foreground/10 pt-8 md:mt-14 md:grid-cols-4 md:gap-8 md:pt-10">
-          {FEATURES.map((feature) => (
-            <div key={feature.label} className="flex items-start gap-3">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-navy-foreground/10">
-                <feature.icon aria-hidden="true" className="size-4 text-navy-foreground/80" />
-              </span>
-              <div className="flex flex-col gap-0.5">
-                <p className="text-sm font-semibold leading-snug text-navy-foreground/90">{feature.label}</p>
-                <p className="text-xs leading-snug text-navy-foreground/55 text-pretty">{feature.caption}</p>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
     </section>
