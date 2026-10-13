@@ -40,7 +40,7 @@ const PLANS: readonly Plan[] = [
 
 export function FinalCta() {
   return (
-    <section id="final-cta" className="relative overflow-hidden border-b border-border bg-navy text-navy-foreground scroll-mt-16">
+    <section id="pricing" className="relative overflow-hidden border-b border-border bg-navy text-navy-foreground scroll-mt-16">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -top-1/3 right-0 size-140 rounded-full bg-primary/25 blur-[120px]"

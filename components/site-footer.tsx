@@ -1,11 +1,13 @@
+import Link from 'next/link'
+import { FooterDemoLink } from '@/components/footer-demo-link'
 import { Wordmark } from '@/components/wordmark'
 import { cn } from '@/lib/utils'
 import { focusRing } from '@/lib/focus-ring'
 
 const links = [
-  { href: '/#how', label: 'Как это работает' },
-  { href: '/#examples', label: 'Примеры' },
-  { href: '/#capabilities', label: 'Возможности' },
+  { href: '/#how', label: 'Как работает' },
+  { href: '/templates', label: 'Шаблоны' },
+  { href: '/#pricing', label: 'Тарифы' },
 ]
 
 export function SiteFooter() {
@@ -18,7 +20,7 @@ export function SiteFooter() {
           <ul className="flex flex-wrap gap-x-6 gap-y-2">
             {links.map((link) => (
               <li key={link.href}>
-                <a
+                <Link
                   href={link.href}
                   className={cn(
                     'rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground',
@@ -26,9 +28,12 @@ export function SiteFooter() {
                   )}
                 >
                   {link.label}
-                </a>
+                </Link>
               </li>
             ))}
+            <li>
+              <FooterDemoLink />
+            </li>
           </ul>
         </nav>
 
