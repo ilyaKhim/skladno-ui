@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { FooterDemoLink } from '@/components/footer-demo-link'
 import { Wordmark } from '@/components/wordmark'
 import { cn } from '@/lib/utils'
 import { focusRing } from '@/lib/focus-ring'
@@ -8,6 +7,7 @@ const links = [
   { href: '/#how', label: 'Как работает' },
   { href: '/templates', label: 'Шаблоны' },
   { href: '/#pricing', label: 'Тарифы' },
+  { href: '/offer/', label: 'Публичная оферта' },
 ]
 
 export function SiteFooter() {
@@ -31,9 +31,6 @@ export function SiteFooter() {
                 </Link>
               </li>
             ))}
-            <li>
-              <FooterDemoLink />
-            </li>
           </ul>
         </nav>
 
