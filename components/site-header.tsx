@@ -11,11 +11,11 @@ import { useDemoDialog } from '@/components/demo-dialog-provider'
 import { cn } from '@/lib/utils'
 import { focusRing } from '@/lib/focus-ring'
 
-const anchorNav = [
+const navItems = [
   { href: '/#how', label: 'Как работает' },
-  { href: '/#examples', label: 'Примеры' },
-  { href: '/#capabilities', label: 'Возможности' },
-]
+  { href: '/templates', label: 'Шаблоны' },
+  { href: '/#pricing', label: 'Тарифы' },
+] as const
 
 const navLinkClass = cn(
   'rounded-sm text-sm whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground',
@@ -103,53 +103,55 @@ export function SiteHeader() {
         </Link>
 
         <nav aria-label="Основная навигация" className="hidden flex-1 lg:ml-6 lg:block xl:ml-10">
-          <ul className="flex items-center gap-7 xl:gap-8">
-            {anchorNav.map((item) => (
-              <li key={item.href}>
-                <a href={item.href} className={navLinkClass}>
-                  {item.label}
-                </a>
-              </li>
-            ))}
-            <li>
-              <Link
-                href="/templates"
-                scroll={true}
-                aria-current={isTemplatesActive ? 'page' : undefined}
-                className={cn(
-                  navLinkClass,
-                  isTemplatesActive &&
-                    'font-medium text-foreground underline decoration-foreground/70 decoration-[1.5px] underline-offset-[10px]',
-                )}
-              >
-                Шаблоны
-              </Link>
-            </li>
+          <ul className="flex items-center gap-6 xl:gap-8">
+            {navItems.map((item) => {
+              const active = item.href === '/templates' && isTemplatesActive
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    aria-current={active ? 'page' : undefined}
+                    className={cn(
+                      navLinkClass,
+                      active &&
+                        'font-medium text-foreground underline decoration-foreground/70 decoration-[1.5px] underline-offset-[10px]',
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              )
+            })}
           </ul>
         </nav>
 
-        <div className="ml-auto hidden items-center gap-3 lg:flex">
+        <div className="ml-auto hidden items-center gap-2 lg:flex xl:gap-3">
           <Button
             ref={demoButtonRef}
             type="button"
             size="sm"
             variant="outline"
-            className={focusRing}
+            className={cn('whitespace-nowrap', focusRing)}
             onClick={() => openDemo(demoButtonRef.current)}
           >
             Записаться на демо
-          </Button>
-          <Button size="sm" nativeButton={false} className={focusRing} render={<a href={CREATE_URL} />}>
-            Попробовать бесплатно
           </Button>
           <Button
             size="sm"
             variant="ghost"
             nativeButton={false}
-            className={cn('text-muted-foreground hover:text-foreground', focusRing)}
+            className={cn('whitespace-nowrap text-muted-foreground hover:text-foreground', focusRing)}
             render={<a href={CREATE_URL} />}
           >
             Войти
+          </Button>
+          <Button
+            size="sm"
+            nativeButton={false}
+            className={cn('whitespace-nowrap', focusRing)}
+            render={<a href={CREATE_URL} />}
+          >
+            Попробовать бесплатно
           </Button>
         </div>
 
@@ -179,21 +181,21 @@ export function SiteHeader() {
           className="absolute inset-x-0 top-full border-b border-border bg-background shadow-md lg:hidden"
         >
           <nav aria-label="Мобильное меню" className="mx-auto flex max-w-6xl flex-col gap-1 px-3 py-3 md:px-6">
-            {anchorNav.map((item) => (
-              <a key={item.href} href={item.href} className={mobileLinkClass} onClick={() => setMenuOpen(false)}>
-                {item.label}
-              </a>
-            ))}
-            <Link
-              href="/templates"
-              scroll={true}
-              aria-current={isTemplatesActive ? 'page' : undefined}
-              className={cn(mobileLinkClass, isTemplatesActive && 'font-medium')}
-              onClick={() => setMenuOpen(false)}
-            >
-              Шаблоны
-              {isTemplatesActive && <span aria-hidden="true" className="ml-2 size-1.5 rounded-full bg-foreground/70" />}
-            </Link>
+            {navItems.map((item) => {
+              const active = item.href === '/templates' && isTemplatesActive
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(mobileLinkClass, active && 'font-medium')}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {item.label}
+                  {active && <span aria-hidden="true" className="ml-2 size-1.5 rounded-full bg-foreground/70" />}
+                </Link>
+              )
+            })}
             <button
               type="button"
               className={cn(mobileLinkClass, 'w-full text-left')}
@@ -201,7 +203,7 @@ export function SiteHeader() {
             >
               Записаться на демо
             </button>
-            <a href={CREATE_URL} className={cn(mobileLinkClass, 'text-muted-foreground')}>
+            <a href={CREATE_URL} className={cn(mobileLinkClass, 'text-muted-foreground')} onClick={() => setMenuOpen(false)}>
               Войти
             </a>
           </nav>

@@ -30,7 +30,7 @@ export function MobileCta() {
         size="lg"
         className="w-full"
         nativeButton={false}
-        render={<a href="#final-cta" />}
+        render={<a href="#pricing" />}
       >
         Выбрать тариф
         <ArrowRight aria-hidden="true" className="size-4" />

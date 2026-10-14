@@ -1,5 +1,7 @@
 RewriteEngine On
 
+ErrorDocument 404 /404.html
+
 # Keep one canonical address after DNS is moved back to REG.RU.
 RewriteCond %{HTTP_HOST} ^ilkhim\.ru$ [NC]
 RewriteRule ^ https://www.ilkhim.ru%{REQUEST_URI} [R=308,L]
