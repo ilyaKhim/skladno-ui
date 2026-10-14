@@ -5,15 +5,15 @@ import { ArrowRight, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { AUTH_SIGNUP_URL } from '@/lib/auth-links'
 import { cn } from '@/lib/utils'
 
 /**
- * Destination for the only CTA that leaves the landing page. `/onboarding` is
- * the single future page for both sign-in and sign-up, so there is no
- * separate `/signup` route. Kept as a constant so it's a one-line change
- * once the real destination is finalized.
+ * Destination for every "create a presentation" CTA: the shared `/auth/` page
+ * in sign-up mode, returning to `/create` afterwards. There are no separate
+ * `/login` or `/signup` routes.
  */
-export const CREATE_URL = 'https://app.godeck.ru/onboarding?returnTo=%2Fcreate'
+export const CREATE_URL = AUTH_SIGNUP_URL
 
 const EXAMPLES = [
   'Собери коммерческое предложение по брифу клиента',
