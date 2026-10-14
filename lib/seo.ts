@@ -6,6 +6,9 @@ import type { TemplateRecord } from '@/lib/templates'
 export const SITE_URL = 'https://www.ilkhim.ru'
 export const SITE_NAME = 'GoDeck'
 export const OG_LOCALE = 'ru_RU'
+export const SITE_TITLE = 'GoDeck — рабочая презентация из ваших материалов'
+export const SITE_DESCRIPTION =
+  'Загрузите документ, таблицу или черновик — GoDeck соберёт структуру, оформит слайды в вашем фирменном стиле и подготовит редактируемый PowerPoint.'
 
 export interface SocialImage {
   url: string

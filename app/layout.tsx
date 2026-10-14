@@ -2,7 +2,14 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter, Manrope } from 'next/font/google'
 import { DemoDialogProvider } from '@/components/demo-dialog-provider'
-import { DEFAULT_OG_IMAGE, OG_LOCALE, SITE_NAME, SITE_URL } from '@/lib/seo'
+import {
+  DEFAULT_OG_IMAGE,
+  OG_LOCALE,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from '@/lib/seo'
 import './globals.css'
 
 const manrope = Manrope({
@@ -19,10 +26,6 @@ const inter = Inter({
   variable: '--font-inter',
   display: 'swap',
 })
-
-const SITE_TITLE = 'GoDeck — рабочая презентация из ваших материалов'
-const SITE_DESCRIPTION =
-  'Загрузите документ, таблицу или черновик — GoDeck соберёт структуру, оформит слайды в вашем фирменном стиле и подготовит редактируемый PowerPoint.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
