@@ -8,6 +8,7 @@ import { Wordmark } from '@/components/wordmark'
 import { Button } from '@/components/ui/button'
 import { CREATE_URL } from '@/components/hero-composer'
 import { useDemoDialog } from '@/components/demo-dialog-provider'
+import { AUTH_LOGIN_URL } from '@/lib/auth-links'
 import { cn } from '@/lib/utils'
 import { focusRing } from '@/lib/focus-ring'
 
@@ -141,7 +142,7 @@ export function SiteHeader() {
             variant="ghost"
             nativeButton={false}
             className={cn('whitespace-nowrap text-muted-foreground hover:text-foreground', focusRing)}
-            render={<a href={CREATE_URL} />}
+            render={<a href={AUTH_LOGIN_URL} />}
           >
             Войти
           </Button>
@@ -203,7 +204,7 @@ export function SiteHeader() {
             >
               Записаться на демо
             </button>
-            <a href={CREATE_URL} className={cn(mobileLinkClass, 'text-muted-foreground')} onClick={() => setMenuOpen(false)}>
+            <a href={AUTH_LOGIN_URL} className={cn(mobileLinkClass, 'text-muted-foreground')} onClick={() => setMenuOpen(false)}>
               Войти
             </a>
           </nav>
