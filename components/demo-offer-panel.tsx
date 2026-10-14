@@ -19,7 +19,7 @@ export function DemoOfferPanel() {
     >
       <div className="flex flex-col gap-0.5">
         <h3 id="demo-offer-title" className="font-display text-base font-semibold leading-snug text-balance">
-          Хотите посмотреть GoDeck на своих материалах?
+          Хочешь посмотреть GoDeck на своих материалах?
         </h3>
         <p className="text-sm leading-relaxed text-navy-foreground/65 text-pretty">
           Проведём 15-минутное демо и ответим на вопросы.
