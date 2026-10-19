@@ -39,18 +39,17 @@ export default function AuthPage() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 items-center px-5 py-8 md:px-8 lg:py-16">
-        <div className="grid w-full items-center gap-8 lg:grid-cols-[minmax(0,1fr)_460px] lg:gap-20">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 items-start px-5 py-6 md:px-8 md:py-10 lg:py-20">
+        <div className="grid w-full items-start gap-6 lg:grid-cols-[minmax(0,1fr)_460px] lg:gap-20">
           <section aria-labelledby="auth-heading" className="max-w-xl">
             <h1
               id="auth-heading"
-              className="font-display text-3xl font-bold leading-tight tracking-tight text-balance md:text-4xl lg:text-[2.6rem]"
+              className="font-display text-2xl font-bold leading-tight tracking-tight text-balance md:text-3xl lg:text-[2.6rem]"
             >
-              От задачи до готовой презентации — в одном рабочем пространстве
+              От ваших материалов — к готовой презентации
             </h1>
-            <p className="mt-4 text-base leading-relaxed text-muted-foreground text-pretty md:text-lg">
-              Создайте аккаунт, чтобы собирать презентации из документов, выбирать шаблоны и продолжать работу в
-              PowerPoint
+            <p className="mt-4 hidden text-base leading-relaxed text-muted-foreground text-pretty lg:block lg:text-lg">
+              Собирайте презентации из документов, выбирайте шаблоны и продолжайте работу в PowerPoint
             </p>
             <ul className="mt-8 hidden flex-col gap-3.5 lg:flex">
               {POINTS.map((point) => (
