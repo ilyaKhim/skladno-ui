@@ -1,19 +1,15 @@
-export type AuthMode = 'signup' | 'login'
-
-export const DEFAULT_AUTH_MODE: AuthMode = 'signup'
-
+/**
+ * Legacy `?mode=login` and `?mode=signup` links keep working: /auth/ is a single
+ * entry point and ignores `mode`, so the server decides between sign-in and sign-up.
+ */
 export const AUTH_LOGIN_URL = '/auth/?mode=login'
 
-/** Sign-up entry that returns the user to the presentation creator afterwards. */
+/** Entry that returns the user to the presentation creator afterwards. */
 export const AUTH_SIGNUP_URL = '/auth/?mode=signup&returnTo=%2Fcreate'
-
-/** A missing or unknown `mode` always opens the sign-up form. */
-export function parseAuthMode(value: string | null | undefined): AuthMode {
-  return value === 'login' || value === 'signup' ? value : DEFAULT_AUTH_MODE
-}
 
 /** Only same-origin relative paths are accepted as a post-auth destination. */
 export function parseReturnTo(value: string | null | undefined): string | null {
-  if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) return null
+  if (/[\\\u0000-\u001f\u007f]/.test(value)) return null
   return value
 }
