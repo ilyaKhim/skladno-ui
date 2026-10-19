@@ -1,0 +1,354 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --color-navy: var(--navy);
+  --color-navy-foreground: var(--navy-foreground);
+  --color-field: var(--field);
+  --color-primary-hover: var(--primary-hover);
+  --color-tint-blue: var(--tint-blue);
+  --color-tint-sage: var(--tint-sage);
+  --color-tint-apricot: var(--tint-apricot);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+}
+
+:root {
+  color-scheme: light;
+
+  /* neutral page canvas */
+  --background: #f7f7f5;
+  --foreground: #142033;
+
+  --card: #ffffff;
+  --card-foreground: #142033;
+  --popover: #ffffff;
+  --popover-foreground: #142033;
+
+  /* the single primary CTA color, used everywhere a primary action appears */
+  --primary: #335cc5;
+  --primary-hover: #294da6;
+  --primary-foreground: #ffffff;
+
+  --secondary: #e6edf8;
+  --secondary-foreground: #142033;
+
+  --muted: #eef0f2;
+  --muted-foreground: #5b6675;
+
+  /* lime marker — reserved for small details: dots, underlines, diagram accents */
+  --accent: #d7f36a;
+  --accent-foreground: #142033;
+
+  --destructive: oklch(0.577 0.245 27.325);
+
+  --border: #d9dee7;
+  --input: #d9dee7;
+  --ring: #335cc5;
+
+  /* full-width dark scenes (transformation, pricing, final CTA) */
+  --navy: #162d4e;
+  --navy-foreground: #f5f7fb;
+  --field: #e6edf8;
+
+  /* soft tints used only around product mockups */
+  --tint-blue: #e6edf8;
+  --tint-sage: #e6eee3;
+  --tint-apricot: #f6e8db;
+
+  --radius: 0.625rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+  }
+}
+
+@utility slide-shadow {
+  box-shadow:
+    0 1px 2px oklch(0.25 0.045 255 / 6%),
+    0 12px 28px -12px oklch(0.25 0.045 255 / 14%);
+}
+
+@keyframes tab-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-fade-in {
+  animation: tab-fade-in 0.28s ease-out;
+}
+
+@keyframes accent-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.accent-reveal {
+  animation: accent-reveal 0.7s ease-out both;
+}
+
+/*
+ * Static blue-to-violet gradient for "презентации" — the H1's permanent
+ * product-name accent. No coral/pink stop so it stays visually distinct
+ * and never animates.
+ */
+.accent-presentations-text {
+  background: linear-gradient(90deg, #2f52c4 0%, #6a5fce 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+
+/*
+ * Cool blue-gray for the H1's rotating word (идей / документов / данных /
+ * отчётов) — calm and legible, distinct from disabled/muted gray. The
+ * slightly darker shade is available for the word's active fade-in phase.
+ */
+.carousel-word-text {
+  color: #56677f;
+}
+
+.carousel-word-text--active {
+  color: #4f6078;
+}
+
+@keyframes tenx-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.tenx-scale-in {
+  animation: tenx-scale-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+@keyframes tenx-underline-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.tenx-underline-draw {
+  animation: tenx-underline-draw 0.5s ease-out 0.45s both;
+}
+
+@keyframes examples-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+  .examples-fade-in {
+  animation: examples-fade-in 0.3s ease-out;
+  }
+
+@keyframes examples-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.examples-marquee-track {
+  width: max-content;
+  /* Duration is recalculated in JS from the measured track width so the
+     visual speed stays constant (~60px/s) regardless of card size or
+     category. This is only a fallback for the first paint. */
+  animation: examples-marquee 30s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .examples-marquee-track {
+    animation: none;
+  }
+}
+
+.examples-carousel-track {
+  gap: 16px;
+  padding-block: 6px;
+}
+
+@media (min-width: 768px) {
+  .examples-carousel-track {
+    gap: 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .examples-carousel-track {
+    gap: 24px;
+  }
+}
+
+/* Large template preview cards: ~1.7-2 visible at once, scaling down
+   through tablet and mobile while always leaving a meaningful peek of
+   the next card. */
+.examples-template-card {
+  flex: 0 0 auto;
+  width: min(80vw, 320px);
+}
+
+@media (min-width: 640px) {
+  .examples-template-card {
+    width: min(68vw, 420px);
+  }
+}
+
+@media (min-width: 768px) {
+  .examples-template-card {
+    width: clamp(340px, 46vw, 460px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .examples-template-card {
+    width: clamp(480px, 42vw, 600px);
+  }
+}
+
+/* Belt-and-suspenders clip: overflow-x: clip is preferred (keeps position:
+   sticky working elsewhere on the page); hidden is the fallback for
+   browsers that don't support clip. */
+.examples-clip {
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+.examples-carousel-viewport {
+  position: relative;
+  /* 4px side padding offset by an equal negative margin leaves room for the
+  focus ring (2px ring + 2px offset) without moving or resizing the cards. */
+  width: calc(100% + 8px);
+  max-width: calc(100% + 8px);
+  min-width: 0;
+  margin-inline: -4px;
+  padding-inline: 4px;
+  overflow: hidden;
+  }
+
+/* Used only when prefers-reduced-motion is on: auto-scroll is disabled,
+   so the viewport becomes manually scrollable/swipeable instead. */
+.examples-carousel-viewport--scrollable {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+}
+
+.examples-carousel-viewport--scrollable .examples-carousel-track > * {
+  scroll-snap-align: start;
+}
+
+.examples-chip-row {
+  scrollbar-width: none;
+}
+
+.examples-chip-row::-webkit-scrollbar {
+  display: none;
+}
+
+.examples-carousel-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@media (min-width: 768px) {
+  .examples-carousel-edge {
+    width: 28px;
+  }
+}
+
+.examples-carousel-edge--left {
+  left: 0;
+  background: linear-gradient(to right, var(--color-navy), transparent);
+}
+
+.examples-carousel-edge--right {
+  right: 0;
+  background: linear-gradient(to left, var(--color-navy), transparent);
+}

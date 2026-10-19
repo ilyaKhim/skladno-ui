@@ -1,0 +1,69 @@
+import Link from 'next/link'
+import { Wordmark } from '@/components/wordmark'
+import { cn } from '@/lib/utils'
+import { focusRing } from '@/lib/focus-ring'
+
+const links = [
+  { href: '/#how', label: 'Как работает' },
+  { href: '/templates', label: 'Шаблоны' },
+  { href: '/#pricing', label: 'Тарифы' },
+  { href: '/offer/', label: 'Публичная оферта' },
+]
+
+export function SiteFooter() {
+  return (
+    <footer className="mx-auto max-w-6xl px-5 py-10 md:px-8">
+      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        <Wordmark />
+
+        <nav aria-label="Навигация в подвале">
+          <ul className="flex flex-wrap gap-x-6 gap-y-2">
+            {links.map((link) => (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className={cn(
+                    'rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground',
+                    focusRing,
+                  )}
+                >
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="flex flex-col items-start gap-1 md:items-end">
+          <p className="text-sm text-muted-foreground">
+            {`© ${new Date().getFullYear()} GoDeck`}
+          </p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground/70 md:text-xs">
+            Примеры шаблонов:{' '}
+            <a
+              href="https://www.slidescarnival.com/"
+              target="_blank"
+              rel="noreferrer noopener"
+              className={cn('rounded-sm underline underline-offset-2 hover:text-muted-foreground', focusRing)}
+            >
+              SlidesCarnival
+            </a>{' '}
+            ·{' '}
+            <a
+              href="https://creativecommons.org/licenses/by/4.0/"
+              target="_blank"
+              rel="noreferrer noopener"
+              className={cn('rounded-sm underline underline-offset-2 hover:text-muted-foreground', focusRing)}
+            >
+              CC BY 4.0
+            </a>
+          </p>
+        </div>
+      </div>
+
+      <p className="mt-6 text-[11px] leading-relaxed text-muted-foreground/60 md:mt-8 md:text-xs">
+        ИП Табунов Михаил Валерьевич · ИНН&nbsp;773379585100
+      </p>
+    </footer>
+  )
+}
