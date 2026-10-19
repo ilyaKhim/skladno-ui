@@ -1,14 +1,12 @@
-const GITHUB_REPOSITORY = 'ilyaKhim/skladno-ui'
-const GITHUB_REF = process.env.NEXT_PUBLIC_TEMPLATE_GIT_REF || 'main'
+const TEMPLATE_GIT_REF = process.env.NEXT_PUBLIC_TEMPLATE_GIT_REF
 
 /**
- * Template previews are read from the exact Git revision used for the
- * deployment. This keeps the statically deployed UI and Git assets in sync
- * even when the hosting provider serves an older copy of /public files.
+ * Previews and manifests ship with the static site. They do not require public
+ * access to the source repository. A deployment revision refreshes browser caches.
+ * An optional base URL can point to a separate public asset host.
  */
 export const TEMPLATE_ASSETS_BASE_URL =
-  process.env.NEXT_PUBLIC_TEMPLATE_ASSETS_BASE_URL ||
-  `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_REF}/public`
+  (process.env.NEXT_PUBLIC_TEMPLATE_ASSETS_BASE_URL || '').replace(/\/+$/, '')
 
 export interface TemplateSlidesManifest {
   slug: string
@@ -18,11 +16,12 @@ export interface TemplateSlidesManifest {
 
 export function getTemplateAssetUrl(path: string): string {
   if (!path.startsWith('/template-previews/')) return path
-  return `${TEMPLATE_ASSETS_BASE_URL}${path}`
+  const version = TEMPLATE_GIT_REF ? `?v=${encodeURIComponent(TEMPLATE_GIT_REF)}` : ''
+  return `${TEMPLATE_ASSETS_BASE_URL}${path}${version}`
 }
 
 export function getTemplateSlidesManifestUrl(slug: string): string {
-  return `${TEMPLATE_ASSETS_BASE_URL}/template-previews/${encodeURIComponent(slug)}/slides.json`
+  return getTemplateAssetUrl(`/template-previews/${encodeURIComponent(slug)}/slides.json`)
 }
 
 export function isTemplateSlidesManifest(value: unknown): value is TemplateSlidesManifest {

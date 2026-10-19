@@ -1,0 +1,94 @@
+deploy_reg:
+  stage: deploy
+  image: node:22-bookworm
+  # Serialize the entire build/upload/check cycle, as in the previous workflow.
+  resource_group: reg-production
+  interruptible: false
+  environment:
+    name: production
+    url: https://www.ilkhim.ru
+  variables:
+    STATIC_EXPORT: '1'
+    NEXT_PUBLIC_TEMPLATE_GIT_REF: '$CI_COMMIT_SHA'
+  cache:
+    key:
+      files:
+        - pnpm-lock.yaml
+    paths:
+      - .pnpm-store/
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends openssh-client rsync ca-certificates curl
+    - npm install --global pnpm@10.10.0
+    - pnpm config set store-dir .pnpm-store
+  script:
+    - |
+      set -eu
+      : "${REG_HOST:?Set REG_HOST in GitLab CI/CD variables}"
+      : "${REG_USER:?Set REG_USER in GitLab CI/CD variables}"
+      : "${REG_DEPLOY_PATH:?Set REG_DEPLOY_PATH in GitLab CI/CD variables}"
+      : "${REG_SSH_KEY:?Set REG_SSH_KEY in GitLab CI/CD variables}"
+      : "${REG_KNOWN_HOSTS:?Set REG_KNOWN_HOSTS in GitLab CI/CD variables}"
+      REG_PORT="${REG_PORT:-22}"
+      export REG_PORT
+      # rsync --delete must target a dedicated, absolute document root.
+      node <<'NODE'
+      const path = process.env.REG_DEPLOY_PATH
+      const segments = path.split('/').filter(Boolean)
+      if (!path.startsWith('/') || segments.length < 2 ||
+          segments.some(s => s === '.' || s === '..') || /[\r\n]/.test(path)) {
+        throw new Error('REG_DEPLOY_PATH must be an absolute document root, not / or a parent path')
+      }
+      const port = process.env.REG_PORT
+      if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
+        throw new Error('REG_PORT must be between 1 and 65535')
+      }
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9.-]*$/.test(process.env.REG_HOST) ||
+          !/^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$/.test(process.env.REG_USER)) {
+        throw new Error('Invalid REG_HOST or REG_USER')
+      }
+      NODE
+    - pnpm install --frozen-lockfile
+    - |
+      rm -rf .next out
+      printf '{"sha":"%s","builtAt":"%s"}\n' \
+        "$CI_COMMIT_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > public/deploy-version.json
+    - pnpm build
+    - |
+      test -f out/deploy-version.json
+      grep -Fq "$CI_COMMIT_SHA" out/deploy-version.json
+      test -f out/template-previews/reports-marketing-campaign-analysis/slide-02.webp
+      test -f out/template-previews/reports-marketing-campaign-analysis/slides.json
+      grep -RFq 'slide-02.webp' out/templates/reports-marketing-campaign-analysis/
+    - |
+      install -m 700 -d ~/.ssh
+      # Accept both GitLab File variables and the former plain-text secrets.
+      if [ -f "$REG_SSH_KEY" ]; then
+        install -m 600 "$REG_SSH_KEY" ~/.ssh/id_ed25519
+      else
+        printf '%s\n' "$REG_SSH_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+      fi
+      if [ -f "$REG_KNOWN_HOSTS" ]; then
+        install -m 600 "$REG_KNOWN_HOSTS" ~/.ssh/known_hosts
+      else
+        printf '%s\n' "$REG_KNOWN_HOSTS" > ~/.ssh/known_hosts
+        chmod 600 ~/.ssh/known_hosts
+      fi
+      rsync -az --delete --checksum --protect-args \
+        -e "ssh -p ${REG_PORT:-22} -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -i $HOME/.ssh/id_ed25519" \
+        out/ "$REG_USER@$REG_HOST:$REG_DEPLOY_PATH/"
+    - |
+      version_url="https://www.ilkhim.ru/deploy-version.json?sha=$CI_COMMIT_SHA"
+      asset_url="https://www.ilkhim.ru/template-previews/reports-marketing-campaign-analysis/slide-02.webp?sha=$CI_COMMIT_SHA"
+      for attempt in 1 2 3 4 5 6; do
+        if curl --fail --silent --show-error --max-time 30 "$version_url" | grep -Fq "$CI_COMMIT_SHA" && \
+           curl --fail --silent --show-error --max-time 30 --head "$asset_url" >/dev/null; then
+          echo "Production serves commit $CI_COMMIT_SHA"
+          exit 0
+        fi
+        echo "Production is not updated yet (attempt $attempt/6)"
+        sleep 10
+      done
+      echo "REG.RU upload completed, but www.ilkhim.ru does not serve commit $CI_COMMIT_SHA"
+      echo "Check that REG_DEPLOY_PATH is the document root used by www.ilkhim.ru"
+      exit 1

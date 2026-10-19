@@ -1,0 +1,10 @@
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web")'
+    - when: never
+
+stages:
+  - deploy
+
+include:
+  - local: '/.gitlab/ci/deploy-reg.yml'
