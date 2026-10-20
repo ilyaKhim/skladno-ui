@@ -1,0 +1,28 @@
+sync_github_main:
+  stage: deploy
+  image: alpine:3.22
+  resource_group: github-main-sync
+  interruptible: false
+  environment:
+    name: github-sync
+  variables:
+    GIT_DEPTH: '0'
+  before_script:
+    - apk add --no-cache git openssh-client
+  script:
+    - |
+      set -eu
+      : "${GITHUB_SYNC_SSH_KEY:?Missing GitHub sync deploy key}"
+      : "${GITHUB_SYNC_KNOWN_HOSTS:?Missing GitHub host keys}"
+      install -m 700 -d ~/.ssh
+      install -m 600 "$GITHUB_SYNC_SSH_KEY" ~/.ssh/github_sync
+      install -m 600 "$GITHUB_SYNC_KNOWN_HOSTS" ~/.ssh/known_hosts
+      export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/github_sync -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes"
+      # Fetch the current main, including commits newer than this pipeline.
+      git fetch origin +refs/heads/main:refs/remotes/origin/main
+      git fetch git@github.com:ilyaKhim/skladno-ui.git +refs/heads/main:refs/remotes/github/main
+      if ! git merge-base --is-ancestor refs/remotes/github/main refs/remotes/origin/main; then
+        echo 'GitHub main has independent changes. Merge them into GitLab main before syncing; no files were overwritten.'
+        exit 1
+      fi
+      git push git@github.com:ilyaKhim/skladno-ui.git refs/remotes/origin/main:refs/heads/main

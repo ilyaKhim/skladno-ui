@@ -8,3 +8,4 @@ stages:
 
 include:
   - local: '/.gitlab/ci/deploy-reg.yml'
+  - local: '/.gitlab/ci/sync-github.yml'

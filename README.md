@@ -64,3 +64,24 @@ ssh-keygen -lf reg-known-hosts
 3. Убедитесь, что job `deploy_reg` завершился успешно: он проверяет, что сайт отдаёт SHA именно этой сборки.
 
 Workflow `.github/workflows/deploy-reg.yml` заменён GitLab-конфигурацией. Если старый GitHub-репозиторий остаётся активным, отключите Actions workflow в нём, чтобы он не перезаписывал тот же сайт.
+
+
+## v0 → GitLab merge requests
+
+v0 остаётся подключён к GitHub `ilyaKhim/skladno-ui`. Нативная кнопка Open PR в v0 относится к GitHub; для работы с GitLab нажимать её не обязательно.
+
+1. Редактируйте проект в v0 в ветке `v0/*`. Каждый push автоматически запускает GitHub workflow **Send v0 changes to GitLab**.
+2. Workflow переносит ветку в GitLab как `v0/github/<имя>` и создаёт MR в `main`. Следующие изменения обновляют тот же MR. Ссылка есть в итогах GitHub Actions и в списке Merge requests GitLab.
+3. Проверяйте и сливайте MR **в GitLab**. Ветки `v0/github/*` принадлежат мосту; изменения в них делайте через исходную ветку v0/GitHub.
+4. После слияния GitLab публикует сайт на REG.RU и синхронизирует `main` обратно в GitHub. Новые чаты v0 начинают с актуального кода.
+
+`pull_request_target` также обрабатывает Open PR и обновления старых веток v0, созданных до установки моста. В таком запуске исполняется только скрипт из доверенного `main`, код PR не запускается; PR из чужих fork-репозиториев игнорируются. Старую ветку можно передать вручную через Actions → Send v0 changes to GitLab → Run workflow → branch.
+
+Обратная синхронизация только fast-forward: если в GitHub `main` появились независимые изменения, job `sync_github_main` остановится без перезаписи. Поэтому основное слияние выполняйте в GitLab. Существующий чат v0 со своей веткой не переключается автоматически на новый `main`; для новой задачи создайте новый чат/ветку.
+
+Настроены отдельные доступы:
+
+- GitHub Actions secret `GITLAB_BRIDGE_TOKEN`: токен только проекта GoDeck, роль Developer, срок до **19.10.2027**. Перед окончанием срока замените его новым project access token со scopes `api`, `write_repository`.
+- GitLab variables `GITHUB_SYNC_SSH_KEY` и `GITHUB_SYNC_KNOWN_HOSTS`: защищённые File-переменные, scope `github-sync`. SSH deploy key разрешён только для GitHub-репозитория `skladno-ui`; ключи сервера GitHub получены из официального API.
+
+Файлы: `.github/workflows/v0-gitlab.yml`, `scripts/v0_gitlab_bridge.py`, `.gitlab/ci/sync-github.yml`. Проверка логики: `python3 -m unittest discover -s scripts -p 'test_v0_gitlab_bridge.py'`.
