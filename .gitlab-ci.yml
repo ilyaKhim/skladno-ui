@@ -1,11 +1,16 @@
 workflow:
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main" && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web")'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH != "main" && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web")'
     - when: never
 
 stages:
+  - test
   - deploy
 
 include:
+  - local: '/.gitlab/ci/checks.yml'
   - local: '/.gitlab/ci/deploy-reg.yml'
   - local: '/.gitlab/ci/sync-github.yml'

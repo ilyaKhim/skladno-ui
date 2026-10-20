@@ -4,8 +4,8 @@
  */
 export const AUTH_LOGIN_URL = '/auth/?mode=login'
 
-/** Entry that returns the user to the presentation creator afterwards. */
-export const AUTH_SIGNUP_URL = '/auth/?mode=signup&returnTo=%2Fcreate'
+/** Entry that returns the user to the account afterwards (the presentation editor is not implemented yet). */
+export const AUTH_SIGNUP_URL = '/auth/?mode=signup&returnTo=%2Faccount%2F'
 
 /** Only same-origin relative paths are accepted as a post-auth destination. */
 export function parseReturnTo(value: string | null | undefined): string | null {

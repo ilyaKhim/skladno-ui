@@ -9,7 +9,9 @@ overrides:
 
 importers:
 
-  .:
+  .: {}
+
+  frontend:
     dependencies:
       '@base-ui/react':
         specifier: ^1.5.0

@@ -1,0 +1,52 @@
+frontend_check:
+  stage: test
+  image: node:22-bookworm
+  cache:
+    key:
+      files: [pnpm-lock.yaml]
+    paths: [.pnpm-store/]
+  before_script:
+    - npm install --global pnpm@10.10.0
+    - pnpm config set store-dir .pnpm-store
+    - pnpm install --frozen-lockfile
+  script:
+    - pnpm typecheck
+    # Main is built by deploy_reg; branches/MRs also validate the static export.
+    - if [ "$CI_COMMIT_BRANCH" != main ]; then STATIC_EXPORT=1 pnpm build; fi
+  rules:
+    - changes: [frontend/**/*, package.json, pnpm-lock.yaml, pnpm-workspace.yaml, .gitlab/**/*, .gitlab-ci.yml]
+
+backend_check:
+  stage: test
+  image: eclipse-temurin:26-jdk
+  services:
+    - name: postgres:17-alpine
+      alias: postgres
+  variables:
+    POSTGRES_DB: godeck_test
+    POSTGRES_USER: godeck
+    POSTGRES_PASSWORD: godeck-ci-only
+    TEST_DATABASE_URL: 'jdbc:postgresql://postgres:5432/godeck_test?currentSchema=auth_test'
+    DATABASE_USER: godeck
+    DATABASE_PASSWORD: godeck-ci-only
+    MAVEN_OPTS: '-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository'
+  cache:
+    key: java26-maven
+    paths: [.m2/repository/]
+  script:
+    - cd backend
+    - ./mvnw --batch-mode verify
+  artifacts:
+    when: always
+    reports:
+      junit: backend/target/surefire-reports/TEST-*.xml
+  rules:
+    - changes: [backend/**/*, compose.yaml, scripts/backend-dev.sh, .gitlab/**/*, .gitlab-ci.yml]
+
+bridge_check:
+  stage: test
+  image: python:3.13-alpine
+  script:
+    - python3 -m unittest discover -s scripts -p 'test_v0_gitlab_bridge.py'
+  rules:
+    - changes: [scripts/v0_gitlab_bridge.py, scripts/test_v0_gitlab_bridge.py, .github/**/*, .gitlab/**/*, .gitlab-ci.yml]

@@ -49,16 +49,16 @@ deploy_reg:
       NODE
     - pnpm install --frozen-lockfile
     - |
-      rm -rf .next out
+      rm -rf frontend/.next frontend/out
       printf '{"sha":"%s","builtAt":"%s"}\n' \
-        "$CI_COMMIT_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > public/deploy-version.json
+        "$CI_COMMIT_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > frontend/public/deploy-version.json
     - pnpm build
     - |
-      test -f out/deploy-version.json
-      grep -Fq "$CI_COMMIT_SHA" out/deploy-version.json
-      test -f out/template-previews/reports-marketing-campaign-analysis/slide-02.webp
-      test -f out/template-previews/reports-marketing-campaign-analysis/slides.json
-      grep -RFq 'slide-02.webp' out/templates/reports-marketing-campaign-analysis/
+      test -f frontend/out/deploy-version.json
+      grep -Fq "$CI_COMMIT_SHA" frontend/out/deploy-version.json
+      test -f frontend/out/template-previews/reports-marketing-campaign-analysis/slide-02.webp
+      test -f frontend/out/template-previews/reports-marketing-campaign-analysis/slides.json
+      grep -RFq 'slide-02.webp' frontend/out/templates/reports-marketing-campaign-analysis/
     - |
       install -m 700 -d ~/.ssh
       # Accept both GitLab File variables and the former plain-text secrets.
@@ -76,7 +76,7 @@ deploy_reg:
       fi
       rsync -az --delete --checksum --protect-args \
         -e "ssh -p ${REG_PORT:-22} -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -i $HOME/.ssh/id_ed25519" \
-        out/ "$REG_USER@$REG_HOST:$REG_DEPLOY_PATH/"
+        frontend/out/ "$REG_USER@$REG_HOST:$REG_DEPLOY_PATH/"
     - |
       version_url="https://www.ilkhim.ru/deploy-version.json?sha=$CI_COMMIT_SHA"
       asset_url="https://www.ilkhim.ru/template-previews/reports-marketing-campaign-analysis/slide-02.webp?sha=$CI_COMMIT_SHA"
@@ -92,3 +92,6 @@ deploy_reg:
       echo "REG.RU upload completed, but www.ilkhim.ru does not serve commit $CI_COMMIT_SHA"
       echo "Check that REG_DEPLOY_PATH is the document root used by www.ilkhim.ru"
       exit 1
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web")'

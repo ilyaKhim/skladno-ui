@@ -52,6 +52,9 @@ export interface AuthApi {
   resendCode(input: { email: string }): Promise<AuthResult<{ resendAfterSeconds: number }>>
   /** Starts password recovery without revealing whether the account exists. */
   requestPasswordReset(input: { email: string }): Promise<AuthResult<Record<string, never>>>
+  resetPassword(input: { token: string; password: string }): Promise<AuthResult<Record<string, never>>>
+  currentUser(): Promise<AuthResult<{ id: string; email: string }>>
+  signOut(): Promise<AuthResult<Record<string, never>>>
 }
 
 export const AUTH_ERROR_MESSAGES: Record<AuthErrorCode, string> = {
@@ -66,34 +69,49 @@ export const AUTH_ERROR_MESSAGES: Record<AuthErrorCode, string> = {
   'invalid-input': 'Проверьте введённые данные и попробуйте снова.',
 }
 
-const unavailable: AuthResult<never> = { ok: false, error: 'unavailable' }
-
-/**
- * Used wherever no authentication backend is connected. It never creates an
- * account, a session, or a confirmation code.
- */
-const unavailableApi: AuthApi = {
-  identify: async () => unavailable,
-  signIn: async () => unavailable,
-  register: async () => unavailable,
-  verifyEmail: async () => unavailable,
-  resendCode: async () => unavailable,
-  requestPasswordReset: async () => unavailable,
+/** Same-origin /api requests are proxied to Spring Boot in local development. */
+async function request<T>(path: string, input?: unknown): Promise<AuthResult<T>> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (input !== undefined) {
+      // Login and logout rotate the session: obtain the current CSRF token each time.
+      const csrfResponse = await fetch('/api/auth/csrf', {
+        credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10_000),
+      })
+      if (!csrfResponse.ok) return { ok: false, error: 'unavailable' }
+      const csrf = await csrfResponse.json()
+      if (!csrf.ok || !csrf.data?.token || !csrf.data?.headerName) return { ok: false, error: 'unavailable' }
+      headers[csrf.data.headerName] = csrf.data.token
+    }
+    const response = await fetch(`/api/auth/${path}`, {
+      method: input === undefined ? 'GET' : 'POST',
+      credentials: 'same-origin', cache: 'no-store', headers,
+      body: input === undefined ? undefined : JSON.stringify(input),
+      signal: AbortSignal.timeout(15_000),
+    })
+    const body = await response.json()
+    if (response.ok && body.ok === true) return { ok: true, data: body.data as T }
+    if (body.ok === false && Object.hasOwn(AUTH_ERROR_MESSAGES, body.error)) {
+      return { ok: false, error: body.error, retryAfterSeconds: body.retryAfterSeconds }
+    }
+    return { ok: false, error: 'unavailable' }
+  } catch {
+    return { ok: false, error: 'network' }
+  }
 }
 
-let cachedApi: AuthApi | null = null
+const httpAuthApi: AuthApi = {
+  identify: (input) => request('identify', input),
+  signIn: (input) => request('sign-in', input),
+  register: (input) => request('register', input),
+  verifyEmail: (input) => request('verify-email', input),
+  resendCode: (input) => request('resend-code', input),
+  requestPasswordReset: (input) => request('request-password-reset', input),
+  resetPassword: (input) => request('reset-password', input),
+  currentUser: () => request('me'),
+  signOut: () => request('sign-out', {}),
+}
 
-/**
- * Replace the body with the real HTTP implementation once the backend exists.
- * The local demo adapter is reachable only in development with
- * NEXT_PUBLIC_AUTH_DEMO=1; both conditions are compiled out of production builds.
- */
 export async function getAuthApi(): Promise<AuthApi> {
-  if (cachedApi) return cachedApi
-  if (process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_AUTH_DEMO === '1') {
-    cachedApi = (await import('@/lib/auth-demo-api')).demoAuthApi
-  } else {
-    cachedApi = unavailableApi
-  }
-  return cachedApi
+  return httpAuthApi
 }
