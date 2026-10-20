@@ -24,7 +24,7 @@ export function VerifyStep({ email, challenge, disabled, onVerified, onChangeEma
   const [code, setCode] = useState('')
   const [error, setError] = useState<{ message: string; stamp: number } | null>(null)
   const [info, setInfo] = useState<string | null>(null)
-  const [cooldown, setCooldown] = useState(challenge.resendAfterSeconds || DEFAULT_RESEND_SECONDS)
+  const [cooldown, setCooldown] = useState(challenge.resendAfterSeconds ?? DEFAULT_RESEND_SECONDS)
   const length = challenge.codeLength
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export function VerifyStep({ email, challenge, disabled, onVerified, onChangeEma
     if (!result) return
     if (result.ok) {
       setCode('')
-      setCooldown(result.data.resendAfterSeconds || DEFAULT_RESEND_SECONDS)
+      setCooldown(result.data.resendAfterSeconds ?? DEFAULT_RESEND_SECONDS)
       setInfo('Мы отправили новый код. Предыдущий больше не действует.')
       document.getElementById(CODE_ID)?.focus()
       return

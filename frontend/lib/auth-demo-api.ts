@@ -1,9 +1,8 @@
 import type { AuthApi, AuthResult } from '@/lib/auth-client'
 
 /**
- * Development-only adapter for exercising the UI states locally. It is loaded
- * exclusively when NODE_ENV !== 'production' and NEXT_PUBLIC_AUTH_DEMO=1, and it
- * never runs in a production build.
+ * Legacy UI fixture kept for reference. The application no longer imports it;
+ * getAuthApi always uses the real HTTP endpoints.
  *
  * Emails containing "existing" go to the password step (password: demo-password),
  * "pending" resumes confirmation, anything else registers. The code is 123456.
@@ -17,7 +16,7 @@ const ok = <T>(data: T): AuthResult<T> => ({ ok: true, data })
 
 let attempts = 0
 
-export const demoAuthApi: AuthApi = {
+export const demoAuthApi: Pick<AuthApi, 'identify' | 'signIn' | 'register' | 'verifyEmail' | 'resendCode' | 'requestPasswordReset'> = {
   async identify({ email }) {
     await delay()
     if (email.includes('existing')) return ok({ step: 'password' })

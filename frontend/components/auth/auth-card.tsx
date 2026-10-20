@@ -87,7 +87,7 @@ export function AuthCard() {
 
   function finish() {
     setRedirecting(true)
-    router.replace(returnTo ?? '/')
+    router.replace(returnTo ?? '/account/')
   }
 
   function validEmail(fieldId: string) {

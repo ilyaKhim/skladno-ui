@@ -15,3 +15,13 @@ node_modules
 .DS_Store
 out/
 next-env.d.ts
+
+# Local runtime and build outputs
+.tools/
+**/target/
+.local/
+*.tsbuildinfo
+__pycache__/
+.env
+
+.m2/

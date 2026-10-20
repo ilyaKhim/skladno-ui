@@ -35,4 +35,3 @@ export function isTemplateSlidesManifest(value: unknown): value is TemplateSlide
     manifest.slides.every((slide) => typeof slide === 'string')
   )
 }
-
