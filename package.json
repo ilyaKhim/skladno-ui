@@ -12,7 +12,9 @@
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose stop",
     "test:bridge": "python3 -m unittest discover -s scripts -p 'test_v0_gitlab_bridge.py'",
-    "test:auth": "python3 scripts/auth-smoke.py"
+    "test:auth": "python3 scripts/auth-smoke.py",
+    "backend:test:unit": "bash scripts/backend-dev.sh test '-Dtest=*Test,!*IntegrationTest,!DevelopmentAuthBypassTest'",
+    "backend:test:integration": "bash scripts/backend-dev.sh test '-Dtest=*IntegrationTest,DevelopmentAuthBypassTest'"
   },
   "pnpm": {
     "overrides": {

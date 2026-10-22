@@ -20,6 +20,13 @@ spring:
     url: ${DATABASE_URL:jdbc:postgresql://127.0.0.1:5433/godeck}
     username: ${DATABASE_USER:godeck}
     password: ${DATABASE_PASSWORD:godeck-local-only}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  jackson:
+    deserialization:
+      accept-float-as-int: false
   mail:
     host: ${SMTP_HOST:127.0.0.1}
     port: ${SMTP_PORT:1025}
