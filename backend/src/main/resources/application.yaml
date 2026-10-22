@@ -10,6 +10,10 @@ server:
         secure: ${COOKIE_SECURE:false}
         same-site: lax
 spring:
+  config:
+    import:
+      - "optional:file:./backend/.env.local[.properties]"
+      - "optional:file:./.env.local[.properties]"
   application:
     name: godeck-backend
   datasource:

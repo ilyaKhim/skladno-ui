@@ -52,7 +52,20 @@ pnpm dev --port 3001
 AUTH_BASE_URL=http://localhost:3001 pnpm test:auth
 ```
 
-`frontend/.env.example` содержит настройку `BACKEND_URL`. При необходимости скопируйте его в `frontend/.env.local`. Java читает переменные окружения из терминала/настроек запуска IDE; список — в `backend/.env.example`. Файл `.env` сам по себе Spring Boot не загружает.
+`frontend/.env.example` содержит настройку `BACKEND_URL`. При необходимости скопируйте его в `frontend/.env.local`.
+
+Для локальных настроек API используйте `backend/.env.local`. При первом запуске его можно создать по образцу `backend/.env.example`. Файл исключён из Git и автоматически загружается Spring Boot при рабочем каталоге в корне проекта или `backend/`, в том числе из IntelliJ IDEA. Формат — `KEY=value`, без `export` и без кавычек вокруг значения. Переменные окружения терминала или настройки запуска IDEA имеют приоритет над файлом.
+
+Чтобы включить AI-генерацию и чат-правки, добавьте в **`backend/.env.local`**:
+
+```dotenv
+OPENAI_API_KEY=ваш_ключ_OpenAI
+GODECK_OPENAI_ENABLED=true
+```
+
+После изменения файла перезапустите `pnpm backend:dev`. В IDEA можно запускать `GoDeckApplication` с рабочим каталогом `$PROJECT_DIR$` или `$PROJECT_DIR$/backend`; локальный файл подхватится автоматически. Ключ не должен находиться в `application.yaml` или в конфигурации frontend.
+
+Настройки `.idea/` и файлы `*.iml` остаются локальными. Имя локального проекта IDEA — `godeck`; адрес GitHub-зеркала `ilyaKhim/skladno-ui` сохранён для действующей связи с v0.
 
 ## Авторизация
 
