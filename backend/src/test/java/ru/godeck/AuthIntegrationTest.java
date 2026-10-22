@@ -34,6 +34,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {
+        "godeck.generation.enabled=false",
         "spring.datasource.url=${TEST_DATABASE_URL:jdbc:postgresql://127.0.0.1:5433/godeck?currentSchema=auth_test}",
         "spring.datasource.hikari.schema=auth_test",
         "spring.flyway.default-schema=auth_test",

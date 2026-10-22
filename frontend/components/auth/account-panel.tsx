@@ -36,6 +36,7 @@ export function AccountPanel() {
       {email ? <><p className="mt-3 break-all">{email}</p><p className="mt-2 text-muted-foreground">Почта подтверждена. Вы вошли в GoDeck.</p></> : !error && <p className="mt-3">Проверяем вход…</p>}
       {error && <p role="alert" className="mt-3 text-destructive">{error}</p>}
       <div className="mt-6 flex items-center justify-between gap-4">
+        <Link href="/studio/" className="text-primary underline underline-offset-4">Открыть студию</Link>
         <Link href="/" className="text-primary underline underline-offset-4">На главную</Link>
         {email && <Button onClick={signOut} disabled={pending}>{pending ? 'Выходим…' : 'Выйти'}</Button>}
       </div>
