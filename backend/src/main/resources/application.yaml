@@ -30,3 +30,10 @@ spring:
 godeck:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   mail-from: ${MAIL_FROM:GoDeck <noreply@godeck.local>}
+  auth:
+    dev-bypass: ${AUTH_BYPASS:false}
+  generation:
+    enabled: ${GODECK_OPENAI_ENABLED:false}
+    api-key: ${OPENAI_API_KEY:}
+    model: ${OPENAI_MODEL:gpt-6.1-sol}
+    data-dir: ${GODECK_DATA_DIR:./data/presentations}

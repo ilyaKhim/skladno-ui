@@ -15,12 +15,18 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.beans.factory.annotation.Value;
+
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 @Configuration
 class SecurityConfig {
@@ -28,7 +34,12 @@ class SecurityConfig {
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
 
     @Bean
-    SecurityFilterChain security(HttpSecurity http, AuthService service, Clock clock) throws Exception {
+    SecurityFilterChain security(HttpSecurity http, AuthService service, Clock clock,
+                                 @Value("${godeck.auth.dev-bypass:false}") boolean devBypass,
+                                 @Value("${server.address:127.0.0.1}") String serverAddress) throws Exception {
+        if (devBypass && !isLoopback(serverAddress)) {
+            throw new IllegalStateException("AUTH_BYPASS is allowed only when SERVER_ADDRESS is loopback.");
+        }
         return http
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -53,6 +64,16 @@ class SecurityConfig {
                             if (req.getSession(false) != null) req.getSession(false).invalidate();
                             SecurityContextHolder.clearContext();
                         }
+                        if (devBypass) {
+                            // Stable local identity makes the authenticated application flow testable without
+                            // creating a real account. Never enable this on a network-facing server.
+                            var principal = new AuthPrincipal(
+                                    UUID.nameUUIDFromBytes("godeck-local-debug-user".getBytes(StandardCharsets.UTF_8)),
+                                    "debug@godeck.local", 0);
+                            SecurityContextHolder.getContext().setAuthentication(
+                                    UsernamePasswordAuthenticationToken.authenticated(principal, null,
+                                            AuthorityUtils.createAuthorityList("ROLE_USER")));
+                        }
                         if (req.getMethod().equals("POST") && req.getRequestURI().startsWith("/api/auth/")) {
                             Instant now = clock.instant();
                             if (windows.size() >= 10_000) windows.entrySet().removeIf(e -> !e.getValue().end.isAfter(now));
@@ -76,6 +97,10 @@ class SecurityConfig {
     }
 
     private record Window(Instant end, int count) {}
+
+    private static boolean isLoopback(String address) {
+        return address.equals("localhost") || address.equals("127.0.0.1") || address.equals("::1");
+    }
 
     private static void jsonError(HttpServletResponse response, int status, String code) throws IOException {
         response.setStatus(status);

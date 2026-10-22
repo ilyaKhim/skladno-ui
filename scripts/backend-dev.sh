@@ -9,4 +9,7 @@ cd "$project_root/backend"
 if [[ "${1:-}" == test ]]; then
   exec ./mvnw test
 fi
+# Local interactive runs use a stable debug identity by default. Set AUTH_BYPASS=false
+# to exercise registration/sign-in; SecurityConfig only permits bypass on loopback.
+export AUTH_BYPASS="${AUTH_BYPASS:-true}"
 exec ./mvnw spring-boot:run
