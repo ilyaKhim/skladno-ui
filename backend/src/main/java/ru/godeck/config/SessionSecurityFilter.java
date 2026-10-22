@@ -5,13 +5,17 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import ru.godeck.auth.AuthPrincipal;
-import ru.godeck.auth.AuthService;
+import ru.godeck.auth.exception.AuthError;
+import ru.godeck.auth.security.AuthPrincipal;
+import ru.godeck.auth.service.AuthService;
+import ru.godeck.common.security.SecurityPolicy;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +27,12 @@ import java.util.concurrent.ConcurrentHashMap;
 
 // Added only to the security chain: making it a servlet component would register it twice.
 final class SessionSecurityFilter extends OncePerRequestFilter {
+    private static final AuthPrincipal DEBUG_PRINCIPAL =
+            new AuthPrincipal(
+                    UUID.nameUUIDFromBytes(
+                            "godeck-local-debug-user".getBytes(StandardCharsets.UTF_8)),
+                    "debug@godeck.local",
+                    0);
     private final AuthService service;
     private final Clock clock;
     private final boolean devBypass;
@@ -39,18 +49,13 @@ final class SessionSecurityFilter extends OncePerRequestFilter {
             HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws IOException, ServletException {
         if (devBypass) {
-            var principal =
-                    new AuthPrincipal(
-                            UUID.nameUUIDFromBytes(
-                                    "godeck-local-debug-user".getBytes(StandardCharsets.UTF_8)),
-                            "debug@godeck.local",
-                            0);
             SecurityContextHolder.getContext()
                     .setAuthentication(
                             UsernamePasswordAuthenticationToken.authenticated(
-                                    principal,
+                                    DEBUG_PRINCIPAL,
                                     null,
-                                    AuthorityUtils.createAuthorityList("ROLE_USER")));
+                                    AuthorityUtils.createAuthorityList(
+                                            SecurityPolicy.USER_AUTHORITY)));
         } else {
             var auth = SecurityContextHolder.getContext().getAuthentication();
             if (auth != null
@@ -69,10 +74,11 @@ final class SessionSecurityFilter extends OncePerRequestFilter {
     private boolean rateLimited(HttpServletRequest request, HttpServletResponse response)
             throws IOException {
         Instant now = clock.instant();
-        if (windows.size() >= 10_000)
+        if (windows.size() >= SecurityPolicy.MAX_TRACKED_IP_ADDRESSES)
             windows.entrySet().removeIf(e -> !e.getValue().end().isAfter(now));
         String key = request.getRemoteAddr(); // Never trust a client-supplied X-Forwarded-For.
-        if (!windows.containsKey(key) && windows.size() >= 10_000) {
+        if (!windows.containsKey(key)
+                && windows.size() >= SecurityPolicy.MAX_TRACKED_IP_ADDRESSES) {
             reject(response);
             return true;
         }
@@ -81,9 +87,10 @@ final class SessionSecurityFilter extends OncePerRequestFilter {
                         key,
                         (k, old) ->
                                 old == null || !old.end().isAfter(now)
-                                        ? new Window(now.plus(Duration.ofMinutes(15)), 1)
+                                        ? new Window(
+                                                now.plus(SecurityPolicy.AUTH_REQUEST_WINDOW), 1)
                                         : new Window(old.end(), old.count() + 1));
-        if (window.count() > 100) {
+        if (window.count() > SecurityPolicy.MAX_AUTH_REQUESTS_PER_WINDOW) {
             response.setHeader(
                     "Retry-After",
                     Long.toString(Math.max(1, Duration.between(now, window.end()).toSeconds())));
@@ -94,9 +101,10 @@ final class SessionSecurityFilter extends OncePerRequestFilter {
     }
 
     private void reject(HttpServletResponse response) throws IOException {
-        response.setStatus(429);
-        response.setContentType("application/json");
-        response.getWriter().write("{\"ok\":false,\"error\":\"rate-limited\"}");
+        response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.getWriter()
+                .write("{\"ok\":false,\"error\":\"" + AuthError.RATE_LIMITED.code() + "\"}");
     }
 
     private record Window(Instant end, int count) {}

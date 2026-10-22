@@ -98,7 +98,7 @@ API авторизации, каталог шаблонов, очередь, в�
 
 ## Структура backend
 
-Backend разделён по функциям: `ru.godeck.auth`, `ru.godeck.presentation` и `ru.godeck.config`. Контроллеры принимают DTO, сервисы выполняют сценарии, Spring Data JPA-репозитории работают с сущностями. Flyway управляет схемой, Hibernate только проверяет её; Open Session in View отключён. Подробности слоёв, транзакций и оставшихся PostgreSQL-запросов — в [docs/backend-architecture.md](docs/backend-architecture.md).
+Backend разделён по функциям: `ru.godeck.auth`, `ru.godeck.presentation` и `ru.godeck.config`. Внутри функций выделены пакеты `controller`, `dto`, `service`, `entity`, `repository`, `exception` и `policy`. Контроллеры принимают DTO, сервисы выполняют сценарии, Spring Data JPA-репозитории работают с сущностями. Лимиты собраны в политиках, тексты писем и ошибок — в `messages.properties`, промпты — в `resources/prompts/`. Flyway управляет схемой, Hibernate только проверяет её; Open Session in View отключён. Подробности слоёв, транзакций и оставшихся PostgreSQL-запросов — в [docs/backend-architecture.md](docs/backend-architecture.md).
 
 ## Проверки
 

@@ -5,6 +5,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -13,13 +15,17 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 
-import ru.godeck.auth.AuthService;
+import ru.godeck.auth.exception.AuthError;
+import ru.godeck.auth.service.AuthService;
 
 import java.io.IOException;
 import java.time.Clock;
 
 @Configuration
 class SecurityConfig {
+    private static final String UNSAFE_BYPASS_BINDING =
+            "AUTH_BYPASS is allowed only when SERVER_ADDRESS is loopback.";
+
     @Bean
     Clock clock() {
         return Clock.systemUTC();
@@ -42,8 +48,7 @@ class SecurityConfig {
                 && !address.equals("localhost")
                 && !address.equals("127.0.0.1")
                 && !address.equals("::1")) {
-            throw new IllegalStateException(
-                    "AUTH_BYPASS is allowed only when SERVER_ADDRESS is loopback.");
+            throw new IllegalStateException(UNSAFE_BYPASS_BINDING);
         }
         return http.formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -66,19 +71,26 @@ class SecurityConfig {
                         e ->
                                 e.authenticationEntryPoint(
                                                 (req, res, ex) ->
-                                                        error(res, 401, "invalid-credentials"))
+                                                        error(
+                                                                res,
+                                                                HttpStatus.UNAUTHORIZED,
+                                                                AuthError.INVALID_CREDENTIALS))
                                         .accessDeniedHandler(
-                                                (req, res, ex) -> error(res, 403, "invalid-input")))
+                                                (req, res, ex) ->
+                                                        error(
+                                                                res,
+                                                                HttpStatus.FORBIDDEN,
+                                                                AuthError.INVALID_INPUT)))
                 .addFilterBefore(
                         new SessionSecurityFilter(service, clock, devBypass),
                         AuthorizationFilter.class)
                 .build();
     }
 
-    private static void error(HttpServletResponse response, int status, String code)
+    private static void error(HttpServletResponse response, HttpStatus status, AuthError error)
             throws IOException {
-        response.setStatus(status);
-        response.setContentType("application/json");
-        response.getWriter().write("{\"ok\":false,\"error\":\"" + code + "\"}");
+        response.setStatus(status.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.getWriter().write("{\"ok\":false,\"error\":\"" + error.code() + "\"}");
     }
 }

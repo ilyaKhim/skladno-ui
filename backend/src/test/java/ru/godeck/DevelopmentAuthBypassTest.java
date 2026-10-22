@@ -41,7 +41,7 @@ class DevelopmentAuthBypassTest {
                                 .contentType("application/json")
                                 .content(
                                         "{\"template_id\":\"aurora\",\"topic\":\"Тестовый проект"
-                                            + " для просмотра запроса\"}"))
+                                                + " для просмотра запроса\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.model").exists())
                 .andExpect(jsonPath("$.instructions").exists())
@@ -54,7 +54,7 @@ class DevelopmentAuthBypassTest {
                                 .contentType("application/json")
                                 .content(
                                         "{\"template_id\":\"aurora\",\"topic\":\"Ручное заполнение"
-                                            + " тестовой презентации\",\"mode\":\"manual\"}"))
+                                                + " тестовой презентации\",\"mode\":\"manual\"}"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.mode").value("manual"))
                 .andExpect(jsonPath("$.status").value("awaiting_content"));
@@ -64,7 +64,7 @@ class DevelopmentAuthBypassTest {
                                 .contentType("application/json")
                                 .content(
                                         "{\"template_id\":\"aurora\",\"topic\":\"Тестовая"
-                                            + " презентация\"}"))
+                                                + " презентация\"}"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.error.code").value("openai_disabled"));
     }
