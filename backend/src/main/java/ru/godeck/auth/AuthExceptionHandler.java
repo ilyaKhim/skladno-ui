@@ -1,9 +1,7 @@
-package ru.godeck;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
+package ru.godeck.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,7 +11,10 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+@RestControllerAdvice(assignableTypes = AuthController.class)
 class AuthExceptionHandler {
     @ExceptionHandler(AuthException.class)
     ResponseEntity<Map<String, Object>> auth(AuthException error) {
@@ -28,8 +29,11 @@ class AuthExceptionHandler {
         return response.body(body);
     }
 
-    @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,
-            DataIntegrityViolationException.class})
+    @ExceptionHandler({
+        MethodArgumentNotValidException.class,
+        HttpMessageNotReadableException.class,
+        DataIntegrityViolationException.class
+    })
     ResponseEntity<Map<String, Object>> invalid(Exception error) {
         return ResponseEntity.badRequest().body(Map.of("ok", false, "error", "invalid-input"));
     }
@@ -40,6 +44,7 @@ class AuthExceptionHandler {
         if (request.getRequestURI().endsWith("/request-password-reset")) {
             return ResponseEntity.ok(AuthController.ok(Map.of()));
         }
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("ok", false, "error", "send-failed"));
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("ok", false, "error", "send-failed"));
     }
 }

@@ -1,4 +1,4 @@
-package ru.godeck;
+package ru.godeck.auth;
 
 import org.springframework.http.HttpStatus;
 

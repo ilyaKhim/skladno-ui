@@ -1,6 +1,6 @@
 # API авторизации
 
-Java 26, Spring Boot 4.1.1, Spring Security, JDBC, Flyway, PostgreSQL. Исходники восстановлены из локальной копии предыдущей разработки. В ветке `origin/codex/local-auth-backend` остались только `backend/target` и отчёты тестов; эти скомпилированные файлы не включены в исходники. `target/` и локальный JDK исключены из Git.
+Java 26, Spring Boot 4.1.1, Spring Security, Spring Data JPA/Hibernate, Flyway, PostgreSQL. Исходники восстановлены из локальной копии предыдущей разработки. В ветке `origin/codex/local-auth-backend` остались только `backend/target` и отчёты тестов; эти скомпилированные файлы не включены в исходники. `target/` и локальный JDK исключены из Git.
 
 Все ответы: `{ "ok": true, "data": ... }` либо `{ "ok": false, "error": "..." }`. При ограничении частоты сервис может вернуть `retryAfterSeconds` и `Retry-After`.
 

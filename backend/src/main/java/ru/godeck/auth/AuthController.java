@@ -1,7 +1,4 @@
-package ru.godeck;
-
-import java.util.Map;
-import java.util.UUID;
+package ru.godeck.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -11,6 +8,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.AuthorityUtils;
@@ -19,14 +17,20 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+import java.util.UUID;
+
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
     private static final String CHALLENGE = "registrationChallenge";
     private final AuthService service;
-    private final HttpSessionSecurityContextRepository contexts = new HttpSessionSecurityContextRepository();
+    private final HttpSessionSecurityContextRepository contexts =
+            new HttpSessionSecurityContextRepository();
 
-    public AuthController(AuthService service) { this.service = service; }
+    public AuthController(AuthService service) {
+        this.service = service;
+    }
 
     @GetMapping("/csrf")
     Map<String, Object> csrf(CsrfToken token) {
@@ -39,14 +43,18 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    Map<String, Object> register(@Valid @RequestBody RegisterInput input, HttpServletRequest request) {
+    Map<String, Object> register(
+            @Valid @RequestBody RegisterInput input, HttpServletRequest request) {
         UUID challenge = service.register(input.email(), input.password());
         request.getSession().setAttribute(CHALLENGE, challenge);
         return ok(Map.of("challenge", Map.of("codeLength", 6, "resendAfterSeconds", 60)));
     }
 
     @PostMapping("/verify-email")
-    Map<String, Object> verify(@Valid @RequestBody VerifyInput input, HttpServletRequest request, HttpServletResponse response) {
+    Map<String, Object> verify(
+            @Valid @RequestBody VerifyInput input,
+            HttpServletRequest request,
+            HttpServletResponse response) {
         AuthPrincipal principal = service.verify(input.email(), input.code(), challengeId(request));
         startSession(principal, request, response);
         return ok(Map.of("signedIn", true));
@@ -59,7 +67,10 @@ public class AuthController {
     }
 
     @PostMapping("/sign-in")
-    Map<String, Object> signIn(@Valid @RequestBody LoginInput input, HttpServletRequest request, HttpServletResponse response) {
+    Map<String, Object> signIn(
+            @Valid @RequestBody LoginInput input,
+            HttpServletRequest request,
+            HttpServletResponse response) {
         startSession(service.signIn(input.email(), input.password()), request, response);
         return ok(Map.of());
     }
@@ -71,7 +82,8 @@ public class AuthController {
     }
 
     @PostMapping("/reset-password")
-    Map<String, Object> resetPassword(@Valid @RequestBody ResetInput input, HttpServletRequest request) {
+    Map<String, Object> resetPassword(
+            @Valid @RequestBody ResetInput input, HttpServletRequest request) {
         service.resetPassword(input.token(), input.password());
         if (request.getSession(false) != null) request.getSession(false).invalidate();
         SecurityContextHolder.clearContext();
@@ -96,27 +108,39 @@ public class AuthController {
         return session == null ? null : (UUID) session.getAttribute(CHALLENGE);
     }
 
-    private void startSession(AuthPrincipal principal, HttpServletRequest request, HttpServletResponse response) {
+    private void startSession(
+            AuthPrincipal principal, HttpServletRequest request, HttpServletResponse response) {
         // Replacing the session prevents fixation and drops registration/CSRF state.
         if (request.getSession(false) != null) request.getSession(false).invalidate();
         request.getSession(true);
         var context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(principal, null,
-                AuthorityUtils.createAuthorityList("ROLE_USER")));
+        context.setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated(
+                        principal, null, AuthorityUtils.createAuthorityList("ROLE_USER")));
         SecurityContextHolder.setContext(context);
         contexts.saveContext(context, request, response);
     }
 
-    static Map<String, Object> ok(Object data) { return Map.of("ok", true, "data", data); }
+    static Map<String, Object> ok(Object data) {
+        return Map.of("ok", true, "data", data);
+    }
 
     public record EmailInput(@NotBlank @Email @Size(max = 254) String email) {}
-    public record LoginInput(@NotBlank @Email @Size(max = 254) String email,
-                             @NotBlank @Size(max = 72) String password) {}
-    public record RegisterInput(@NotBlank @Email @Size(max = 254) String email,
-                                @NotBlank @Size(min = 8, max = 72) String password,
-                                @AssertTrue boolean consentAccepted) {}
-    public record VerifyInput(@NotBlank @Email @Size(max = 254) String email,
-                              @NotBlank @Pattern(regexp = "[0-9]{6}") String code) {}
-    public record ResetInput(@NotBlank @Pattern(regexp = "[A-Za-z0-9_-]{43}") String token,
-                             @NotBlank @Size(min = 8, max = 72) String password) {}
+
+    public record LoginInput(
+            @NotBlank @Email @Size(max = 254) String email,
+            @NotBlank @Size(max = 72) String password) {}
+
+    public record RegisterInput(
+            @NotBlank @Email @Size(max = 254) String email,
+            @NotBlank @Size(min = 8, max = 72) String password,
+            @AssertTrue boolean consentAccepted) {}
+
+    public record VerifyInput(
+            @NotBlank @Email @Size(max = 254) String email,
+            @NotBlank @Pattern(regexp = "[0-9]{6}") String code) {}
+
+    public record ResetInput(
+            @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]{43}") String token,
+            @NotBlank @Size(min = 8, max = 72) String password) {}
 }

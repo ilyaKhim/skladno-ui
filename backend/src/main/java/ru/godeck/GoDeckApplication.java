@@ -9,8 +9,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class GoDeckApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(GoDeckApplication.class, args);
-	}
-
+    public static void main(String[] args) {
+        SpringApplication.run(GoDeckApplication.class, args);
+    }
 }

@@ -12,7 +12,7 @@
 	<artifactId>godeck-backend</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>GoDeck</name>
-	<description>GoDeck authentication API</description>
+	<description>GoDeck authentication and presentation API</description>
 	<properties>
 		<java.version>26</java.version>
 	</properties>
@@ -23,7 +23,7 @@
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-jdbc</artifactId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
