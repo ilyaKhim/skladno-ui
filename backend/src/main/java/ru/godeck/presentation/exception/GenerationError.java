@@ -6,6 +6,8 @@ import ru.godeck.common.text.BackendMessages;
 import ru.godeck.presentation.policy.PresentationPolicy;
 
 public enum GenerationError {
+    PRESENTATION_BUSY(
+            HttpStatus.CONFLICT, "presentation_busy", "presentation.error.presentation-busy"),
     CANNOT_CANCEL(HttpStatus.CONFLICT, "cannot_cancel", "presentation.error.cannot-cancel"),
     CHAT_DISABLED(
             HttpStatus.SERVICE_UNAVAILABLE, "openai_disabled", "presentation.error.chat-disabled"),

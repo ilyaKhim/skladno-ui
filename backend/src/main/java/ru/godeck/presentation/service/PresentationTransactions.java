@@ -61,7 +61,7 @@ public class PresentationTransactions {
                                     p.getId(),
                                     p.getTopic(),
                                     p.getMode(),
-                                    models.resolve(p.getModel()),
+                                    p.getModel(),
                                     p.getContentJson());
                         });
     }

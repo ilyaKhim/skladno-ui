@@ -2,7 +2,6 @@ package ru.godeck.presentation.ai;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -12,7 +11,6 @@ import ru.godeck.presentation.model.PresentationContent;
 
 import tools.jackson.databind.JsonNode;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,8 +21,6 @@ public class PresentationContentGenerator {
     private static final String RESPONSES_URL = "https://api.openai.com/v1/responses";
     private static final String COMPLETED_STATUS = "completed";
     private static final String OUTPUT_TEXT_TYPE = "output_text";
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
-    private static final Duration READ_TIMEOUT = Duration.ofMinutes(2);
     private static final int MAX_OUTPUT_TOKENS = 12_000;
 
     private final RestClient client;
@@ -34,15 +30,13 @@ public class PresentationContentGenerator {
 
     public PresentationContentGenerator(
             PresentationContentCodec codec,
+            RestClient openAiClient,
             @Value("${godeck.generation.api-key:}") String apiKey,
             @Value("${godeck.generation.enabled:false}") boolean enabled) {
         this.codec = codec;
         this.apiKey = apiKey;
         this.enabled = enabled;
-        var requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(CONNECT_TIMEOUT);
-        requestFactory.setReadTimeout(READ_TIMEOUT);
-        this.client = RestClient.builder().requestFactory(requestFactory).build();
+        this.client = openAiClient;
     }
 
     public boolean enabled() {

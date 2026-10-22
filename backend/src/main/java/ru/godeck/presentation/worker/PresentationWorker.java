@@ -6,7 +6,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import ru.godeck.presentation.ai.PresentationContentGenerator;
+import ru.godeck.presentation.ai.PresentationModelCatalog;
 import ru.godeck.presentation.exception.GenerationError;
+import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.model.PresentationContent;
@@ -32,6 +34,7 @@ public class PresentationWorker {
     private final PresentationContentGenerator generator;
     private final PresentationContentCodec codec;
     private final PresentationFiles files;
+    private final PresentationModelCatalog models;
     private final AtomicBoolean working = new AtomicBoolean();
 
     public PresentationWorker(
@@ -39,12 +42,14 @@ public class PresentationWorker {
             PresentationTemplateService templates,
             PresentationContentGenerator generator,
             PresentationContentCodec codec,
-            PresentationFiles files) {
+            PresentationFiles files,
+            PresentationModelCatalog models) {
         this.transactions = transactions;
         this.templates = templates;
         this.generator = generator;
         this.codec = codec;
         this.files = files;
+        this.models = models;
     }
 
     @Scheduled(initialDelayString = POLL_INTERVAL, fixedDelayString = POLL_INTERVAL)
@@ -59,9 +64,18 @@ public class PresentationWorker {
         }
     }
 
-    private void process(PresentationTransactions.Job job) {
+    private void process(PresentationTransactions.Job claimed) {
         Path output = null;
         try {
+            var job =
+                    new PresentationTransactions.Job(
+                            claimed.id(),
+                            claimed.topic(),
+                            claimed.mode(),
+                            claimed.mode() == GenerationMode.MANUAL
+                                    ? claimed.model()
+                                    : models.resolve(claimed.model()),
+                            claimed.contentJson());
             PresentationContent content =
                     job.mode() == GenerationMode.MANUAL
                             ? codec.decode(job.contentJson())
@@ -77,11 +91,13 @@ public class PresentationWorker {
         } catch (Exception error) {
             files.discard(output);
             String code =
-                    GenerationError.OPENAI_DISABLED.code().equals(error.getMessage())
-                            ? GenerationError.OPENAI_DISABLED.code()
-                            : GenerationError.GENERATION_FAILED.code();
-            transactions.fail(job.id(), code);
-            log.warn(GENERATION_FAILURE_LOG, job.id(), error.getClass().getSimpleName());
+                    error instanceof GenerationException known
+                            ? known.code()
+                            : GenerationError.OPENAI_DISABLED.code().equals(error.getMessage())
+                                    ? GenerationError.OPENAI_DISABLED.code()
+                                    : GenerationError.GENERATION_FAILED.code();
+            transactions.fail(claimed.id(), code);
+            log.warn(GENERATION_FAILURE_LOG, claimed.id(), error.getClass().getSimpleName());
         }
     }
 }

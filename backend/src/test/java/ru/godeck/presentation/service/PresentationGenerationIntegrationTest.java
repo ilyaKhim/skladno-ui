@@ -510,6 +510,205 @@ class PresentationGenerationIntegrationTest {
         assertThat(service.list(UUID.randomUUID(), 20, 0).items()).isEmpty();
     }
 
+    @Test
+    void cancelledJobIsNeverRenderedOrSentToAi() throws Exception {
+        UUID id = createManual();
+        service.submitManual(USER, id, typedPlan("Cancelled"));
+        service.cancel(USER, id);
+        worker.processOne();
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.CANCELLED);
+        assertThat(service.versions(USER, id)).isEmpty();
+        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+    }
+
+    @Test
+    void obsoleteModelFailsItsJobWithoutBlockingTheNextJob() throws Exception {
+        UUID obsolete = service.create(USER, "aurora", "Old model", "openai", null, null).id();
+        db.update("UPDATE generated_presentations SET model='retired-model' WHERE id=?", obsolete);
+        UUID next = createManual();
+        service.submitManual(USER, next, typedPlan("Next job"));
+        // Fix queue order explicitly rather than relying on wall-clock precision.
+        db.update(
+                "UPDATE generated_presentations SET created_at=now()-interval '1 minute' WHERE"
+                        + " id=?",
+                obsolete);
+        worker.processOne();
+        assertThat(service.get(USER, obsolete).status()).isEqualTo(PresentationStatus.FAILED);
+        assertThat(service.get(USER, obsolete).errorCode()).isEqualTo("unsupported_model");
+        worker.processOne();
+        assertThat(service.get(USER, next).status()).isEqualTo(PresentationStatus.SUCCEEDED);
+        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+    }
+
+    @Test
+    void providerFailureDoesNotLeaveARevisionAndTheWorkerRemainsUsable() throws Exception {
+        UUID failed = service.create(USER, "aurora", "Provider failure", "openai", null, null).id();
+        when(generator.generate(anyString(), anyMap(), anyList(), anyString()))
+                .thenThrow(new IllegalStateException("provider failed"));
+        worker.processOne();
+        assertThat(service.get(USER, failed).status()).isEqualTo(PresentationStatus.FAILED);
+        assertThat(service.get(USER, failed).errorCode()).isEqualTo("generation_failed");
+        assertThat(service.versions(USER, failed)).isEmpty();
+        UUID next = createManual();
+        service.submitManual(USER, next, typedPlan("Recovery"));
+        worker.processOne();
+        assertThat(service.get(USER, next).status()).isEqualTo(PresentationStatus.SUCCEEDED);
+    }
+
+    @Test
+    void staleRunningJobCannotBeCompletedAfterRecoveryMarksItFailed() throws Exception {
+        UUID id = createManual();
+        service.submitManual(USER, id, typedPlan("Interrupted"));
+        var job = transactions.claim().orElseThrow();
+        db.update(
+                "UPDATE generated_presentations SET updated_at=now()-interval '6 minutes' WHERE"
+                        + " id=?",
+                id);
+        assertThat(transactions.claim()).isEmpty();
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.FAILED);
+        assertThat(service.get(USER, id).errorCode()).isEqualTo("worker_interrupted");
+        assertThat(
+                        assertThrows(
+                                        GenerationException.class,
+                                        () -> transactions.complete(job, "{}", "never-written", 1))
+                                .code())
+                .isEqualTo("worker_interrupted");
+        assertThat(service.versions(USER, id)).isEmpty();
+    }
+
+    @Test
+    void busyCancelAndManualSubmissionReturnConflictWithoutChangingTheJob() throws Exception {
+        UUID id = createManual();
+        String body = json.writeValueAsString(plan("Blocked"));
+        new TransactionTemplate(transactionManager)
+                .executeWithoutResult(
+                        tx -> {
+                            db.queryForObject(
+                                    "SELECT id FROM generated_presentations WHERE id=? FOR UPDATE",
+                                    UUID.class,
+                                    id);
+                            var attempt =
+                                    CompletableFuture.runAsync(
+                                            () -> {
+                                                try {
+                                                    mvc.perform(
+                                                                    post(
+                                                                                    "/api/generation/v1/presentations/{id}/cancel",
+                                                                                    id)
+                                                                            .with(csrf()))
+                                                            .andExpect(status().isConflict())
+                                                            .andExpect(
+                                                                    jsonPath("$.error.code")
+                                                                            .value(
+                                                                                    "presentation_busy"));
+                                                    mvc.perform(
+                                                                    put(
+                                                                                    "/api/generation/v1/presentations/{id}/content",
+                                                                                    id)
+                                                                            .with(csrf())
+                                                                            .contentType(
+                                                                                    "application/json")
+                                                                            .content(body))
+                                                            .andExpect(status().isConflict())
+                                                            .andExpect(
+                                                                    jsonPath("$.error.code")
+                                                                            .value(
+                                                                                    "presentation_busy"));
+                                                } catch (Exception e) {
+                                                    throw new IllegalStateException(e);
+                                                }
+                                            });
+                            try {
+                                attempt.get(5, TimeUnit.SECONDS);
+                            } catch (Exception e) {
+                                throw new IllegalStateException(e);
+                            }
+                        });
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.AWAITING_CONTENT);
+    }
+
+    @Test
+    void invalidPathAndQueryTypesUseTheSameValidationEnvelope() throws Exception {
+        for (String url :
+                List.of(
+                        "/api/generation/v1/presentations/not-a-uuid",
+                        "/api/generation/v1/presentations?limit=no-number"))
+            mvc.perform(get(url))
+                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(jsonPath("$.error.code").value("invalid_input"));
+    }
+
+    @Test
+    void duplicateRevisionRollsBackTheNewPointerAndRemovesItsFile() throws Exception {
+        UUID id = readyManual();
+        Path previous = service.download(USER, id);
+        var filesBefore = outputFiles();
+        // Force a real unique-constraint failure while committing version 2.
+        db.update(
+                """
+                INSERT INTO presentation_revisions(id,presentation_id,user_id,version,message,reply,content_json,output_path,slide_count,created_at)
+                SELECT ?,id,user_id,2,'Existing version','Existing reply',content_json,output_path,slide_count,now()
+                FROM generated_presentations WHERE id=?
+                """,
+                UUID.randomUUID(),
+                id);
+        when(generator.generate(anyString(), anyMap(), anyList(), anyString()))
+                .thenReturn(typedPlan("Replacement"));
+        assertThat(
+                        assertThrows(
+                                        GenerationException.class,
+                                        () -> service.chat(USER, id, "Replace", null))
+                                .code())
+                .isEqualTo("edit_failed");
+        assertThat(service.get(USER, id).version()).isEqualTo(1);
+        assertThat(service.download(USER, id)).isEqualTo(previous);
+        assertThat(outputFiles()).isEqualTo(filesBefore);
+        assertThat(
+                        db.queryForObject(
+                                "SELECT edit_id FROM generated_presentations WHERE id=?",
+                                UUID.class,
+                                id))
+                .isNull();
+    }
+
+    @Test
+    void activeQuotaBlocksNewJobsButStillPermitsAnIdempotentRetry() {
+        String key = UUID.randomUUID().toString();
+        var first = service.create(USER, "aurora", "One", "manual", key, null);
+        service.create(USER, "aurora", "Two", "manual", null, null);
+        service.create(USER, "aurora", "Three", "manual", null, null);
+        assertThat(
+                        assertThrows(
+                                        GenerationException.class,
+                                        () ->
+                                                service.create(
+                                                        USER, "aurora", "Four", "manual", null,
+                                                        null))
+                                .code())
+                .isEqualTo("generation_limit");
+        assertThat(service.create(USER, "aurora", "One", "manual", key, null).id())
+                .isEqualTo(first.id());
+        service.cancel(USER, first.id());
+        assertThat(service.create(USER, "aurora", "Replacement", "manual", null, null)).isNotNull();
+    }
+
+    private java.util.Set<Path> outputFiles() throws Exception {
+        if (!Files.exists(OUTPUT)) return java.util.Set.of();
+        try (var paths = Files.list(OUTPUT)) {
+            return paths.collect(java.util.stream.Collectors.toSet());
+        }
+    }
+
+    @Test
+    void manualRenderingDoesNotDependOnAnAvailableAiModel() throws Exception {
+        UUID id = createManual();
+        service.submitManual(USER, id, typedPlan("Offline plan"));
+        db.update("UPDATE generated_presentations SET model='retired-model' WHERE id=?", id);
+        worker.processOne();
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
+        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+    }
+
     private UUID createManual() throws Exception {
         var result =
                 mvc.perform(

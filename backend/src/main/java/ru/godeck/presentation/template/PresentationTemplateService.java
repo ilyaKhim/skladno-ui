@@ -227,7 +227,10 @@ public class PresentationTemplateService {
     private static String limit(String value, int max) {
         if (value.length() <= max) return value;
         if (max <= TemplateTextPolicy.MIN_LENGTH_FOR_ELLIPSIS) return value.substring(0, max);
-        String cut = value.substring(0, max - 1);
+        int end = max - 1;
+        if (Character.isHighSurrogate(value.charAt(end - 1))
+                && Character.isLowSurrogate(value.charAt(end))) end--;
+        String cut = value.substring(0, end);
         int space = cut.lastIndexOf(' ');
         if (space >= (int) (max * TemplateTextPolicy.WORD_BOUNDARY_MINIMUM_FRACTION))
             cut = cut.substring(0, space);

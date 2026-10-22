@@ -12,6 +12,7 @@ import ru.godeck.presentation.template.PresentationTemplateService;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.UUID;
@@ -52,7 +53,7 @@ public class PresentationFiles {
             if (!file.startsWith(directory.toRealPath()) || !Files.isRegularFile(file))
                 throw new IOException();
             return file;
-        } catch (IOException e) {
+        } catch (IOException | InvalidPathException e) {
             throw new GenerationException(GenerationError.FILE_NOT_READY);
         }
     }

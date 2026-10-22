@@ -37,6 +37,7 @@ import java.util.regex.Pattern;
 @SpringBootTest(
         properties = {
             "godeck.generation.enabled=false",
+            "godeck.auth.dev-bypass=false",
             "spring.datasource.url=${TEST_DATABASE_URL:jdbc:postgresql://127.0.0.1:5433/godeck?currentSchema=auth_test}",
             "spring.datasource.hikari.schema=auth_test",
             "spring.flyway.default-schema=auth_test",
@@ -52,9 +53,11 @@ class AuthIntegrationTest {
     @Autowired ObjectMapper json;
     @Autowired TestClock clock;
     @Autowired Outbox mail;
+    @Autowired ru.godeck.presentation.template.PresentationTemplateService templates;
 
     @BeforeEach
     void clean() {
+        db.update("DELETE FROM generated_presentations");
         db.update("DELETE FROM email_verifications");
         db.update("DELETE FROM app_users");
         clock.now = clock.now.plus(Duration.ofDays(1));
@@ -378,6 +381,267 @@ class AuthIntegrationTest {
                 .andExpect(status().isOk());
         postJson("sign-in", Map.of("email", EMAIL, "password", PASSWORD), null)
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void concurrentVerificationConsumesTheChallengeOnlyOnce() throws Exception {
+        MockHttpSession original = register();
+        String code = code();
+        MockHttpSession copy = new MockHttpSession();
+        copy.setAttribute("registrationChallenge", original.getAttribute("registrationChallenge"));
+        var statuses =
+                concurrently(
+                        () ->
+                                postJson(
+                                                "verify-email",
+                                                Map.of("email", EMAIL, "code", code),
+                                                original)
+                                        .andReturn()
+                                        .getResponse()
+                                        .getStatus(),
+                        () ->
+                                postJson("verify-email", Map.of("email", EMAIL, "code", code), copy)
+                                        .andReturn()
+                                        .getResponse()
+                                        .getStatus());
+        assertThat(statuses).containsExactlyInAnyOrder(200, 400);
+        assertThat(db.queryForObject("SELECT count(*) FROM app_users", Integer.class)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM email_verifications", Integer.class))
+                .isZero();
+    }
+
+    @Test
+    void concurrentPasswordResetConsumesTheTokenOnlyOnce() throws Exception {
+        MockHttpSession account = verifiedAccount();
+        postJson("request-password-reset", Map.of("email", EMAIL), null).andExpect(status().isOk());
+        String token = resetToken();
+        java.util.concurrent.Callable<Integer> reset =
+                () ->
+                        postJson(
+                                        "reset-password",
+                                        Map.of("token", token, "password", "new-secure-password"),
+                                        null)
+                                .andReturn()
+                                .getResponse()
+                                .getStatus();
+        assertThat(concurrently(reset, reset)).containsExactlyInAnyOrder(200, 400);
+        assertThat(db.queryForObject("SELECT credentials_version FROM app_users", Integer.class))
+                .isEqualTo(1);
+        mvc.perform(get("/api/auth/me").session(account)).andExpect(status().isUnauthorized());
+        postJson("sign-in", Map.of("email", EMAIL, "password", "new-secure-password"), null)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void concurrentWrongPasswordsDoNotLoseAttemptCounters() throws Exception {
+        verifiedAccount();
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var requests = new java.util.ArrayList<java.util.concurrent.CompletableFuture<Integer>>();
+        for (int n = 0; n < 5; n++)
+            requests.add(
+                    java.util.concurrent.CompletableFuture.supplyAsync(
+                            () -> {
+                                try {
+                                    start.await();
+                                    return postJson(
+                                                    "sign-in",
+                                                    Map.of(
+                                                            "email",
+                                                            EMAIL,
+                                                            "password",
+                                                            "wrong-password"),
+                                                    null)
+                                            .andReturn()
+                                            .getResponse()
+                                            .getStatus();
+                                } catch (Exception e) {
+                                    throw new IllegalStateException(e);
+                                }
+                            }));
+        start.countDown();
+        for (var request : requests)
+            assertThat(request.get(10, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(401);
+        assertThat(db.queryForObject("SELECT failed_logins FROM app_users", Integer.class))
+                .isEqualTo(5);
+        postJson("sign-in", Map.of("email", EMAIL, "password", PASSWORD), null)
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void failedResetEmailKeepsThePreviousTokenUsable() throws Exception {
+        verifiedAccount();
+        postJson("request-password-reset", Map.of("email", EMAIL), null).andExpect(status().isOk());
+        String token = resetToken();
+        String hash = db.queryForObject("SELECT reset_token_hash FROM app_users", String.class);
+        clock.now = clock.now.plusSeconds(60);
+        mail.fail = true;
+        postJson("request-password-reset", Map.of("email", EMAIL), null).andExpect(status().isOk());
+        mail.fail = false;
+        assertThat(db.queryForObject("SELECT reset_token_hash FROM app_users", String.class))
+                .isEqualTo(hash);
+        postJson("reset-password", Map.of("token", token, "password", "new-password"), null)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void resendRoundsTheCooldownUpAndAcceptsItsExactDeadline() throws Exception {
+        MockHttpSession pending = register();
+        clock.now = clock.now.plusMillis(59_999);
+        postJson("resend-code", Map.of("email", EMAIL), pending)
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "1"))
+                .andExpect(jsonPath("$.retryAfterSeconds").value(1));
+        clock.now = clock.now.plusMillis(1);
+        postJson("resend-code", Map.of("email", EMAIL), pending).andExpect(status().isOk());
+    }
+
+    private java.util.List<Integer> concurrently(
+            java.util.concurrent.Callable<Integer> first,
+            java.util.concurrent.Callable<Integer> second)
+            throws Exception {
+        var start = new java.util.concurrent.CountDownLatch(1);
+        java.util.function.Function<
+                        java.util.concurrent.Callable<Integer>,
+                        java.util.concurrent.CompletableFuture<Integer>>
+                run =
+                        action ->
+                                java.util.concurrent.CompletableFuture.supplyAsync(
+                                        () -> {
+                                            try {
+                                                start.await();
+                                                return action.call();
+                                            } catch (Exception e) {
+                                                throw new IllegalStateException(e);
+                                            }
+                                        });
+        var one = run.apply(first);
+        var two = run.apply(second);
+        start.countDown();
+        return java.util.List.of(
+                one.get(10, java.util.concurrent.TimeUnit.SECONDS),
+                two.get(10, java.util.concurrent.TimeUnit.SECONDS));
+    }
+
+    @Test
+    void unauthenticatedRequestsCannotReadOrCreatePresentations() throws Exception {
+        for (String url :
+                java.util.List.of(
+                        "/api/generation/v1/presentations",
+                        "/api/generation/v1/models",
+                        "/api/generation/v1/templates"))
+            mvc.perform(get(url)).andExpect(status().isUnauthorized());
+        mvc.perform(
+                        post("/api/generation/v1/presentations")
+                                .with(csrf())
+                                .contentType("application/json")
+                                .content(
+                                        "{\"template_id\":\"aurora\",\"topic\":\"Topic\",\"mode\":\"manual\"}"))
+                .andExpect(status().isUnauthorized());
+        assertThat(db.queryForObject("SELECT count(*) FROM generated_presentations", Integer.class))
+                .isZero();
+    }
+
+    @Test
+    void presentationReadsAndWritesDoNotCrossAccountBoundaries() throws Exception {
+        MockHttpSession owner = verifiedAccount();
+        String id = createPresentation(owner);
+        MockHttpSession outsider = anotherAccount();
+        for (String path : java.util.List.of("", "/download", "/versions"))
+            mvc.perform(get("/api/generation/v1/presentations/" + id + path).session(outsider))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.error.code").value("presentation_not_found"));
+        mvc.perform(
+                        post("/api/generation/v1/presentations/{id}/cancel", id)
+                                .session(outsider)
+                                .with(csrf()))
+                .andExpect(status().isNotFound());
+        var fields = new java.util.LinkedHashMap<String, String>();
+        templates.fields().keySet().forEach(k -> fields.put(k, "Text"));
+        var slides = new java.util.ArrayList<Map<String, Object>>();
+        for (int n = 1; n <= templates.slideManifest().size(); n++)
+            slides.add(Map.of("slide", n, "include", n == 1, "reason", "Test"));
+        mvc.perform(
+                        put("/api/generation/v1/presentations/{id}/content", id)
+                                .session(outsider)
+                                .with(csrf())
+                                .contentType("application/json")
+                                .content(
+                                        json.writeValueAsString(
+                                                Map.of("fields", fields, "slides", slides))))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/generation/v1/presentations/{id}", id).session(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("awaiting_content"));
+    }
+
+    @Test
+    void listReturnsOnlyTheCurrentAccountsProjects() throws Exception {
+        MockHttpSession owner = verifiedAccount();
+        String owned = createPresentation(owner);
+        MockHttpSession outsider = anotherAccount();
+        String other = createPresentation(outsider);
+        mvc.perform(get("/api/generation/v1/presentations").session(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(owned));
+        mvc.perform(get("/api/generation/v1/presentations").session(outsider))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(other));
+    }
+
+    @Test
+    void protectedWritesRequireCsrfAndRevokedSessionsCannotReadProjects() throws Exception {
+        MockHttpSession account = verifiedAccount();
+        String id = createPresentation(account);
+        mvc.perform(post("/api/generation/v1/presentations/{id}/cancel", id).session(account))
+                .andExpect(status().isForbidden());
+        assertThat(
+                        db.queryForObject(
+                                "SELECT status FROM generated_presentations WHERE id=?",
+                                String.class,
+                                java.util.UUID.fromString(id)))
+                .isEqualTo("awaiting_content");
+        db.update(
+                "UPDATE app_users SET credentials_version=credentials_version+1 WHERE email=?",
+                EMAIL);
+        mvc.perform(get("/api/generation/v1/presentations").session(account))
+                .andExpect(status().isUnauthorized());
+        assertThat(account.isInvalid()).isTrue();
+    }
+
+    private String createPresentation(MockHttpSession session) throws Exception {
+        var result =
+                mvc.perform(
+                                post("/api/generation/v1/presentations")
+                                        .session(session)
+                                        .with(csrf())
+                                        .contentType("application/json")
+                                        .content(
+                                                "{\"template_id\":\"aurora\",\"topic\":\"Topic\",\"mode\":\"manual\"}"))
+                        .andExpect(status().isAccepted())
+                        .andReturn();
+        return json.readTree(result.getResponse().getContentAsString()).path("id").asText();
+    }
+
+    private MockHttpSession anotherAccount() throws Exception {
+        String email = "other@example.test";
+        MockHttpSession pending =
+                session(
+                        postJson(
+                                        "register",
+                                        Map.of(
+                                                "email",
+                                                email,
+                                                "password",
+                                                PASSWORD,
+                                                "consentAccepted",
+                                                true),
+                                        null)
+                                .andExpect(status().isOk()));
+        return session(
+                postJson("verify-email", Map.of("email", email, "code", code()), pending)
+                        .andExpect(status().isOk()));
     }
 
     private MockHttpSession register() throws Exception {

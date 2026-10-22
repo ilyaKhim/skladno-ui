@@ -105,12 +105,15 @@ Backend разделён по функциям: `ru.godeck.auth`, `ru.godeck.pre
 ```sh
 pnpm typecheck
 pnpm build
+pnpm backend:test:unit
+pnpm backend:test:integration
 pnpm backend:test
 pnpm test:bridge
 pnpm test:auth
 ```
 
-- `backend:test` требует PostgreSQL из Compose, использует отдельную схему `auth_test` и тестовую отправку писем.
+- `backend:test:unit` запускает изолированные unit-тесты без Spring и БД. `backend:test:integration` запускает сценарии Spring/PostgreSQL. Устройство тестов и команды — в [docs/backend-testing.md](docs/backend-testing.md).
+- `backend:test` выполняет весь набор и требует PostgreSQL из Compose, использует отдельную схему `auth_test` и тестовую отправку писем.
 - Тесты генерации используют отдельную схему `generation_test` и временный каталог PPTX. Они проверяют ручную сборку и скачивание, выбор слайдов, историю версий, отказ при одновременной правке, сохранность файла при ошибке и изоляцию пользователей. Вызовы AI в этих тестах заменены тестовым генератором.
 - `test:auth` требует работающих фронтенда, API и Mailpit; запустите backend с `AUTH_BYPASS=false`, чтобы пройти регистрацию и вход через Next.js proxy. Проверка создаёт один тестовый аккаунт и два письма, не обращается к внешним адресам.
 - `STATIC_EXPORT=1 pnpm build` собирает статический сайт в `frontend/out/`.

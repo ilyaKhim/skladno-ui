@@ -1,10 +1,12 @@
 package ru.godeck.presentation.controller;
 
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
@@ -20,11 +22,18 @@ public class GenerationExceptionHandler {
 
     @ExceptionHandler({
         MethodArgumentNotValidException.class,
-        HttpMessageNotReadableException.class
+        HttpMessageNotReadableException.class,
+        MethodArgumentTypeMismatchException.class
     })
     public ResponseEntity<Map<String, Object>> invalid(Exception error) {
         GenerationError invalid = GenerationError.INVALID_INPUT;
         return response(invalid.status().value(), invalid.code(), invalid.message());
+    }
+
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, Object>> busy(PessimisticLockingFailureException error) {
+        GenerationError busy = GenerationError.PRESENTATION_BUSY;
+        return response(busy.status().value(), busy.code(), busy.message());
     }
 
     private ResponseEntity<Map<String, Object>> response(int status, String code, String message) {

@@ -18,7 +18,10 @@ class PresentationModelCatalogTest {
         assertThat(catalog.resolve(null)).isEqualTo("gpt-custom-server-default");
         var generator =
                 new PresentationContentGenerator(
-                        new PresentationContentCodec(new ObjectMapper()), "", false);
+                        new PresentationContentCodec(new ObjectMapper()),
+                        org.springframework.web.client.RestClient.create(),
+                        "",
+                        false);
         assertThat(generator.enabled()).isFalse();
         for (String model :
                 List.of(

@@ -5,6 +5,13 @@ import org.springframework.data.domain.Sort;
 
 // Preserves the existing API's arbitrary offset instead of rounding it to a page boundary.
 public record OffsetPageRequest(int offset, int size) implements Pageable {
+    private static final String INVALID_WINDOW =
+            "Offset must be non-negative and size must be positive.";
+
+    public OffsetPageRequest {
+        if (offset < 0 || size < 1) throw new IllegalArgumentException(INVALID_WINDOW);
+    }
+
     public int getPageNumber() {
         return offset / size;
     }
@@ -22,7 +29,7 @@ public record OffsetPageRequest(int offset, int size) implements Pageable {
     }
 
     public Pageable next() {
-        return new OffsetPageRequest(offset + size, size);
+        return new OffsetPageRequest(Math.addExact(offset, size), size);
     }
 
     public Pageable previousOrFirst() {

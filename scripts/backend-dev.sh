@@ -7,7 +7,8 @@ if [[ -x "$project_root/.tools/jdk-26.0.2.1+1/Contents/Home/bin/java" ]]; then
 fi
 cd "$project_root/backend"
 if [[ "${1:-}" == test ]]; then
-  exec ./mvnw test
+  shift
+  exec ./mvnw test "$@"
 fi
 # Local interactive runs use a stable debug identity by default. Set AUTH_BYPASS=false
 # to exercise registration/sign-in; SecurityConfig only permits bypass on loopback.
