@@ -47,7 +47,7 @@ function ExchangeBody({ title, body, empty }: { title: string; body: string | nu
       <summary className="cursor-pointer text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{title}</summary>
       {body === null ? <p className="mt-2 text-sm text-muted-foreground">{empty}</p> : <>
         <div className="my-2 flex justify-end"><Button type="button" size="sm" variant="ghost" onClick={copy}><ClipboardCopy className="mr-2 size-4" />{copied ? 'Скопировано' : `Копировать ${title.toLowerCase()}`}</Button></div>
-        <pre tabIndex={0} aria-label={title} className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-xs leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{formatBody(body)}</pre>
+        <pre tabIndex={0} aria-label={title} className="whitespace-pre-wrap [overflow-wrap:anywhere] rounded-lg bg-muted p-3 text-xs leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{formatBody(body)}</pre>
       </>}
       {copied && <p role="status" className="mt-1 text-sm text-muted-foreground">Текст скопирован</p>}
       {error && <p role="alert" className="mt-1 text-sm text-destructive">{error}</p>}
