@@ -32,6 +32,9 @@ class GenerationController {
     @GetMapping("/health/ready")
     Map<String, Object> health(Authentication auth) { return service.health(); }
 
+    @GetMapping("/v1/models")
+    Map<String, Object> models(Authentication auth) { return service.models(); }
+
     @GetMapping("/v1/templates")
     Map<String, Object> templates(Authentication auth) { return service.catalog(); }
 
@@ -41,7 +44,7 @@ class GenerationController {
     @PostMapping("/v1/prompts/preview")
     Map<String,Object> previewPrompt(@RequestBody Map<String,Object> input, Authentication auth) {
         return service.previewPrompt(String.valueOf(input.getOrDefault("template_id", "")),
-                input.get("topic") instanceof String topic ? topic : null);
+                input.get("topic") instanceof String topic ? topic : null, model(input));
     }
 
     @GetMapping("/v1/presentations")
@@ -57,7 +60,7 @@ class GenerationController {
         return ResponseEntity.accepted().body(service.create(user(auth),
                 String.valueOf(input.getOrDefault("template_id", "")),
                 input.get("topic") instanceof String topic ? topic : null,
-                input.get("mode") instanceof String mode ? mode : "openai", key));
+                input.get("mode") instanceof String mode ? mode : "openai", key, model(input)));
     }
 
     @GetMapping("/v1/presentations/{id}")
@@ -68,7 +71,7 @@ class GenerationController {
 
     @PostMapping("/v1/presentations/{id}/chat")
     Map<String,Object> chat(@PathVariable UUID id, @RequestBody Map<String,Object> input, Authentication auth) {
-        return service.chat(user(auth), id, input.get("message") instanceof String message ? message : null);
+        return service.chat(user(auth), id, input.get("message") instanceof String message ? message : null, model(input));
     }
 
     @GetMapping("/v1/presentations/{id}/versions")
@@ -96,5 +99,11 @@ class GenerationController {
 
     private static UUID user(Authentication authentication) {
         return ((AuthPrincipal) authentication.getPrincipal()).id();
+    }
+
+    private static String model(Map<String,Object> input) {
+        Object value = input.get("model");
+        if (value == null || value instanceof String) return (String) value;
+        throw new PresentationGenerationService.GenerationException(422,"unsupported_model","Выберите модель из доступного списка.");
     }
 }

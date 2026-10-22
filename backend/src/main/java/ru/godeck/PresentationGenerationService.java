@@ -26,6 +26,7 @@ class PresentationGenerationService {
     private final JdbcTemplate jdbc;
     private final PresentationTemplateService templates;
     private final PresentationContentGenerator contentGenerator;
+    private final PresentationModelCatalog models;
     private final ObjectMapper mapper;
     private final TransactionTemplate transactions;
     private final Path dataDirectory;
@@ -33,12 +34,14 @@ class PresentationGenerationService {
 
     PresentationGenerationService(JdbcTemplate jdbc, PresentationTemplateService templates,
                                   PresentationContentGenerator contentGenerator,
+                                  PresentationModelCatalog models,
                                   ObjectMapper mapper,
                                   PlatformTransactionManager transactionManager,
                                   @Value("${godeck.generation.data-dir:./data/presentations}") String dataDirectory) {
         this.jdbc = jdbc;
         this.templates = templates;
         this.contentGenerator = contentGenerator;
+        this.models = models;
         this.mapper = mapper;
         this.transactions = new TransactionTemplate(transactionManager);
         this.dataDirectory = Path.of(dataDirectory).toAbsolutePath().normalize();
@@ -50,19 +53,22 @@ class PresentationGenerationService {
 
     Map<String, Object> catalog() { return Map.of("items", List.of(templates.catalog())); }
 
+    Map<String, Object> models() { return models.catalog(); }
+
     Map<String, Object> context(String templateId) {
         if (!PresentationTemplateService.TEMPLATE_ID.equals(templateId)) throw new GenerationException(404, "template_not_found", "Шаблон не найден.");
         return Map.of("fields", templates.fields(), "slides", templates.slideManifest());
     }
 
-    Map<String, Object> previewPrompt(String templateId, String topic) {
+    Map<String, Object> previewPrompt(String templateId, String topic, String model) {
         if (!PresentationTemplateService.TEMPLATE_ID.equals(templateId)) throw new GenerationException(404, "template_not_found", "Шаблон не найден.");
         if (topic == null || topic.isBlank() || topic.length() > 12000) throw new GenerationException(422, "invalid_topic", "Добавьте тему длиной до 12 000 символов.");
-        return contentGenerator.preview(topic.strip(), templates.fields(), templates.slideManifest());
+        return contentGenerator.preview(topic.strip(), templates.fields(), templates.slideManifest(), models.resolve(model));
     }
 
     @Transactional
-    Map<String, Object> create(UUID userId, String templateId, String topic, String mode, String idempotencyKey) {
+    Map<String, Object> create(UUID userId, String templateId, String topic, String mode, String idempotencyKey, String model) {
+        String selectedModel = models.resolve(model);
         if (!"manual".equals(mode) && !"openai".equals(mode)) throw new GenerationException(422, "invalid_mode", "Неизвестный способ заполнения.");
         String selectedMode = mode;
         if ("openai".equals(selectedMode) && !contentGenerator.enabled()) throw new GenerationException(503, "openai_disabled", "Генерация пока не включена.");
@@ -76,7 +82,7 @@ class PresentationGenerationService {
             throw new GenerationException(422, "invalid_topic", "Добавьте тему длиной до 12 000 символов.");
         }
         String normalizedTopic = topic.strip();
-        String requestHash = hash(templateId + "\n" + normalizedTopic + "\n" + selectedMode);
+        String requestHash = hash(templateId + "\n" + normalizedTopic + "\n" + selectedMode + "\n" + selectedModel);
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             var previous = jdbc.query("SELECT * FROM generated_presentations WHERE user_id=? AND idempotency_key=?",
                     (rs, row) -> toPublic(rs), userId, idempotencyKey);
@@ -97,10 +103,10 @@ class PresentationGenerationService {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO generated_presentations
-                    (id,user_id,template_id,topic,status,mode,idempotency_key,request_hash,created_at,updated_at)
-                VALUES (?,?,?,?, ?,?,?,?,now(),now())
+                    (id,user_id,template_id,topic,status,mode,idempotency_key,request_hash,model,created_at,updated_at)
+                VALUES (?,?,?,?, ?,?,?,?,?,now(),now())
                 ON CONFLICT (user_id,idempotency_key) DO NOTHING
-                """, id, userId, templateId, normalizedTopic, "manual".equals(selectedMode) ? "awaiting_content" : "queued", selectedMode, idempotencyKey, requestHash);
+                """, id, userId, templateId, normalizedTopic, "manual".equals(selectedMode) ? "awaiting_content" : "queued", selectedMode, idempotencyKey, requestHash, selectedModel);
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             return jdbc.queryForObject("SELECT * FROM generated_presentations WHERE user_id=? AND idempotency_key=?",
                     (rs, row) -> {
@@ -126,7 +132,7 @@ class PresentationGenerationService {
 
     @Transactional
     @SuppressWarnings("unchecked")
-    Map<String, Object> chat(UUID userId, UUID id, String message) {
+    Map<String, Object> chat(UUID userId, UUID id, String message, String model) {
         if (!contentGenerator.enabled()) throw new GenerationException(503, "openai_disabled", "Чат-редактирование требует настроенного OpenAI API.");
         if (message == null || message.isBlank() || message.length() > 4000) throw new GenerationException(422, "invalid_message", "Введите запрос до 4 000 символов.");
         Map<String, Object> presentation;
@@ -140,18 +146,19 @@ class PresentationGenerationService {
         }
         Long edits = jdbc.queryForObject("SELECT count(*) FROM presentation_revisions WHERE user_id=? AND version > 1 AND created_at > now() - interval '1 day'", Long.class, userId);
         if (edits != null && edits >= 30) throw new GenerationException(429, "edit_limit", "Достигнут дневной лимит правок.");
+        String selectedModel = models.resolve(model == null || model.isBlank() ? (String) presentation.get("model") : model);
         Path output = null;
         try {
             String raw = jdbc.queryForObject("SELECT content_json FROM generated_presentations WHERE user_id=? AND id=?", String.class, userId, id);
             if (raw == null) throw new GenerationException(409, "content_unavailable", "Для этой старой презентации не сохранён план. Создайте новую презентацию.");
             String topic = presentation.get("topic") + "\n\nТекущие материалы: " + raw + "\n\nИзмени только то, что необходимо для пожелания пользователя; сохрани остальные тексты и выбор слайдов. Пожелание к редактуре: " + message;
-            Map<String, Object> edited = validateContent(contentGenerator.generate(topic, templates.fields(), templates.slideManifest()));
+            Map<String, Object> edited = validateContent(contentGenerator.generate(topic, templates.fields(), templates.slideManifest(), selectedModel));
             int version = ((Number) presentation.get("version")).intValue() + 1;
             String json = mapper.writeValueAsString(edited);
             output = writePresentation(id, version, edited);
             int count = ((List<Map<String, Object>>) edited.get("slides")).stream().filter(s -> Boolean.TRUE.equals(s.get("include"))).toList().size();
-            jdbc.update("INSERT INTO presentation_revisions(id,presentation_id,user_id,version,message,reply,content_json,output_path,slide_count) VALUES (?,?,?,?,?,?,?,?,?)", UUID.randomUUID(), id, userId, version, message.strip(), "Обновил содержание и пересобрал презентацию по вашему запросу.", json, output.toString(), count);
-            jdbc.update("UPDATE generated_presentations SET content_json=?,current_version=?,output_path=?,slide_count=?,updated_at=now() WHERE id=?", json, version, output.toString(), count, id);
+            jdbc.update("INSERT INTO presentation_revisions(id,presentation_id,user_id,version,message,reply,content_json,output_path,slide_count,model) VALUES (?,?,?,?,?,?,?,?,?,?)", UUID.randomUUID(), id, userId, version, message.strip(), "Обновил содержание и пересобрал презентацию по вашему запросу.", json, output.toString(), count, selectedModel);
+            jdbc.update("UPDATE generated_presentations SET content_json=?,current_version=?,output_path=?,slide_count=?,model=?,updated_at=now() WHERE id=?", json, version, output.toString(), count, selectedModel, id);
             return Map.of("version", version, "reply", "Обновил содержание и пересобрал презентацию по вашему запросу.", "presentation", get(userId, id));
         } catch (GenerationException e) { deleteOutput(output); throw e; }
         catch (Exception e) { deleteOutput(output); throw new GenerationException(502, "edit_failed", "Не удалось применить правку. Попробуйте сформулировать её иначе."); }
@@ -159,7 +166,7 @@ class PresentationGenerationService {
 
     List<Map<String, Object>> versions(UUID userId, UUID id) {
         get(userId, id);
-        return jdbc.query("SELECT version,message,reply,slide_count,created_at FROM presentation_revisions WHERE user_id=? AND presentation_id=? ORDER BY version", (rs, row) -> Map.of("version",rs.getInt("version"),"message",rs.getString("message"),"reply",rs.getString("reply"),"slide_count",rs.getInt("slide_count"),"created_at",rs.getTimestamp("created_at").toInstant().getEpochSecond()), userId, id);
+        return jdbc.query("SELECT version,message,reply,slide_count,model,created_at FROM presentation_revisions WHERE user_id=? AND presentation_id=? ORDER BY version", (rs, row) -> Map.of("version",rs.getInt("version"),"message",rs.getString("message"),"reply",rs.getString("reply"),"slide_count",rs.getInt("slide_count"),"model",rs.getString("model") == null ? "" : rs.getString("model"),"created_at",rs.getTimestamp("created_at").toInstant().getEpochSecond()), userId, id);
     }
 
     @SuppressWarnings("unchecked")
@@ -229,7 +236,7 @@ class PresentationGenerationService {
                 UPDATE generated_presentations SET status='running',updated_at=now()
                 WHERE id=(SELECT id FROM generated_presentations WHERE status='queued'
                          ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1)
-                RETURNING id,user_id,template_id,topic,mode,content_json
+                RETURNING id,user_id,template_id,topic,mode,content_json,model
                 """, (rs, row) -> {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", rs.getObject("id", UUID.class));
@@ -238,6 +245,7 @@ class PresentationGenerationService {
             item.put("topic", rs.getString("topic"));
             item.put("mode", rs.getString("mode"));
             item.put("content_json", rs.getString("content_json"));
+            item.put("model", rs.getString("model"));
             return item;
         });
         return rows.stream().findFirst().orElse(null);
@@ -248,9 +256,10 @@ class PresentationGenerationService {
         UUID id = (UUID) job.get("id");
         Path output = null;
         try {
+            String selectedModel = models.resolve((String) job.get("model"));
             Map<String, Object> content = "manual".equals(job.get("mode"))
                     ? mapper.readValue((String) job.get("content_json"), mapper.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, Object.class))
-                    : contentGenerator.generate((String) job.get("topic"), templates.fields(), templates.slideManifest());
+                    : contentGenerator.generate((String) job.get("topic"), templates.fields(), templates.slideManifest(), selectedModel);
             content = validateContent(content);
             List<Map<String, Object>> slideDecisions = (List<Map<String, Object>>) content.get("slides");
             output = writePresentation(id, 1, content);
@@ -258,9 +267,9 @@ class PresentationGenerationService {
             int count = slideDecisions.stream().filter(s -> Boolean.TRUE.equals(s.get("include"))).toList().size();
             String json = mapper.writeValueAsString(content);
             transactions.executeWithoutResult(transaction -> {
-                int changed = jdbc.update("UPDATE generated_presentations SET status='succeeded',slide_count=?,output_path=?,content_json=?,current_version=1,updated_at=now() WHERE id=? AND status='running'", count, outputPath, json, id);
+                int changed = jdbc.update("UPDATE generated_presentations SET status='succeeded',slide_count=?,output_path=?,content_json=?,model=?,current_version=1,updated_at=now() WHERE id=? AND status='running'", count, outputPath, json, selectedModel, id);
                 if (changed != 1) throw new IllegalStateException("worker_interrupted");
-                jdbc.update("INSERT INTO presentation_revisions(id,presentation_id,user_id,version,message,reply,content_json,output_path,slide_count) SELECT ?,id,user_id,1,?, ?,?,?,? FROM generated_presentations WHERE id=?", UUID.randomUUID(), "Исходная версия", "Презентация создана.", json, outputPath, count, id);
+                jdbc.update("INSERT INTO presentation_revisions(id,presentation_id,user_id,version,message,reply,content_json,output_path,slide_count,model) SELECT ?,id,user_id,1,?, ?,?,?,?,? FROM generated_presentations WHERE id=?", UUID.randomUUID(), "Исходная версия", "Презентация создана.", json, outputPath, count, "manual".equals(job.get("mode")) ? null : selectedModel, id);
             });
         } catch (Exception error) {
             deleteOutput(output);
@@ -292,6 +301,7 @@ class PresentationGenerationService {
         item.put("template_id", rs.getString("template_id"));
         item.put("topic", rs.getString("topic"));
         item.put("mode", rs.getString("mode"));
+        item.put("model", rs.getString("model"));
         item.put("status", rs.getString("status"));
         item.put("created_at", rs.getTimestamp("created_at").toInstant().getEpochSecond());
         item.put("updated_at", rs.getTimestamp("updated_at").toInstant().getEpochSecond());

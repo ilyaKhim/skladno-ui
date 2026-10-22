@@ -14,6 +14,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 
 @SpringBootTest(properties = {
         "godeck.auth.dev-bypass=true",
+        "godeck.generation.enabled=false",
         "spring.datasource.url=${TEST_DATABASE_URL:jdbc:postgresql://127.0.0.1:5433/godeck?currentSchema=auth_test}",
         "spring.datasource.hikari.schema=auth_test",
         "spring.flyway.default-schema=auth_test",

@@ -6,10 +6,13 @@ import { ArrowDownToLine, ClipboardCopy, LoaderCircle, LogOut, Presentation, Ref
 import { Button } from '@/components/ui/button'
 
 type Template = { id: string; name: string; description: string; available_slides: number; preview_url: string }
+type ModelOption = { id: string; name: string }
+type Revision = { version: number; message: string; reply: string; model: string }
 type PresentationJob = {
   id: string; template_id: string; topic: string; mode: 'manual' | 'openai';
   status: 'awaiting_content' | 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   error_code: string | null; slide_count: number | null; download_url: string | null; created_at: number; version: number
+  model: string | null
 }
 type ApiEnvelope<T> = { ok: true; data: T } | { ok: false; error?: string }
 type TemplateContext = { fields: Record<string, number>; slides: { slide: number; fields: string[] }[] }
@@ -49,6 +52,10 @@ export function GenerationStudio() {
   const [templateId, setTemplateId] = useState('')
   const [topic, setTopic] = useState('')
   const [mode, setMode] = useState<'openai' | 'manual'>('openai')
+  const [models, setModels] = useState<ModelOption[]>([])
+  const [selectedModel, setSelectedModel] = useState('')
+  const [defaultModel, setDefaultModel] = useState('')
+  const [chatModels, setChatModels] = useState<Record<string, string>>({})
   const [manualJob, setManualJob] = useState<PresentationJob | null>(null)
   const [context, setContext] = useState<TemplateContext | null>(null)
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
@@ -56,7 +63,7 @@ export function GenerationStudio() {
   const [chatDraft, setChatDraft] = useState<Record<string, string>>({})
   const [chatReply, setChatReply] = useState<Record<string, string>>({})
   const [chatBusy, setChatBusy] = useState<string | null>(null)
-  const [versions, setVersions] = useState<Record<string, { version: number; message: string; reply: string }[]>>({})
+  const [versions, setVersions] = useState<Record<string, Revision[]>>({})
   const [openaiEnabled, setOpenaiEnabled] = useState(false)
   const [promptPreview, setPromptPreview] = useState('')
   const [previewBusy, setPreviewBusy] = useState(false)
@@ -88,10 +95,14 @@ export function GenerationStudio() {
       }),
       refresh(),
       api<{ openai_enabled: boolean }>('/health/ready'),
-    ]).then(([user, , health]) => {
+      api<{ items: ModelOption[]; default_model: string }>('/v1/models'),
+    ]).then(([user, , health, modelCatalog]) => {
       if (!active) return
       setEmail(user)
       setOpenaiEnabled(health.openai_enabled)
+      setModels(modelCatalog.items)
+      setDefaultModel(modelCatalog.default_model)
+      setSelectedModel(modelCatalog.default_model)
       if (!health.openai_enabled) {
         setNotice('AI-генерация пока не включена на сервере. Для запуска задайте OPENAI_API_KEY и GODECK_OPENAI_ENABLED=true в конфигурации сервиса.')
       }
@@ -117,9 +128,10 @@ export function GenerationStudio() {
     try {
       const job = await api<PresentationJob>('/v1/presentations', {
         method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() },
-        body: JSON.stringify({ template_id: templateId, topic: topic.trim(), mode }),
+        body: JSON.stringify({ template_id: templateId, topic: topic.trim(), mode, model: selectedModel }),
       })
       setTopic('')
+      setPromptPreview('')
       if (job.status === 'awaiting_content') {
         const form = await api<TemplateContext>(`/v1/templates/${templateId}/context`)
         setManualJob(job); setContext(form)
@@ -160,7 +172,7 @@ export function GenerationStudio() {
 
   async function loadVersions(job: PresentationJob) {
     try {
-      const result = await api<{ items: { version: number; message: string; reply: string }[] }>(`/v1/presentations/${job.id}/versions`)
+      const result = await api<{ items: Revision[] }>(`/v1/presentations/${job.id}/versions`)
       setVersions((current) => ({ ...current, [job.id]: result.items }))
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось загрузить историю правок.') }
   }
@@ -170,7 +182,7 @@ export function GenerationStudio() {
     if (!message || chatBusy) return
     setChatBusy(job.id); setError('')
     try {
-      const result = await api<{ version: number; reply: string }>(`/v1/presentations/${job.id}/chat`, { method: 'POST', body: JSON.stringify({ message }) })
+      const result = await api<{ version: number; reply: string }>(`/v1/presentations/${job.id}/chat`, { method: 'POST', body: JSON.stringify({ message, model: chatModel(job) }) })
       setChatReply((current) => ({ ...current, [job.id]: `Версия ${result.version}: ${result.reply}` }))
       setChatDraft((current) => ({ ...current, [job.id]: '' })); await refresh(); await loadVersions(job)
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось применить правку.') }
@@ -182,7 +194,7 @@ export function GenerationStudio() {
     setPreviewBusy(true); setError(''); setPromptPreview('')
     try {
       const request = await api<Record<string, unknown>>('/v1/prompts/preview', {
-        method: 'POST', body: JSON.stringify({ template_id: templateId, topic: topic.trim() }),
+        method: 'POST', body: JSON.stringify({ template_id: templateId, topic: topic.trim(), model: selectedModel }),
       })
       setPromptPreview(JSON.stringify(request, null, 2)); setCopiedPrompt(false)
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось подготовить запрос.') }
@@ -208,6 +220,11 @@ export function GenerationStudio() {
 
   function download(job: PresentationJob) {
     if (job.download_url) window.location.assign(job.download_url)
+  }
+
+  function chatModel(job: PresentationJob) {
+    const requested = chatModels[job.id] ?? job.model
+    return requested && models.some((model) => model.id === requested) ? requested : defaultModel
   }
 
   return (
@@ -252,12 +269,19 @@ export function GenerationStudio() {
               <button type="button" aria-pressed={mode === 'openai'} onClick={() => setMode('openai')} className={`rounded-xl border p-3 text-left text-sm transition-colors ${mode === 'openai' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}><span className="block font-semibold">Подготовить с AI</span><span className="mt-1 block text-xs text-muted-foreground">{openaiEnabled ? 'Создать через OpenAI' : 'AI-генерация сейчас не настроена'}</span></button>
               <button type="button" aria-pressed={mode === 'manual'} onClick={() => setMode('manual')} className={`rounded-xl border p-3 text-left text-sm transition-colors ${mode === 'manual' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}><span className="block font-semibold">Заполнить вручную</span><span className="mt-1 block text-xs text-muted-foreground">Самостоятельно заполнить все поля</span></button>
             </div></fieldset>
-            <Button type="button" variant="outline" disabled={previewBusy || !templateId || topic.trim().length < 5} onClick={showPromptPreview} className="mt-3 w-full">{previewBusy ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}{previewBusy ? 'Готовим запрос…' : 'Показать запрос без отправки'}</Button>
+            <label htmlFor="generation-model" className="mt-4 block text-sm font-semibold">Модель AI</label>
+            <select id="generation-model" value={selectedModel} disabled={loading || previewBusy || submitting || models.length === 0}
+              onChange={(event) => { setSelectedModel(event.target.value); setPromptPreview('') }}
+              className="mt-2 w-full rounded-xl border border-input bg-background p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {models.length === 0 && <option value="">Загружаем модели…</option>}
+              {models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+            </select>
+            <Button type="button" variant="outline" disabled={loading || previewBusy || !selectedModel || !templateId || topic.trim().length < 5} onClick={showPromptPreview} className="mt-3 w-full">{previewBusy ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}{previewBusy ? 'Готовим запрос…' : 'Показать запрос без отправки'}</Button>
             {promptPreview && <div className="mt-3 rounded-xl border border-border bg-background p-3"><div className="mb-2 flex items-center justify-between gap-2"><p className="text-sm font-semibold">Подготовленный запрос · не отправлен</p><Button type="button" size="sm" variant="ghost" onClick={copyPrompt}><ClipboardCopy className="mr-2 size-4" />{copiedPrompt ? 'Скопировано' : 'Копировать'}</Button></div><pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-xs leading-5">{promptPreview}</pre></div>}
             <p className="mt-3 rounded-xl bg-secondary p-4 text-sm">{mode === 'manual' ? 'Вы заполните текст каждого поля и выберете слайды для включения.' : 'AI подготовит содержание; после создания его можно будет уточнять в чате.'}</p>
             {notice && <p role="status" className="mt-5 rounded-lg bg-secondary p-3 text-sm">{notice}</p>}
             {error && <p role="alert" className="mt-5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
-            <Button type="submit" size="lg" disabled={loading || submitting || (mode === 'openai' && !openaiEnabled) || !templateId || topic.trim().length < 5} className="mt-6 w-full">
+            <Button type="submit" size="lg" disabled={loading || submitting || !selectedModel || (mode === 'openai' && !openaiEnabled) || !templateId || topic.trim().length < 5} className="mt-6 w-full">
               {submitting ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
               {submitting ? 'Создаём проект…' : 'Создать презентацию'}
             </Button>
@@ -283,8 +307,15 @@ export function GenerationStudio() {
                   <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground"><span>{new Date(job.created_at * 1000).toLocaleDateString('ru-RU')}{job.slide_count ? ` · ${job.slide_count} слайдов` : ''}</span>{job.status === 'succeeded' && job.download_url && <Button size="sm" variant="outline" onClick={() => download(job)}><ArrowDownToLine className="mr-2 size-4" />Скачать PPTX</Button>}</div>
                   {job.error_code && <p className="mt-3 text-sm text-destructive">{job.error_code}</p>}
                   {job.status === 'awaiting_content' && <Button size="sm" className="mt-3" onClick={() => resumeManual(job)}>Заполнить слайды</Button>}
-                  {job.status === 'succeeded' && <div className="mt-4 border-t border-border pt-4"><label className="block text-sm font-semibold" htmlFor={`chat-${job.id}`}>Что изменить в презентации?</label><textarea id={`chat-${job.id}`} value={chatDraft[job.id] ?? ''} onChange={(event) => setChatDraft((current) => ({ ...current, [job.id]: event.target.value }))} placeholder="Например: сократи вступление и добавь конкретные рекомендации…" maxLength={4000} className="mt-2 min-h-20 w-full rounded-lg border border-input bg-background p-3 text-sm" /><Button size="sm" className="mt-2" disabled={chatBusy !== null || !(chatDraft[job.id] ?? '').trim() || !openaiEnabled} onClick={() => sendChat(job)}>{chatBusy === job.id ? 'Редактирую…' : `Уточнить в чате${job.version > 1 ? ` · v${job.version}` : ''}`}</Button>{chatReply[job.id] && <p role="status" className="mt-2 text-sm text-muted-foreground">{chatReply[job.id]}</p>}</div>}
-                  {job.status === 'succeeded' && <div className="mt-2"><button className="text-xs text-primary underline" onClick={() => loadVersions(job)}>История версий ({job.version})</button>{versions[job.id]?.map((revision) => <p key={revision.version} className="mt-1 text-xs text-muted-foreground">v{revision.version} · {revision.message}</p>)}</div>}
+                  {job.status === 'succeeded' && <div className="mt-4 border-t border-border pt-4">
+                    <label htmlFor={`chat-model-${job.id}`} className="block text-sm font-semibold">Модель для правки</label>
+                    <select id={`chat-model-${job.id}`} value={chatModel(job)} disabled={loading || chatBusy !== null}
+                      onChange={(event) => setChatModels((current) => ({ ...current, [job.id]: event.target.value }))}
+                      className="mb-3 mt-2 w-full rounded-lg border border-input bg-background p-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+                    </select>
+                    <label className="block text-sm font-semibold" htmlFor={`chat-${job.id}`}>Что изменить в презентации?</label><textarea id={`chat-${job.id}`} value={chatDraft[job.id] ?? ''} onChange={(event) => setChatDraft((current) => ({ ...current, [job.id]: event.target.value }))} placeholder="Например: сократи вступление и добавь конкретные рекомендации…" maxLength={4000} className="mt-2 min-h-20 w-full rounded-lg border border-input bg-background p-3 text-sm" /><Button size="sm" className="mt-2" disabled={chatBusy !== null || !(chatDraft[job.id] ?? '').trim() || !openaiEnabled} onClick={() => sendChat(job)}>{chatBusy === job.id ? 'Редактирую…' : `Уточнить в чате${job.version > 1 ? ` · v${job.version}` : ''}`}</Button>{chatReply[job.id] && <p role="status" className="mt-2 text-sm text-muted-foreground">{chatReply[job.id]}</p>}</div>}
+                  {job.status === 'succeeded' && <div className="mt-2"><button className="text-xs text-primary underline" onClick={() => loadVersions(job)}>История версий ({job.version})</button>{versions[job.id]?.map((revision) => <p key={revision.version} className="mt-1 text-xs text-muted-foreground">v{revision.version} · {revision.message}{revision.model ? ` · ${models.find((model) => model.id === revision.model)?.name ?? revision.model}` : ''}</p>)}</div>}
                 </li>
               ))}</ul>
             )}

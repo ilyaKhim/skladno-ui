@@ -26,16 +26,13 @@ class PresentationContentGenerator {
     private final RestClient client;
     private final ObjectMapper mapper;
     private final String apiKey;
-    private final String model;
     private final boolean enabled;
 
     PresentationContentGenerator(ObjectMapper mapper,
                                  @Value("${godeck.generation.api-key:}") String apiKey,
-                                 @Value("${godeck.generation.model:gpt-6.1-sol}") String model,
                                  @Value("${godeck.generation.enabled:false}") boolean enabled) {
         this.mapper = mapper;
         this.apiKey = apiKey;
-        this.model = model;
         this.enabled = enabled;
         var requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(java.time.Duration.ofSeconds(10));
@@ -46,14 +43,14 @@ class PresentationContentGenerator {
     boolean enabled() { return enabled && !apiKey.isBlank(); }
 
     Map<String, Object> preview(String topic, Map<String, Integer> fields,
-                                List<Map<String, Object>> slideManifest) {
-        return requestBody(topic, fields, slideManifest);
+                                List<Map<String, Object>> slideManifest, String selectedModel) {
+        return requestBody(topic, fields, slideManifest, selectedModel);
     }
 
     Map<String, Object> generate(String topic, Map<String, Integer> fields,
-                                 List<Map<String, Object>> slideManifest) {
+                                 List<Map<String, Object>> slideManifest, String selectedModel) {
         if (!enabled()) throw new IllegalStateException("openai_disabled");
-        Map<String, Object> request = requestBody(topic, fields, slideManifest);
+        Map<String, Object> request = requestBody(topic, fields, slideManifest, selectedModel);
         try {
             JsonNode response = client.post().uri("https://api.openai.com/v1/responses")
                     .contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer " + apiKey)
@@ -75,7 +72,7 @@ class PresentationContentGenerator {
     }
 
     private Map<String, Object> requestBody(String topic, Map<String, Integer> fields,
-                                            List<Map<String, Object>> slideManifest) {
+                                            List<Map<String, Object>> slideManifest, String selectedModel) {
         Map<String, Object> properties = new LinkedHashMap<>();
         fields.keySet().forEach(key -> properties.put(key, Map.of("type", "string")));
         Map<String, Object> fieldSchema = Map.of("type", "object", "properties", properties,
@@ -89,7 +86,7 @@ class PresentationContentGenerator {
                 "fields", fieldSchema, "slides", Map.of("type", "array", "items", slideSchema)),
                 "required", List.of("fields", "slides"), "additionalProperties", false);
         Map<String, Object> request = Map.of(
-                "model", model, "instructions", INSTRUCTIONS,
+                "model", selectedModel, "instructions", INSTRUCTIONS,
                 "input", "Подготовь презентацию по brief. Лимиты полей: " + fields
                         + "\nПоля по слайдам в исходном порядке: " + slideManifest + "\nBrief: " + topic,
                 "text", Map.of("format", Map.of("type", "json_schema", "name", "presentation_content",

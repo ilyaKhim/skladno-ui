@@ -95,7 +95,7 @@ class PresentationGenerationIntegrationTest {
             assertThat(text).contains("Квартальный план").doesNotContain("{{");
         }
         assertThat(service.versions(USER, id)).hasSize(1);
-        verify(generator, never()).generate(anyString(), anyMap(), anyList());
+        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
         var notFound = assertThrows(PresentationGenerationService.GenerationException.class,
                 () -> service.download(UUID.randomUUID(), id));
         assertThat(notFound.status()).isEqualTo(404);
@@ -118,7 +118,7 @@ class PresentationGenerationIntegrationTest {
     @Test void chatWritesANewVersionAndFailurePreservesThePreviousFile() throws Exception {
         UUID id = readyManual();
         byte[] original = Files.readAllBytes(service.download(USER, id));
-        when(generator.generate(anyString(), anyMap(), anyList())).thenReturn(plan("Обновлённый план"));
+        when(generator.generate(anyString(), anyMap(), anyList(), anyString())).thenReturn(plan("Обновлённый план"));
         mvc.perform(post("/api/generation/v1/presentations/{id}/chat", id).with(csrf())
                         .contentType("application/json").content("{\"message\":\"Обнови заголовок\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.version").value(2));
@@ -126,7 +126,7 @@ class PresentationGenerationIntegrationTest {
         String firstFile = db.queryForObject("SELECT output_path FROM presentation_revisions WHERE presentation_id=? AND version=1", String.class, id);
         assertThat(Files.readAllBytes(Path.of(firstFile))).isEqualTo(original);
         byte[] latest = Files.readAllBytes(service.download(USER,id));
-        when(generator.generate(anyString(), anyMap(), anyList())).thenThrow(new IllegalStateException("simulated failure"));
+        when(generator.generate(anyString(), anyMap(), anyList(), anyString())).thenThrow(new IllegalStateException("simulated failure"));
         mvc.perform(post("/api/generation/v1/presentations/{id}/chat", id).with(csrf())
                         .contentType("application/json").content("{\"message\":\"Ещё одна правка\"}"))
                 .andExpect(status().isBadGateway());
@@ -140,22 +140,54 @@ class PresentationGenerationIntegrationTest {
         new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
             db.queryForObject("SELECT id FROM generated_presentations WHERE id=? FOR UPDATE", UUID.class, id);
             var other = CompletableFuture.supplyAsync(() -> assertThrows(PresentationGenerationService.GenerationException.class,
-                    () -> service.chat(USER,id,"Параллельная правка")));
+                    () -> service.chat(USER,id,"Параллельная правка",null)));
             try { assertThat(other.get(5, TimeUnit.SECONDS).code()).isEqualTo("edit_in_progress"); }
             catch (Exception error) { throw new IllegalStateException(error); }
         });
-        verify(generator, never()).generate(anyString(), anyMap(), anyList());
+        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
     }
 
     @Test void idempotencyKeyIncludesTheChosenModeAndUnknownModesAreRejected() throws Exception {
         String key = UUID.randomUUID().toString();
-        var first = service.create(USER,"aurora","Один и тот же запрос","manual",key);
-        assertThat(service.create(USER,"aurora","Один и тот же запрос","manual",key)).isEqualTo(first);
+        var first = service.create(USER,"aurora","Один и тот же запрос","manual",key,null);
+        assertThat(service.create(USER,"aurora","Один и тот же запрос","manual",key,null)).isEqualTo(first);
         assertThat(assertThrows(PresentationGenerationService.GenerationException.class,
-                () -> service.create(USER,"aurora","Один и тот же запрос","openai",key)).status()).isEqualTo(409);
+                () -> service.create(USER,"aurora","Один и тот же запрос","openai",key,null)).status()).isEqualTo(409);
         assertThat(assertThrows(PresentationGenerationService.GenerationException.class,
-                () -> service.create(USER,"aurora","Один и тот же запрос","unknown",null)).status()).isEqualTo(422);
+                () -> service.create(USER,"aurora","Один и тот же запрос","manual",key,"gpt-6-astra")).status()).isEqualTo(409);
+        assertThat(assertThrows(PresentationGenerationService.GenerationException.class,
+                () -> service.create(USER,"aurora","Один и тот же запрос","unknown",null,null)).status()).isEqualTo(422);
         mvc.perform(get("/api/generation/v1/templates/unknown/context")).andExpect(status().isNotFound());
+    }
+
+    @Test void selectedModelSurvivesTheQueueAndChatCanOverrideIt() throws Exception {
+        mvc.perform(get("/api/generation/v1/models"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.default_model").exists())
+                .andExpect(jsonPath("$.items[*].id").value(org.hamcrest.Matchers.hasItems("gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra")));
+        when(generator.generate(anyString(), anyMap(), anyList(), anyString())).thenReturn(plan("План выступления"));
+        var created = service.create(USER,"aurora","Презентация с выбранной моделью","openai",null,"gpt-6-luna");
+        UUID id = UUID.fromString((String) created.get("id"));
+        assertThat(created.get("model")).isEqualTo("gpt-6-luna");
+        service.processOne();
+        verify(generator).generate(anyString(), anyMap(), anyList(), eq("gpt-6-luna"));
+        assertThat(service.versions(USER,id).getFirst().get("model")).isEqualTo("gpt-6-luna");
+
+        mvc.perform(post("/api/generation/v1/presentations/{id}/chat",id).with(csrf())
+                        .contentType("application/json").content("{\"message\":\"Уточни заключение\",\"model\":\"gpt-6-astra\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.presentation.model").value("gpt-6-astra"));
+        assertThat(service.versions(USER,id).getLast().get("model")).isEqualTo("gpt-6-astra");
+        service.chat(USER,id,"Сократи заключение",null);
+        verify(generator,times(2)).generate(anyString(), anyMap(), anyList(), eq("gpt-6-astra"));
+    }
+
+    @Test void arbitraryModelIsRejectedBeforeAnyProviderCall() throws Exception {
+        mvc.perform(post("/api/generation/v1/prompts/preview").with(csrf())
+                        .contentType("application/json").content("{\"template_id\":\"aurora\",\"topic\":\"Тестовый запрос\",\"model\":\"unknown-model\"}"))
+                .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.error.code").value("unsupported_model"));
+        mvc.perform(post("/api/generation/v1/presentations").with(csrf())
+                        .contentType("application/json").content("{\"template_id\":\"aurora\",\"topic\":\"Тестовый запрос\",\"mode\":\"manual\",\"model\":42}"))
+                .andExpect(status().isUnprocessableContent());
+        verifyNoInteractions(generator);
     }
 
     private UUID createManual() throws Exception {
