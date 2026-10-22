@@ -59,6 +59,7 @@ public class PresentationTransactions {
                             p.start(now);
                             return new Job(
                                     p.getId(),
+                                    p.getTemplateId(),
                                     p.getTopic(),
                                     p.getMode(),
                                     p.getModel(),
@@ -138,7 +139,14 @@ public class PresentationTransactions {
         UUID token = UUID.randomUUID();
         p.beginEdit(token, now);
         return new Edit(
-                id, userId, token, p.getCurrentVersion(), p.getTopic(), model, p.getContentJson());
+                id,
+                userId,
+                token,
+                p.getCurrentVersion(),
+                p.getTemplateId(),
+                p.getTopic(),
+                model,
+                p.getContentJson());
     }
 
     public PresentationView completeEdit(
@@ -184,13 +192,19 @@ public class PresentationTransactions {
     }
 
     public record Job(
-            UUID id, String topic, GenerationMode mode, String model, String contentJson) {}
+            UUID id,
+            String templateId,
+            String topic,
+            GenerationMode mode,
+            String model,
+            String contentJson) {}
 
     public record Edit(
             UUID id,
             UUID userId,
             UUID token,
             int baseVersion,
+            String templateId,
             String topic,
             String model,
             String contentJson) {}

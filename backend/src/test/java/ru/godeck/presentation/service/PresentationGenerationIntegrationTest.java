@@ -724,6 +724,86 @@ class PresentationGenerationIntegrationTest {
                 json.readTree(result.getResponse().getContentAsString()).path("id").asText());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"atlas", "monolith", "nord", "opal"})
+    void pastedContentUsesTheChosenTemplateWithoutCallingOpenAi(String templateId)
+            throws Exception {
+        when(generator.enabled()).thenReturn(false);
+        mvc.perform(get("/api/generation/v1/templates/{id}/context", templateId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fields.TITLE").value(44))
+                .andExpect(
+                        jsonPath("$.template_description.field_hints.TITLE.description")
+                                .isNotEmpty());
+        Map<String, String> fields = new LinkedHashMap<>();
+        templates.fields(templateId).keySet().forEach(field -> fields.put(field, ""));
+        fields.put("TITLE", "Ответ LLM");
+        var content =
+                new PresentationContent(
+                        fields,
+                        java.util.stream.IntStream.rangeClosed(1, 13)
+                                .mapToObj(
+                                        n ->
+                                                new PresentationContent.Slide(
+                                                        n, n == 1 || n == 5, "Так решила модель"))
+                                .toList());
+        UUID id = service.create(USER, templateId, "Ответ LLM", "manual", null, null).id();
+        mvc.perform(
+                        put("/api/generation/v1/presentations/{id}/content", id)
+                                .with(csrf())
+                                .contentType("application/json")
+                                .content(json.writeValueAsString(content)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("queued"));
+        worker.processOne();
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
+        assertThat(service.get(USER, id).slideCount()).isEqualTo(2);
+        byte[] pptx =
+                mvc.perform(get(service.get(USER, id).downloadUrl()))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsByteArray();
+        try (var show = new XMLSlideShow(new ByteArrayInputStream(pptx))) {
+            assertThat(show.getSlides()).hasSize(2);
+        }
+        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+    }
+
+    @Test
+    void generationAndChatReceiveTheDescriptionOfTheSavedTemplate() throws Exception {
+        String templateId = "nord";
+        var description = templates.description(templateId);
+        when(generator.preview(anyString(), anyMap(), anyList(), anyString()))
+                .thenReturn(Map.of("test", true));
+        service.previewPrompt(templateId, "Тема доклада", null);
+        verify(generator)
+                .preview(
+                        contains(description.path("style").asText()),
+                        eq(templates.fields(templateId)),
+                        anyList(),
+                        anyString());
+        Map<String, String> fields = new LinkedHashMap<>();
+        templates.fields(templateId).keySet().forEach(field -> fields.put(field, "Текст"));
+        var content =
+                new PresentationContent(
+                        fields,
+                        java.util.stream.IntStream.rangeClosed(1, 13)
+                                .mapToObj(n -> new PresentationContent.Slide(n, n == 1, "Обложка"))
+                                .toList());
+        when(generator.generate(anyString(), anyMap(), anyList(), anyString())).thenReturn(content);
+        UUID id = service.create(USER, templateId, "Норд для доклада", "openai", null, null).id();
+        worker.processOne();
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
+        assertThat(service.chat(USER, id, "Сохрани стиль", null).version()).isEqualTo(2);
+        verify(generator, times(2))
+                .generate(
+                        contains(description.path("style").asText()),
+                        eq(templates.fields(templateId)),
+                        anyList(),
+                        anyString());
+    }
+
     private UUID readyManual() throws Exception {
         UUID id = createManual();
         service.submitManual(USER, id, typedPlan("Исходный план"));

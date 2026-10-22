@@ -33,12 +33,13 @@ public class PresentationFiles {
         this.directory = Path.of(directory).toAbsolutePath().normalize();
     }
 
-    public Path write(UUID id, int version, PresentationContent content) throws Exception {
+    public Path write(UUID id, int version, String templateId, PresentationContent content)
+            throws Exception {
         Files.createDirectories(directory);
         Path output = directory.resolve(id + "-v" + version + "-" + UUID.randomUUID() + ".pptx");
         Path temp = Files.createTempFile(directory, id.toString(), ".tmp");
         try {
-            Files.write(temp, templates.render(content));
+            Files.write(temp, templates.render(templateId, content));
             Files.move(temp, output, StandardCopyOption.ATOMIC_MOVE);
             return output;
         } finally {

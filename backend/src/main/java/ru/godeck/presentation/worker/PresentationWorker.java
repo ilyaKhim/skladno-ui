@@ -70,6 +70,7 @@ public class PresentationWorker {
             var job =
                     new PresentationTransactions.Job(
                             claimed.id(),
+                            claimed.templateId(),
                             claimed.topic(),
                             claimed.mode(),
                             claimed.mode() == GenerationMode.MANUAL
@@ -80,12 +81,17 @@ public class PresentationWorker {
                     job.mode() == GenerationMode.MANUAL
                             ? codec.decode(job.contentJson())
                             : generator.generate(
-                                    job.topic(),
-                                    templates.fields(),
-                                    templates.slideManifest(),
+                                    templates.withDescription(job.templateId(), job.topic()),
+                                    templates.fields(job.templateId()),
+                                    templates.slideManifest(job.templateId()),
                                     job.model());
-            content = templates.normalize(content);
-            output = files.write(job.id(), PresentationPolicy.INITIAL_VERSION, content);
+            content = templates.normalize(job.templateId(), content);
+            output =
+                    files.write(
+                            job.id(),
+                            PresentationPolicy.INITIAL_VERSION,
+                            job.templateId(),
+                            content);
             transactions.complete(
                     job, codec.encode(content), output.toString(), content.slideCount());
         } catch (Exception error) {
