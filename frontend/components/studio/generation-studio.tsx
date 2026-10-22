@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowDownToLine, ClipboardCopy, LoaderCircle, LogOut, Presentation, RefreshCw, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { StudioSoundtrack } from '@/components/studio/studio-soundtrack'
 
 type Template = { id: string; name: string; description: string; available_slides: number; preview_url: string }
 type ModelOption = { id: string; name: string }
@@ -233,6 +234,7 @@ export function GenerationStudio() {
         <header className="mb-10 flex flex-wrap items-center justify-between gap-4">
           <a href="/" className="font-display text-2xl font-extrabold tracking-tight">GoDeck</a>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <StudioSoundtrack />
             {email && <span className="hidden sm:inline">{email}</span>}
             <Button variant="outline" size="sm" onClick={signOut}><LogOut className="mr-2 size-4" />Выйти</Button>
           </div>
