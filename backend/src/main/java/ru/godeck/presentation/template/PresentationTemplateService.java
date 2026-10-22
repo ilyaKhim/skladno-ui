@@ -31,10 +31,6 @@ import java.util.regex.Pattern;
 @Service
 public class PresentationTemplateService {
     private static final String TEMPLATE_MARKERS_MISSING = "The template has no {{FIELD}} markers.";
-    private static final String TEMPLATE_READ_FAILED = "Could not read the presentation template.";
-    private static final String TEMPLATE_FIELDS_MISMATCH = "Fields do not match the template.";
-    private static final String MISSING_FIELD_PREFIX = "Missing template field ";
-    private static final String UNRESOLVED_MARKER = "Unresolved template marker.";
     private static final String UNKNOWN_FIELD_PREFIX = "Unknown template field ";
 
     public static final String TEMPLATE_ID = "aurora";
@@ -46,10 +42,12 @@ public class PresentationTemplateService {
     private static final String TEMPLATE_BRIEF =
             "Описание шаблона (JSON):\n%s\n\nЗадача пользователя: %s";
     private final Map<String, Template> templates;
+    private final PresentationContentValidator validator;
 
-    public PresentationTemplateService() throws Exception {
+    public PresentationTemplateService(ObjectMapper json, PresentationContentValidator validator)
+            throws Exception {
+        this.validator = validator;
         Map<String, Template> loaded = new LinkedHashMap<>();
-        var json = new ObjectMapper();
         for (String id : TEMPLATE_IDS) {
             byte[] source;
             try (InputStream input =
@@ -85,7 +83,8 @@ public class PresentationTemplateService {
                                 source,
                                 java.util.Collections.unmodifiableMap(fields),
                                 show.getSlides().size(),
-                                description));
+                                description,
+                                readManifest(show)));
             }
         }
         templates = java.util.Collections.unmodifiableMap(loaded);
@@ -111,7 +110,11 @@ public class PresentationTemplateService {
     }
 
     private record Template(
-            byte[] source, Map<String, Integer> fields, int slideCount, JsonNode description) {}
+            byte[] source,
+            Map<String, Integer> fields,
+            int slideCount,
+            JsonNode description,
+            List<Map<String, Object>> slideManifest) {}
 
     public Map<String, Object> catalog() {
         return catalog(TEMPLATE_ID);
@@ -160,45 +163,30 @@ public class PresentationTemplateService {
     }
 
     public List<Map<String, Object>> slideManifest(String id) {
-        try (XMLSlideShow show = open(id)) {
-            List<Map<String, Object>> slides = new ArrayList<>();
-            int number = 0;
-            for (XSLFSlide slide : show.getSlides()) {
-                number++;
-                List<String> names = new ArrayList<>();
-                for (XSLFShape shape : allShapes(slide.getShapes())) {
-                    if (shape instanceof XSLFTextShape text) {
-                        Matcher matcher = TOKEN.matcher(text.getText());
-                        while (matcher.find())
-                            if (!names.contains(matcher.group(1))) names.add(matcher.group(1));
+        return get(id).slideManifest();
+    }
+
+    private static List<Map<String, Object>> readManifest(XMLSlideShow show) {
+        List<Map<String, Object>> slides = new ArrayList<>();
+        int number = 0;
+        for (XSLFSlide slide : show.getSlides()) {
+            List<String> names = new ArrayList<>();
+            for (XSLFShape shape : allShapes(slide.getShapes())) {
+                if (shape instanceof XSLFTextShape text) {
+                    Matcher matcher = TOKEN.matcher(text.getText());
+                    while (matcher.find()) {
+                        String name = matcher.group(1);
+                        if (!names.contains(name)) names.add(name);
                     }
                 }
-                slides.add(Map.of("slide", number, "fields", names));
             }
-            return slides;
-        } catch (Exception e) {
-            throw new IllegalStateException(TEMPLATE_READ_FAILED, e);
+            slides.add(Map.of("slide", ++number, "fields", List.copyOf(names)));
         }
+        return List.copyOf(slides);
     }
 
     public Map<String, String> normalizeValues(Map<String, String> values) {
-        return normalizeValues(values, fields());
-    }
-
-    private Map<String, String> normalizeValues(
-            Map<String, String> values, Map<String, Integer> fields) {
-        if (!values.keySet().equals(fields.keySet()))
-            throw new IllegalArgumentException(TEMPLATE_FIELDS_MISMATCH);
-        Map<String, String> normalized = new LinkedHashMap<>();
-        for (var entry : fields.entrySet()) {
-            String value = values.get(entry.getKey());
-            if (value == null)
-                throw new IllegalArgumentException(MISSING_FIELD_PREFIX + entry.getKey());
-            if (value.contains("{{") || value.contains("}}"))
-                throw new IllegalArgumentException(UNRESOLVED_MARKER);
-            normalized.put(entry.getKey(), limit(value, entry.getValue()));
-        }
-        return normalized;
+        return validator.normalizeValues(values, fields());
     }
 
     public PresentationContent normalize(PresentationContent content) {
@@ -207,29 +195,7 @@ public class PresentationTemplateService {
 
     public PresentationContent normalize(String id, PresentationContent content) {
         Template template = get(id);
-        int slideCount = template.slideCount();
-        try {
-            if (content == null
-                    || content.fields() == null
-                    || content.slides() == null
-                    || content.slides().size() != slideCount) throw new IllegalArgumentException();
-            Map<String, String> values = normalizeValues(content.fields(), template.fields());
-            var seen = new java.util.HashSet<Integer>();
-            for (var slide : content.slides()) {
-                if (slide == null
-                        || slide.slide() < 1
-                        || slide.slide() > slideCount
-                        || !seen.add(slide.slide())
-                        || slide.include() == null
-                        || slide.reason() == null
-                        || slide.reason().isBlank()) throw new IllegalArgumentException();
-            }
-            if (content.slideCount() == 0) throw new IllegalArgumentException();
-            return new PresentationContent(
-                    java.util.Collections.unmodifiableMap(values), List.copyOf(content.slides()));
-        } catch (IllegalArgumentException | NullPointerException e) {
-            throw new GenerationException(GenerationError.INVALID_CONTENT);
-        }
+        return validator.normalize(content, template.fields(), template.slideCount());
     }
 
     public byte[] render(PresentationContent content) throws Exception {
@@ -318,19 +284,6 @@ public class PresentationTemplateService {
                                 * Math.max(1, height / (font * TemplateTextPolicy.LINE_HEIGHT_EM)));
         return Math.clamp(
                 estimate, TemplateTextPolicy.MIN_FIELD_LENGTH, TemplateTextPolicy.MAX_FIELD_LENGTH);
-    }
-
-    private static String limit(String value, int max) {
-        if (value.length() <= max) return value;
-        if (max <= TemplateTextPolicy.MIN_LENGTH_FOR_ELLIPSIS) return value.substring(0, max);
-        int end = max - 1;
-        if (Character.isHighSurrogate(value.charAt(end - 1))
-                && Character.isLowSurrogate(value.charAt(end))) end--;
-        String cut = value.substring(0, end);
-        int space = cut.lastIndexOf(' ');
-        if (space >= (int) (max * TemplateTextPolicy.WORD_BOUNDARY_MINIMUM_FRACTION))
-            cut = cut.substring(0, space);
-        return cut.replaceAll("[ ,.;:—-]+$", "") + "…";
     }
 
     private static void replaceParagraph(XSLFTextParagraph paragraph, Map<String, String> values) {

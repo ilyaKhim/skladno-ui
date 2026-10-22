@@ -1,5 +1,6 @@
 package ru.godeck.presentation.template;
 
+import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,8 +19,27 @@ import java.util.Map;
 
 class PresentationTemplateServiceTest {
     @Test
+    void cachedManifestIsDeeplyImmutableAndCannotBeChangedByARequest() throws Exception {
+        var service =
+                new PresentationTemplateService(
+                        new tools.jackson.databind.ObjectMapper(),
+                        new PresentationContentValidator());
+        var manifest = service.slideManifest("atlas");
+        assertThatThrownBy(() -> manifest.clear())
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> manifest.getFirst().put("slide", 99))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> ((java.util.List<?>) manifest.getFirst().get("fields")).clear())
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThat(service.slideManifest("atlas").getFirst().get("slide")).isEqualTo(1);
+    }
+
+    @Test
     void inspectsAndFillsEveryPlaceholderInBundledTemplate() throws Exception {
-        var service = new PresentationTemplateService();
+        var service =
+                new PresentationTemplateService(
+                        new tools.jackson.databind.ObjectMapper(),
+                        new PresentationContentValidator());
         assertTrue(service.fields().containsKey("TITLE"));
         assertTrue(service.fields().get("TITLE") > 12, "POI anchors must be measured in points");
         assertTrue(service.fields().values().stream().anyMatch(limit -> limit > 100));
@@ -58,7 +78,10 @@ class PresentationTemplateServiceTest {
     @org.junit.jupiter.params.provider.ValueSource(strings = {"atlas", "monolith", "nord", "opal"})
     void sidecarLimitsAndDescriptionsAreUsedButSlideSelectionComesFromTheAnswer(String id)
             throws Exception {
-        var service = new PresentationTemplateService();
+        var service =
+                new PresentationTemplateService(
+                        new tools.jackson.databind.ObjectMapper(),
+                        new PresentationContentValidator());
         org.assertj.core.api.Assertions.assertThat(service.fields(id))
                 .hasSize(79)
                 .containsEntry("TITLE", 44)
@@ -94,7 +117,10 @@ class PresentationTemplateServiceTest {
 
     @Test
     void templatesWithoutSidecarKeepTheirExistingBehavior() throws Exception {
-        var service = new PresentationTemplateService();
+        var service =
+                new PresentationTemplateService(
+                        new tools.jackson.databind.ObjectMapper(),
+                        new PresentationContentValidator());
         org.assertj.core.api.Assertions.assertThat(service.withDescription("aurora", "Topic"))
                 .isEqualTo("Topic");
         org.assertj.core.api.Assertions.assertThat(service.catalogs()).hasSize(5);
