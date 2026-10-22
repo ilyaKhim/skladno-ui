@@ -163,7 +163,8 @@ class PresentationGenerationIntegrationTest {
     @Test void selectedModelSurvivesTheQueueAndChatCanOverrideIt() throws Exception {
         mvc.perform(get("/api/generation/v1/models"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.default_model").exists())
-                .andExpect(jsonPath("$.items[*].id").value(org.hamcrest.Matchers.hasItems("gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra")));
+                .andExpect(jsonPath("$.items[*].id").value(org.hamcrest.Matchers.hasItems("gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra",
+                        "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4", "gpt-5.4-mini")));
         when(generator.generate(anyString(), anyMap(), anyList(), anyString())).thenReturn(plan("План выступления"));
         var created = service.create(USER,"aurora","Презентация с выбранной моделью","openai",null,"gpt-6-luna");
         UUID id = UUID.fromString((String) created.get("id"));

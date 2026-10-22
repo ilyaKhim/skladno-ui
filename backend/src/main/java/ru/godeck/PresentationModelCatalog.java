@@ -20,7 +20,12 @@ class PresentationModelCatalog {
         var models = new ArrayList<>(List.of(
                 Map.of("id", "gpt-6.1-sol", "name", "GPT-6.1 Sol"),
                 Map.of("id", "gpt-6-luna", "name", "GPT-6 Luna"),
-                Map.of("id", "gpt-6-astra", "name", "GPT-6 Astra")));
+                Map.of("id", "gpt-6-astra", "name", "GPT-6 Astra"),
+                Map.of("id", "gpt-5.6-sol", "name", "GPT-5.6 Sol"),
+                Map.of("id", "gpt-5.6-terra", "name", "GPT-5.6 Terra"),
+                Map.of("id", "gpt-5.6-luna", "name", "GPT-5.6 Luna"),
+                Map.of("id", "gpt-5.4", "name", "GPT-5.4"),
+                Map.of("id", "gpt-5.4-mini", "name", "GPT-5.4 Mini")));
         if (models.stream().noneMatch(model -> model.get("id").equals(this.defaultModel))) {
             models.addFirst(Map.of("id", this.defaultModel, "name", this.defaultModel));
         }
