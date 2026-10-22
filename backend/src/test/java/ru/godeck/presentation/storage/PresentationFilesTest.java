@@ -31,9 +31,10 @@ class PresentationFilesTest {
 
     @Test
     void outputWritesAreUniqueAndNeverExposeTemporaryFiles() throws Exception {
-        when(templates.render(any())).thenReturn(new byte[] {'P', 'K', 1, 2});
+        when(templates.render(eq("aurora"), any())).thenReturn(new byte[] {'P', 'K', 1, 2});
         UUID id = UUID.randomUUID();
-        Path first = files.write(id, 1, content), second = files.write(id, 1, content);
+        Path first = files.write(id, 1, "aurora", content),
+                second = files.write(id, 1, "aurora", content);
         assertThat(first).isNotEqualTo(second);
         assertThat(Files.readAllBytes(first))
                 .containsExactly((byte) 'P', (byte) 'K', (byte) 1, (byte) 2);
@@ -46,8 +47,8 @@ class PresentationFilesTest {
     @Test
     void renderFailureRemovesTemporaryFileAndPreservesExistingOutput() throws Exception {
         Path previous = Files.writeString(directory.resolve("previous.pptx"), "old");
-        when(templates.render(any())).thenThrow(new IOException("render failed"));
-        assertThatThrownBy(() -> files.write(UUID.randomUUID(), 2, content))
+        when(templates.render(eq("aurora"), any())).thenThrow(new IOException("render failed"));
+        assertThatThrownBy(() -> files.write(UUID.randomUUID(), 2, "aurora", content))
                 .isInstanceOf(IOException.class);
         assertThat(Files.readString(previous)).isEqualTo("old");
         try (var paths = Files.list(directory)) {

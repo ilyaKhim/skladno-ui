@@ -53,4 +53,52 @@ class PresentationTemplateServiceTest {
             }
         }
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"atlas", "monolith", "nord", "opal"})
+    void sidecarLimitsAndDescriptionsAreUsedButSlideSelectionComesFromTheAnswer(String id)
+            throws Exception {
+        var service = new PresentationTemplateService();
+        org.assertj.core.api.Assertions.assertThat(service.fields(id))
+                .hasSize(79)
+                .containsEntry("TITLE", 44)
+                .containsEntry("NUM_1_VALUE", 7);
+        var description = service.description(id);
+        org.assertj.core.api.Assertions.assertThat(description.path("slides").asInt())
+                .isEqualTo(13);
+        org.assertj.core.api.Assertions.assertThat(service.withDescription(id, "Проверка 100%"))
+                .contains(
+                        description.path("style").asText(),
+                        "field_hints",
+                        "slide_rules",
+                        "Проверка 100%");
+        Map<String, String> values = new LinkedHashMap<>();
+        service.fields(id).keySet().forEach(field -> values.put(field, ""));
+        values.put("TITLE", "Я".repeat(100));
+        var slides =
+                java.util.stream.IntStream.rangeClosed(1, 13)
+                        .mapToObj(
+                                n ->
+                                        new PresentationContent.Slide(
+                                                n, n == 1 || n == 5, "Выбор модели"))
+                        .toList();
+        var plan = new PresentationContent(values, slides);
+        org.assertj.core.api.Assertions.assertThat(
+                        service.normalize(id, plan).fields().get("TITLE"))
+                .hasSize(44);
+        // The answer explicitly includes the numbers layout even though its fields are empty.
+        try (var show = new XMLSlideShow(new ByteArrayInputStream(service.render(id, plan)))) {
+            org.assertj.core.api.Assertions.assertThat(show.getSlides()).hasSize(2);
+        }
+    }
+
+    @Test
+    void templatesWithoutSidecarKeepTheirExistingBehavior() throws Exception {
+        var service = new PresentationTemplateService();
+        org.assertj.core.api.Assertions.assertThat(service.withDescription("aurora", "Topic"))
+                .isEqualTo("Topic");
+        org.assertj.core.api.Assertions.assertThat(service.catalogs()).hasSize(5);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.fields("unknown"))
+                .isInstanceOf(ru.godeck.presentation.exception.GenerationException.class);
+    }
 }

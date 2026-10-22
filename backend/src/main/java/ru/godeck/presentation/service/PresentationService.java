@@ -76,7 +76,7 @@ public class PresentationService {
     }
 
     public Map<String, Object> catalog() {
-        return Map.of("items", List.of(templates.catalog()));
+        return Map.of("items", templates.catalogs());
     }
 
     public Map<String, Object> models() {
@@ -85,16 +85,22 @@ public class PresentationService {
 
     public Map<String, Object> context(String templateId) {
         checkTemplate(templateId);
-        return Map.of("fields", templates.fields(), "slides", templates.slideManifest());
+        return Map.of(
+                "fields",
+                templates.fields(templateId),
+                "slides",
+                templates.slideManifest(templateId),
+                "template_description",
+                templates.description(templateId));
     }
 
     public Map<String, Object> previewPrompt(String templateId, String topic, String model) {
         checkTemplate(templateId);
         checkTopic(topic);
         return generator.preview(
-                topic.strip(),
-                templates.fields(),
-                templates.slideManifest(),
+                templates.withDescription(templateId, topic.strip()),
+                templates.fields(templateId),
+                templates.slideManifest(templateId),
                 models.resolve(model));
     }
 
@@ -158,11 +164,11 @@ public class PresentationService {
 
     @Transactional
     public PresentationView submitManual(UUID userId, UUID id, PresentationContent content) {
-        PresentationContent plan = templates.normalize(content);
         Presentation p =
                 presentations.findForUpdate(id, userId).orElseThrow(PresentationService::missing);
         if (p.getMode() != GenerationMode.MANUAL || p.getStatus() != AWAITING_CONTENT)
             throw new GenerationException(GenerationError.MANUAL_CONTENT_CLOSED);
+        PresentationContent plan = templates.normalize(p.getTemplateId(), content);
         p.enqueue(codec.encode(plan), clock.instant());
         return PresentationView.from(p);
     }
@@ -223,12 +229,13 @@ public class PresentationService {
             String topic = PresentationPrompts.edit(edit.topic(), edit.contentJson(), message);
             PresentationContent content =
                     templates.normalize(
+                            edit.templateId(),
                             generator.generate(
-                                    topic,
-                                    templates.fields(),
-                                    templates.slideManifest(),
+                                    templates.withDescription(edit.templateId(), topic),
+                                    templates.fields(edit.templateId()),
+                                    templates.slideManifest(edit.templateId()),
                                     edit.model()));
-            output = files.write(id, edit.baseVersion() + 1, content);
+            output = files.write(id, edit.baseVersion() + 1, edit.templateId(), content);
             PresentationView view =
                     transactions.completeEdit(
                             edit,
@@ -266,9 +273,8 @@ public class PresentationService {
         return PresentationView.from(p);
     }
 
-    private static void checkTemplate(String id) {
-        if (!PresentationTemplateService.TEMPLATE_ID.equals(id))
-            throw new GenerationException(GenerationError.TEMPLATE_NOT_FOUND);
+    private void checkTemplate(String id) {
+        templates.fields(id);
     }
 
     private static void checkTopic(String topic) {

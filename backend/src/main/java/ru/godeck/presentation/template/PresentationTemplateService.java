@@ -15,6 +15,9 @@ import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.model.PresentationContent;
 
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -27,8 +30,7 @@ import java.util.regex.Pattern;
 
 @Service
 public class PresentationTemplateService {
-    private static final String TEMPLATE_MARKERS_MISSING =
-            "The Aurora template has no {{FIELD}} markers.";
+    private static final String TEMPLATE_MARKERS_MISSING = "The template has no {{FIELD}} markers.";
     private static final String TEMPLATE_READ_FAILED = "Could not read the presentation template.";
     private static final String TEMPLATE_FIELDS_MISMATCH = "Fields do not match the template.";
     private static final String MISSING_FIELD_PREFIX = "Missing template field ";
@@ -37,33 +39,104 @@ public class PresentationTemplateService {
 
     public static final String TEMPLATE_ID = "aurora";
     private static final Pattern TOKEN = Pattern.compile("\\{\\{([A-Za-z_][A-Za-z0-9_]*)}}");
-    private final byte[] template;
-    private final Map<String, Integer> fields;
-    private final int slideCount;
+    private static final List<String> TEMPLATE_IDS =
+            List.of(TEMPLATE_ID, "atlas", "monolith", "nord", "opal");
+    private static final String TEMPLATE_DESCRIPTION_INVALID =
+            "Invalid presentation template description: ";
+    private static final String TEMPLATE_BRIEF =
+            "Описание шаблона (JSON):\n%s\n\nЗадача пользователя: %s";
+    private final Map<String, Template> templates;
 
     public PresentationTemplateService() throws Exception {
-        try (InputStream input = new ClassPathResource("templates/aurora.pptx").getInputStream()) {
-            template = input.readAllBytes();
+        Map<String, Template> loaded = new LinkedHashMap<>();
+        var json = new ObjectMapper();
+        for (String id : TEMPLATE_IDS) {
+            byte[] source;
+            try (InputStream input =
+                    new ClassPathResource("templates/" + id + ".pptx").getInputStream()) {
+                source = input.readAllBytes();
+            }
+            JsonNode description = json.createObjectNode();
+            var sidecar = new ClassPathResource("templates/" + id + ".json");
+            if (sidecar.exists()) {
+                try (InputStream input = sidecar.getInputStream()) {
+                    description = json.readTree(input);
+                }
+                if (!description.isObject())
+                    throw new IllegalStateException(TEMPLATE_DESCRIPTION_INVALID + id);
+            }
+            try (var show = new XMLSlideShow(new ByteArrayInputStream(source))) {
+                Map<String, Integer> fields = inspect(show);
+                if (fields.isEmpty()) throw new IllegalStateException(TEMPLATE_MARKERS_MISSING);
+                if (description.has("slides")
+                        && description.path("slides").asInt() != show.getSlides().size())
+                    throw new IllegalStateException(TEMPLATE_DESCRIPTION_INVALID + id);
+                for (String field : fields.keySet()) {
+                    var hint = description.path("field_hints").path(field).path("max_chars");
+                    if (!hint.isMissingNode()) {
+                        if (!hint.isIntegralNumber() || hint.asInt() <= 0)
+                            throw new IllegalStateException(TEMPLATE_DESCRIPTION_INVALID + field);
+                        fields.put(field, hint.asInt());
+                    }
+                }
+                loaded.put(
+                        id,
+                        new Template(
+                                source,
+                                java.util.Collections.unmodifiableMap(fields),
+                                show.getSlides().size(),
+                                description));
+            }
         }
-        try (XMLSlideShow show = open()) {
-            slideCount = show.getSlides().size();
-            fields = java.util.Collections.unmodifiableMap(inspect(show));
-        }
-        if (fields.isEmpty()) throw new IllegalStateException(TEMPLATE_MARKERS_MISSING);
+        templates = java.util.Collections.unmodifiableMap(loaded);
     }
 
+    public List<Map<String, Object>> catalogs() {
+        return TEMPLATE_IDS.stream().map(this::catalog).toList();
+    }
+
+    private Template get(String id) {
+        Template template = id == null ? null : templates.get(id);
+        if (template == null) throw new GenerationException(GenerationError.TEMPLATE_NOT_FOUND);
+        return template;
+    }
+
+    public JsonNode description(String id) {
+        return get(id).description().deepCopy();
+    }
+
+    public String withDescription(String id, String topic) {
+        JsonNode description = get(id).description();
+        return description.isEmpty() ? topic : TEMPLATE_BRIEF.formatted(description, topic);
+    }
+
+    private record Template(
+            byte[] source, Map<String, Integer> fields, int slideCount, JsonNode description) {}
+
     public Map<String, Object> catalog() {
+        return catalog(TEMPLATE_ID);
+    }
+
+    private Map<String, Object> catalog(String id) {
+        Template template = get(id);
         return Map.of(
                 "id",
-                TEMPLATE_ID,
+                id,
                 "number",
-                1,
+                TEMPLATE_IDS.indexOf(id) + 1,
                 "name",
-                BackendMessages.text("presentation.template.aurora.name"),
+                template.description()
+                        .path("name")
+                        .asText(BackendMessages.text("presentation.template.aurora.name")),
                 "description",
-                BackendMessages.text("presentation.template.aurora.description", slideCount),
+                template.description()
+                        .path("description")
+                        .asText(
+                                BackendMessages.text(
+                                        "presentation.template.aurora.description",
+                                        template.slideCount())),
                 "available_slides",
-                slideCount,
+                template.slideCount(),
                 "preview_url",
                 "",
                 "selection",
@@ -71,15 +144,23 @@ public class PresentationTemplateService {
     }
 
     public Map<String, Integer> fields() {
-        return fields;
+        return fields(TEMPLATE_ID);
+    }
+
+    public Map<String, Integer> fields(String id) {
+        return get(id).fields();
     }
 
     public byte[] source() {
-        return template.clone();
+        return get(TEMPLATE_ID).source().clone();
     }
 
     public List<Map<String, Object>> slideManifest() {
-        try (XMLSlideShow show = open()) {
+        return slideManifest(TEMPLATE_ID);
+    }
+
+    public List<Map<String, Object>> slideManifest(String id) {
+        try (XMLSlideShow show = open(id)) {
             List<Map<String, Object>> slides = new ArrayList<>();
             int number = 0;
             for (XSLFSlide slide : show.getSlides()) {
@@ -101,6 +182,11 @@ public class PresentationTemplateService {
     }
 
     public Map<String, String> normalizeValues(Map<String, String> values) {
+        return normalizeValues(values, fields());
+    }
+
+    private Map<String, String> normalizeValues(
+            Map<String, String> values, Map<String, Integer> fields) {
         if (!values.keySet().equals(fields.keySet()))
             throw new IllegalArgumentException(TEMPLATE_FIELDS_MISMATCH);
         Map<String, String> normalized = new LinkedHashMap<>();
@@ -116,12 +202,18 @@ public class PresentationTemplateService {
     }
 
     public PresentationContent normalize(PresentationContent content) {
+        return normalize(TEMPLATE_ID, content);
+    }
+
+    public PresentationContent normalize(String id, PresentationContent content) {
+        Template template = get(id);
+        int slideCount = template.slideCount();
         try {
             if (content == null
                     || content.fields() == null
                     || content.slides() == null
                     || content.slides().size() != slideCount) throw new IllegalArgumentException();
-            Map<String, String> values = normalizeValues(content.fields());
+            Map<String, String> values = normalizeValues(content.fields(), template.fields());
             var seen = new java.util.HashSet<Integer>();
             for (var slide : content.slides()) {
                 if (slide == null
@@ -141,9 +233,13 @@ public class PresentationTemplateService {
     }
 
     public byte[] render(PresentationContent content) throws Exception {
-        PresentationContent plan = normalize(content);
+        return render(TEMPLATE_ID, content);
+    }
+
+    public byte[] render(String id, PresentationContent content) throws Exception {
+        PresentationContent plan = normalize(id, content);
         Map<String, String> normalized = plan.fields();
-        try (XMLSlideShow show = open()) {
+        try (XMLSlideShow show = open(id)) {
             var included =
                     plan.slides().stream()
                             .filter(s -> Boolean.TRUE.equals(s.include()))
@@ -166,8 +262,8 @@ public class PresentationTemplateService {
         }
     }
 
-    private XMLSlideShow open() throws Exception {
-        return new XMLSlideShow(new ByteArrayInputStream(template));
+    private XMLSlideShow open(String id) throws Exception {
+        return new XMLSlideShow(new ByteArrayInputStream(get(id).source()));
     }
 
     private static Map<String, Integer> inspect(XMLSlideShow show) {
