@@ -10,6 +10,8 @@ import ru.godeck.presentation.ai.PresentationModelCatalog;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
+import ru.godeck.presentation.model.AiCallContext;
+import ru.godeck.presentation.model.AiOperation;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.policy.PresentationPolicy;
@@ -81,6 +83,7 @@ public class PresentationWorker {
                     job.mode() == GenerationMode.MANUAL
                             ? codec.decode(job.contentJson())
                             : generator.generate(
+                                    new AiCallContext(job.id(), AiOperation.GENERATION),
                                     templates.withDescription(job.templateId(), job.topic()),
                                     templates.fields(job.templateId()),
                                     templates.slideManifest(job.templateId()),

@@ -74,6 +74,8 @@ public enum GenerationError {
             HttpStatus.UNPROCESSABLE_ENTITY,
             "unsupported_model",
             "presentation.error.unsupported-model"),
+    VERSION_NOT_FOUND(
+            HttpStatus.NOT_FOUND, "version_not_found", "presentation.error.version-not-found"),
     WORKER_INTERRUPTED(
             HttpStatus.CONFLICT, "worker_interrupted", "presentation.error.worker-interrupted");
     private final HttpStatus status;

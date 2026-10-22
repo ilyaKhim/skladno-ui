@@ -13,6 +13,7 @@ import ru.godeck.presentation.ai.PresentationContentGenerator;
 import ru.godeck.presentation.ai.PresentationModelCatalog;
 import ru.godeck.presentation.ai.PresentationPrompts;
 import ru.godeck.presentation.dto.ChatReply;
+import ru.godeck.presentation.dto.PresentationAiCallView;
 import ru.godeck.presentation.dto.PresentationPage;
 import ru.godeck.presentation.dto.PresentationRevisionView;
 import ru.godeck.presentation.dto.PresentationView;
@@ -20,6 +21,8 @@ import ru.godeck.presentation.entity.Presentation;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
+import ru.godeck.presentation.model.AiCallContext;
+import ru.godeck.presentation.model.AiOperation;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.policy.PresentationPolicy;
@@ -49,6 +52,7 @@ public class PresentationService {
     private final PresentationContentCodec codec;
     private final PresentationFiles files;
     private final Clock clock;
+    private final PresentationAiCallHistory aiHistory;
 
     public PresentationService(
             PresentationRepository presentations,
@@ -59,7 +63,8 @@ public class PresentationService {
             PresentationModelCatalog models,
             PresentationContentCodec codec,
             PresentationFiles files,
-            Clock clock) {
+            Clock clock,
+            PresentationAiCallHistory aiHistory) {
         this.presentations = presentations;
         this.revisions = revisions;
         this.transactions = transactions;
@@ -69,6 +74,7 @@ public class PresentationService {
         this.codec = codec;
         this.files = files;
         this.clock = clock;
+        this.aiHistory = aiHistory;
     }
 
     public Map<String, Object> health() {
@@ -199,6 +205,17 @@ public class PresentationService {
         return files.existing(p.getOutputPath());
     }
 
+    @Transactional(readOnly = true)
+    public Path downloadVersion(UUID userId, UUID id, int version) {
+        owned(userId, id);
+        var revision =
+                revisions
+                        .findByPresentationIdAndUserIdAndVersion(id, userId, version)
+                        .orElseThrow(
+                                () -> new GenerationException(GenerationError.VERSION_NOT_FOUND));
+        return files.existing(revision.getOutputPath());
+    }
+
     @Transactional
     public PresentationView cancel(UUID userId, UUID id) {
         Presentation p =
@@ -231,6 +248,7 @@ public class PresentationService {
                     templates.normalize(
                             edit.templateId(),
                             generator.generate(
+                                    new AiCallContext(id, AiOperation.CHAT),
                                     templates.withDescription(edit.templateId(), topic),
                                     templates.fields(edit.templateId()),
                                     templates.slideManifest(edit.templateId()),
@@ -255,6 +273,11 @@ public class PresentationService {
             if (error instanceof GenerationException known) throw known;
             throw new GenerationException(GenerationError.EDIT_FAILED);
         }
+    }
+
+    public List<PresentationAiCallView> aiCalls(UUID userId, UUID id) {
+        owned(userId, id);
+        return aiHistory.list(id);
     }
 
     private Presentation owned(UUID userId, UUID id) {
