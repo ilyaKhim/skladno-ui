@@ -24,6 +24,7 @@ import ru.godeck.auth.security.AuthPrincipal;
 import ru.godeck.presentation.dto.ChatReply;
 import ru.godeck.presentation.dto.CreatePresentationRequest;
 import ru.godeck.presentation.dto.EditPresentationRequest;
+import ru.godeck.presentation.dto.PresentationAiCallView;
 import ru.godeck.presentation.dto.PresentationPage;
 import ru.godeck.presentation.dto.PresentationView;
 import ru.godeck.presentation.dto.PreviewPromptRequest;
@@ -33,6 +34,7 @@ import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.service.PresentationService;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -123,6 +125,14 @@ public class GenerationController {
         return Map.of("items", service.versions(user(auth), id));
     }
 
+    @GetMapping("/v1/presentations/{id}/ai-calls")
+    public ResponseEntity<Map<String, List<PresentationAiCallView>>> aiCalls(
+            @PathVariable UUID id, Authentication auth) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(Map.of("items", service.aiCalls(user(auth), id)));
+    }
+
     @PostMapping("/v1/presentations/{id}/cancel")
     public PresentationView cancel(@PathVariable UUID id, Authentication auth) {
         return service.cancel(user(auth), id);
@@ -130,15 +140,23 @@ public class GenerationController {
 
     @GetMapping("/v1/presentations/{id}/download")
     public ResponseEntity<Resource> download(@PathVariable UUID id, Authentication auth) {
-        Path file = service.download(user(auth), id);
+        return pptx(service.download(user(auth), id), "godeck-" + id + ".pptx");
+    }
+
+    @GetMapping("/v1/presentations/{id}/versions/{version}/download")
+    public ResponseEntity<Resource> downloadVersion(
+            @PathVariable UUID id, @PathVariable int version, Authentication auth) {
+        return pptx(
+                service.downloadVersion(user(auth), id, version),
+                "godeck-" + id + "-v" + version + ".pptx");
+    }
+
+    private static ResponseEntity<Resource> pptx(Path file, String filename) {
         return ResponseEntity.ok()
                 .contentType(PPTX_MEDIA_TYPE)
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
-                        ContentDisposition.attachment()
-                                .filename("godeck-" + id + ".pptx")
-                                .build()
-                                .toString())
+                        ContentDisposition.attachment().filename(filename).build().toString())
                 .cacheControl(CacheControl.noStore())
                 .body(new FileSystemResource(file));
     }

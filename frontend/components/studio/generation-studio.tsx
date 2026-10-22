@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import { Tabs } from '@base-ui/react/tabs'
 import { parseLlmResponse } from '@/lib/llm-response'
 import { ArrowDownToLine, ClipboardCopy, LoaderCircle, LogOut, Presentation, RefreshCw, Sparkles } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { AiCallHistory, type AiCall } from '@/components/studio/ai-call-history'
 import { StudioSoundtrack } from '@/components/studio/studio-soundtrack'
 
 type Template = { id: string; name: string; description: string; available_slides: number; preview_url: string }
 type ModelOption = { id: string; name: string }
-type Revision = { version: number; message: string; reply: string; model: string }
+type Revision = { version: number; message: string; reply: string; model: string; download_url: string }
 type PresentationJob = {
   id: string; template_id: string; topic: string; mode: 'manual' | 'openai';
   status: 'awaiting_content' | 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -48,6 +49,11 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (contentType.includes('json') ? response.json() : response) as Promise<T>
 }
 
+async function loadAiCalls(id: string, signal: AbortSignal): Promise<AiCall[]> {
+  const result = await api<{ items: AiCall[] }>(`/v1/presentations/${id}/ai-calls`, { signal })
+  return result.items
+}
+
 export function GenerationStudio() {
   const router = useRouter()
   const [templates, setTemplates] = useState<Template[]>([])
@@ -65,6 +71,7 @@ export function GenerationStudio() {
   const [chatDraft, setChatDraft] = useState<Record<string, string>>({})
   const [chatReply, setChatReply] = useState<Record<string, string>>({})
   const [chatBusy, setChatBusy] = useState<string | null>(null)
+  const [aiHistoryRefresh, setAiHistoryRefresh] = useState<Record<string, number>>({})
   const [versions, setVersions] = useState<Record<string, Revision[]>>({})
   const [openaiEnabled, setOpenaiEnabled] = useState(false)
   const [promptPreview, setPromptPreview] = useState('')
@@ -179,7 +186,10 @@ export function GenerationStudio() {
       setChatReply((current) => ({ ...current, [job.id]: `Версия ${result.version}: ${result.reply}` }))
       setChatDraft((current) => ({ ...current, [job.id]: '' })); await refresh(); await loadVersions(job)
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось применить правку.') }
-    finally { setChatBusy(null) }
+    finally {
+      setChatBusy(null)
+      setAiHistoryRefresh((current) => ({ ...current, [job.id]: (current[job.id] ?? 0) + 1 }))
+    }
   }
 
   async function showPromptPreview() {
@@ -319,7 +329,22 @@ export function GenerationStudio() {
                       {models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
                     </select>
                     <label className="block text-sm font-semibold" htmlFor={`chat-${job.id}`}>Что изменить в презентации?</label><textarea id={`chat-${job.id}`} value={chatDraft[job.id] ?? ''} onChange={(event) => setChatDraft((current) => ({ ...current, [job.id]: event.target.value }))} placeholder="Например: сократи вступление и добавь конкретные рекомендации…" maxLength={4000} className="mt-2 min-h-20 w-full rounded-lg border border-input bg-background p-3 text-sm" /><Button size="sm" className="mt-2" disabled={chatBusy !== null || !(chatDraft[job.id] ?? '').trim() || !openaiEnabled} onClick={() => sendChat(job)}>{chatBusy === job.id ? 'Редактирую…' : `Уточнить в чате${job.version > 1 ? ` · v${job.version}` : ''}`}</Button>{chatReply[job.id] && <p role="status" className="mt-2 text-sm text-muted-foreground">{chatReply[job.id]}</p>}</div>}
-                  {job.status === 'succeeded' && <div className="mt-2"><button className="text-xs text-primary underline" onClick={() => loadVersions(job)}>История версий ({job.version})</button>{versions[job.id]?.map((revision) => <p key={revision.version} className="mt-1 text-xs text-muted-foreground">v{revision.version} · {revision.message}{revision.model ? ` · ${models.find((model) => model.id === revision.model)?.name ?? revision.model}` : ''}</p>)}</div>}
+                  {job.status === 'succeeded' && <div className="mt-3">
+                    <button type="button" className="rounded text-sm text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => loadVersions(job)}>История версий ({job.version})</button>
+                    {versions[job.id] && <ul aria-label="Версии презентации" className="mt-2 divide-y divide-border">
+                      {versions[job.id].map((revision) => <li key={revision.version} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                        <div className="min-w-0 flex-1 text-sm">
+                          <p className="font-medium">Версия {revision.version}{revision.version === job.version ? ' · текущая' : ''}</p>
+                          <p className="mt-1 break-words text-muted-foreground">{revision.message}{revision.model ? ` · ${models.find((model) => model.id === revision.model)?.name ?? revision.model}` : ''}</p>
+                        </div>
+                        <a href={revision.download_url} className={buttonVariants({ variant: 'outline', size: 'sm' })} aria-label={`Скачать PPTX версии ${revision.version}`}><ArrowDownToLine aria-hidden="true" className="mr-2 size-4" />Скачать v{revision.version}</a>
+                      </li>)}
+                    </ul>}
+                  </div>}
+
+                  <AiCallHistory presentationId={job.id} loadCalls={loadAiCalls}
+                    refreshKey={`${job.status}:${job.version}:${aiHistoryRefresh[job.id] ?? 0}`}
+                    live={job.status === 'queued' || job.status === 'running' || chatBusy === job.id} />
                 </li>
               ))}</ul>
             )}

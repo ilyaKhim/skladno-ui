@@ -20,6 +20,9 @@ class PresentationModelCatalogTest {
                 new PresentationContentGenerator(
                         new PresentationContentCodec(new ObjectMapper()),
                         org.springframework.web.client.RestClient.create(),
+                        new ObjectMapper(),
+                        org.mockito.Mockito.mock(
+                                ru.godeck.presentation.service.PresentationAiCallHistory.class),
                         "",
                         false);
         assertThat(generator.enabled()).isFalse();

@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.anything;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -17,18 +20,24 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.client.RestClient;
 
 import ru.godeck.presentation.ai.PresentationContentGenerator;
 import ru.godeck.presentation.dto.PresentationView;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
+import ru.godeck.presentation.model.AiCallContext;
+import ru.godeck.presentation.model.AiOperation;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.model.PresentationStatus;
 import ru.godeck.presentation.template.PresentationTemplateService;
@@ -70,6 +79,7 @@ class PresentationGenerationIntegrationTest {
     @Autowired PresentationWorker worker;
     @Autowired PresentationContentCodec codec;
     @Autowired PresentationTransactions transactions;
+    @Autowired PresentationAiCallHistory aiHistory;
     @Autowired PlatformTransactionManager transactionManager;
     @MockitoBean PresentationContentGenerator generator;
 
@@ -135,7 +145,7 @@ class PresentationGenerationIntegrationTest {
             assertThat(text).contains("Квартальный план").doesNotContain("{{");
         }
         assertThat(service.versions(USER, id)).hasSize(1);
-        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+        verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
         var notFound =
                 assertThrows(
                         GenerationException.class, () -> service.download(UUID.randomUUID(), id));
@@ -164,7 +174,7 @@ class PresentationGenerationIntegrationTest {
     void chatWritesANewVersionAndFailurePreservesThePreviousFile() throws Exception {
         UUID id = readyManual();
         byte[] original = Files.readAllBytes(service.download(USER, id));
-        when(generator.generate(anyString(), anyMap(), anyList(), anyString()))
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenReturn(typedPlan("Обновлённый план"));
         mvc.perform(
                         post("/api/generation/v1/presentations/{id}/chat", id)
@@ -182,7 +192,7 @@ class PresentationGenerationIntegrationTest {
                         id);
         assertThat(Files.readAllBytes(Path.of(firstFile))).isEqualTo(original);
         byte[] latest = Files.readAllBytes(service.download(USER, id));
-        when(generator.generate(anyString(), anyMap(), anyList(), anyString()))
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenThrow(new IllegalStateException("simulated failure"));
         mvc.perform(
                         post("/api/generation/v1/presentations/{id}/chat", id)
@@ -201,7 +211,7 @@ class PresentationGenerationIntegrationTest {
                 .isNull();
         doReturn(typedPlan("Повторная правка"))
                 .when(generator)
-                .generate(anyString(), anyMap(), anyList(), anyString());
+                .generate(any(), anyString(), anyMap(), anyList(), anyString());
         assertThat(service.chat(USER, id, "Повтори после ошибки", null).version()).isEqualTo(3);
     }
 
@@ -233,7 +243,7 @@ class PresentationGenerationIntegrationTest {
                                 throw new IllegalStateException(error);
                             }
                         });
-        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+        verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
     }
 
     @Test
@@ -302,7 +312,7 @@ class PresentationGenerationIntegrationTest {
                                                 "gpt-5.6-luna",
                                                 "gpt-5.4",
                                                 "gpt-5.4-mini")));
-        when(generator.generate(anyString(), anyMap(), anyList(), anyString()))
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenReturn(typedPlan("План выступления"));
         var created =
                 service.create(
@@ -315,7 +325,7 @@ class PresentationGenerationIntegrationTest {
         UUID id = created.id();
         assertThat(created.model()).isEqualTo("gpt-6-luna");
         worker.processOne();
-        verify(generator).generate(anyString(), anyMap(), anyList(), eq("gpt-6-luna"));
+        verify(generator).generate(any(), anyString(), anyMap(), anyList(), eq("gpt-6-luna"));
         assertThat(service.versions(USER, id).getFirst().model()).isEqualTo("gpt-6-luna");
 
         mvc.perform(
@@ -329,7 +339,8 @@ class PresentationGenerationIntegrationTest {
                 .andExpect(jsonPath("$.presentation.model").value("gpt-6-astra"));
         assertThat(service.versions(USER, id).getLast().model()).isEqualTo("gpt-6-astra");
         service.chat(USER, id, "Сократи заключение", null);
-        verify(generator, times(2)).generate(anyString(), anyMap(), anyList(), eq("gpt-6-astra"));
+        verify(generator, times(2))
+                .generate(any(), anyString(), anyMap(), anyList(), eq("gpt-6-astra"));
     }
 
     @Test
@@ -359,7 +370,7 @@ class PresentationGenerationIntegrationTest {
         UUID id = readyManual();
         var started = new java.util.concurrent.CountDownLatch(1);
         var release = new java.util.concurrent.CountDownLatch(1);
-        when(generator.generate(anyString(), anyMap(), anyList(), anyString()))
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenAnswer(
                         invocation -> {
                             assertThat(
@@ -401,7 +412,7 @@ class PresentationGenerationIntegrationTest {
                                 UUID.class,
                                 id))
                 .isNull();
-        verify(generator, times(1)).generate(anyString(), anyMap(), anyList(), anyString());
+        verify(generator, times(1)).generate(any(), anyString(), anyMap(), anyList(), anyString());
     }
 
     @Test
@@ -472,7 +483,7 @@ class PresentationGenerationIntegrationTest {
                                         + " status='queued'",
                                 Integer.class))
                 .isEqualTo(1);
-        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+        verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
     }
 
     @Test
@@ -518,7 +529,7 @@ class PresentationGenerationIntegrationTest {
         worker.processOne();
         assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.CANCELLED);
         assertThat(service.versions(USER, id)).isEmpty();
-        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+        verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
     }
 
     @Test
@@ -537,13 +548,13 @@ class PresentationGenerationIntegrationTest {
         assertThat(service.get(USER, obsolete).errorCode()).isEqualTo("unsupported_model");
         worker.processOne();
         assertThat(service.get(USER, next).status()).isEqualTo(PresentationStatus.SUCCEEDED);
-        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+        verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
     }
 
     @Test
     void providerFailureDoesNotLeaveARevisionAndTheWorkerRemainsUsable() throws Exception {
         UUID failed = service.create(USER, "aurora", "Provider failure", "openai", null, null).id();
-        when(generator.generate(anyString(), anyMap(), anyList(), anyString()))
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenThrow(new IllegalStateException("provider failed"));
         worker.processOne();
         assertThat(service.get(USER, failed).status()).isEqualTo(PresentationStatus.FAILED);
@@ -652,7 +663,7 @@ class PresentationGenerationIntegrationTest {
                 """,
                 UUID.randomUUID(),
                 id);
-        when(generator.generate(anyString(), anyMap(), anyList(), anyString()))
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenReturn(typedPlan("Replacement"));
         assertThat(
                         assertThrows(
@@ -706,7 +717,7 @@ class PresentationGenerationIntegrationTest {
         db.update("UPDATE generated_presentations SET model='retired-model' WHERE id=?", id);
         worker.processOne();
         assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
-        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+        verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
     }
 
     private UUID createManual() throws Exception {
@@ -767,7 +778,7 @@ class PresentationGenerationIntegrationTest {
         try (var show = new XMLSlideShow(new ByteArrayInputStream(pptx))) {
             assertThat(show.getSlides()).hasSize(2);
         }
-        verify(generator, never()).generate(anyString(), anyMap(), anyList(), anyString());
+        verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
     }
 
     @Test
@@ -791,17 +802,250 @@ class PresentationGenerationIntegrationTest {
                         java.util.stream.IntStream.rangeClosed(1, 13)
                                 .mapToObj(n -> new PresentationContent.Slide(n, n == 1, "Обложка"))
                                 .toList());
-        when(generator.generate(anyString(), anyMap(), anyList(), anyString())).thenReturn(content);
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
+                .thenReturn(content);
         UUID id = service.create(USER, templateId, "Норд для доклада", "openai", null, null).id();
         worker.processOne();
         assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
         assertThat(service.chat(USER, id, "Сохрани стиль", null).version()).isEqualTo(2);
         verify(generator, times(2))
                 .generate(
+                        any(),
                         contains(description.path("style").asText()),
                         eq(templates.fields(templateId)),
                         anyList(),
                         anyString());
+    }
+
+    @Test
+    void generationStoresTheActualProviderExchangeAndExposesItToTheOwner() throws Exception {
+        var server = recordedProvider();
+        String response = providerResponse(typedPlan("Запись генерации"));
+        server.expect(anything()).andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
+        UUID id =
+                service.create(USER, "aurora", "Проверяем историю генерации", "openai", null, null)
+                        .id();
+        worker.processOne();
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
+        var history = service.aiCalls(USER, id);
+        assertThat(history).hasSize(1);
+        assertThat(history.getFirst().operation()).isEqualTo("generation");
+        assertThat(history.getFirst().requestBody())
+                .contains("Проверяем историю генерации", "instructions", "json_schema")
+                .doesNotContain("integration-test-key", "Authorization");
+        assertThat(history.getFirst().responseBody()).isEqualTo(response);
+        assertThat(history.getFirst().durationMs()).isNotNegative();
+        mvc.perform(get("/api/generation/v1/presentations/{id}/ai-calls", id))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.items[0].http_status").value(200))
+                .andExpect(jsonPath("$.items[0].error_code").doesNotExist());
+        server.verify();
+    }
+
+    @Test
+    void failedChatExchangeIsKeptAndASecondEditCanSucceed() throws Exception {
+        UUID id = readyManual();
+        var server = recordedProvider();
+        server.expect(anything())
+                .andRespond(
+                        withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                                .body("provider limit integration-test-key")
+                                .contentType(MediaType.TEXT_PLAIN));
+        assertThrows(
+                GenerationException.class, () -> service.chat(USER, id, "Сократи текст", null));
+        var failed = service.aiCalls(USER, id).getFirst();
+        assertThat(failed.operation()).isEqualTo("chat");
+        assertThat(failed.httpStatus()).isEqualTo(429);
+        assertThat(failed.responseBody()).isEqualTo("provider limit [REDACTED]");
+        assertThat(failed.errorCode()).isEqualTo("generation_failed");
+        assertThat(service.get(USER, id).version()).isEqualTo(1);
+        server.verify();
+        server.reset();
+        String response = providerResponse(typedPlan("Исправленный план"));
+        server.expect(anything()).andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
+        assertThat(service.chat(USER, id, "Попробуй ещё раз", null).version()).isEqualTo(2);
+        var history = service.aiCalls(USER, id);
+        assertThat(history).hasSize(2);
+        assertThat(history.getFirst().responseBody()).isEqualTo(response);
+        assertThat(history.getFirst().requestBody()).contains("Попробуй ещё раз");
+        assertThat(history.getFirst().errorCode()).isNull();
+        server.verify();
+    }
+
+    @Test
+    void historyRejectsOtherOwnersAndUnknownPresentations() throws Exception {
+        UUID other = UUID.randomUUID();
+        UUID id = service.create(other, "aurora", "Чужая презентация", "manual", null, null).id();
+        aiHistory.start(new AiCallContext(id, AiOperation.CHAT), "gpt-5.4", "private request");
+        assertThat(service.aiCalls(other, id)).hasSize(1);
+        mvc.perform(get("/api/generation/v1/presentations/{id}/ai-calls", id))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/generation/v1/presentations/{id}/ai-calls", UUID.randomUUID()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void requestIsPersistedBeforeTheResponseAndSurvivesAnOuterRollback() throws Exception {
+        UUID id = createManual();
+        var context = new AiCallContext(id, AiOperation.GENERATION);
+        UUID callId =
+                new TransactionTemplate(transactionManager)
+                        .execute(
+                                status -> {
+                                    UUID started =
+                                            aiHistory.start(
+                                                    context, "gpt-5.4", "{\"input\":\"test\"}");
+                                    status.setRollbackOnly();
+                                    return started;
+                                });
+        var pending = service.aiCalls(USER, id).getFirst();
+        assertThat(pending.id()).isEqualTo(callId);
+        assertThat(pending.completedAt()).isNull();
+        assertThat(pending.responseBody()).isNull();
+        aiHistory.complete(callId, "raw response", 200, null);
+        assertThat(service.aiCalls(USER, id).getFirst().responseBody()).isEqualTo("raw response");
+    }
+
+    @Test
+    void manualAssemblyAndPromptPreviewDoNotInventSentAiRequests() throws Exception {
+        UUID id = readyManual();
+        service.previewPrompt("aurora", "Проверяем предварительный запрос", null);
+        assertThat(service.aiCalls(USER, id)).isEmpty();
+    }
+
+    private MockRestServiceServer recordedProvider() {
+        var builder = RestClient.builder();
+        var server = MockRestServiceServer.bindTo(builder).build();
+        var real =
+                new PresentationContentGenerator(
+                        codec, builder.build(), json, aiHistory, "integration-test-key", true);
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
+                .thenAnswer(
+                        invocation ->
+                                real.generate(
+                                        invocation.getArgument(0),
+                                        invocation.getArgument(1),
+                                        invocation.getArgument(2),
+                                        invocation.getArgument(3),
+                                        invocation.getArgument(4)));
+        return server;
+    }
+
+    private String providerResponse(PresentationContent content) {
+        return json.writeValueAsString(
+                Map.of(
+                        "status",
+                        "completed",
+                        "output",
+                        List.of(
+                                Map.of(
+                                        "content",
+                                        List.of(
+                                                Map.of(
+                                                        "type",
+                                                        "output_text",
+                                                        "text",
+                                                        codec.encode(content)))))));
+    }
+
+    @Test
+    void downloadsEveryStoredVersionThroughItsAdvertisedUrl() throws Exception {
+        UUID id = readyManual();
+        byte[] original = Files.readAllBytes(service.download(USER, id));
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
+                .thenReturn(typedPlan("Изменённый заголовок"));
+        service.chat(USER, id, "Измени заголовок", null);
+        byte[] latest = Files.readAllBytes(service.download(USER, id));
+        assertThat(latest).isNotEqualTo(original);
+        var versions = service.versions(USER, id);
+        assertThat(versions).hasSize(2);
+        mvc.perform(get("/api/generation/v1/presentations/{id}/versions", id))
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.items[0].download_url")
+                                .value(versions.getFirst().downloadUrl()));
+        assertThat(json.writeValueAsString(versions))
+                .doesNotContain("output_path", OUTPUT.toString());
+        for (var version : versions) {
+            byte[] bytes =
+                    mvc.perform(get(version.downloadUrl()))
+                            .andExpect(status().isOk())
+                            .andExpect(header().string("Cache-Control", "no-store"))
+                            .andExpect(
+                                    header().string(
+                                                    "Content-Type",
+                                                    "application/vnd.openxmlformats-officedocument.presentationml.presentation"))
+                            .andExpect(
+                                    header().string(
+                                                    "Content-Disposition",
+                                                    "attachment; filename=\"godeck-"
+                                                            + id
+                                                            + "-v"
+                                                            + version.version()
+                                                            + ".pptx\""))
+                            .andReturn()
+                            .getResponse()
+                            .getContentAsByteArray();
+            assertThat(bytes).isEqualTo(version.version() == 1 ? original : latest);
+            try (var show = new XMLSlideShow(new ByteArrayInputStream(bytes))) {
+                String text =
+                        show.getSlides().getFirst().getShapes().stream()
+                                .filter(
+                                        org.apache.poi.xslf.usermodel.XSLFTextShape.class
+                                                ::isInstance)
+                                .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast)
+                                .map(org.apache.poi.xslf.usermodel.XSLFTextShape::getText)
+                                .collect(java.util.stream.Collectors.joining("\n"));
+                assertThat(text)
+                        .contains(
+                                version.version() == 1 ? "Исходный план" : "Изменённый заголовок");
+            }
+        }
+        assertThat(service.get(USER, id).version()).isEqualTo(2);
+        assertThat(Files.readAllBytes(service.download(USER, id))).isEqualTo(latest);
+    }
+
+    @Test
+    void rejectsDownloadsOfOtherOwnersUnknownProjectsAndMissingVersions() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID foreignId =
+                service.create(owner, "aurora", "Чужой проект для скачивания", "manual", null, null)
+                        .id();
+        service.submitManual(owner, foreignId, typedPlan("Чужой файл"));
+        worker.processOne();
+        assertThat(service.downloadVersion(owner, foreignId, 1)).exists();
+        mvc.perform(get("/api/generation/v1/presentations/{id}/versions/1/download", foreignId))
+                .andExpect(status().isNotFound());
+        mvc.perform(
+                        get(
+                                "/api/generation/v1/presentations/{id}/versions/1/download",
+                                UUID.randomUUID()))
+                .andExpect(status().isNotFound());
+        UUID id = readyManual();
+        for (int missing : List.of(-1, 0, 2)) {
+            mvc.perform(
+                            get(
+                                    "/api/generation/v1/presentations/{id}/versions/{version}/download",
+                                    id,
+                                    missing))
+                    .andExpect(status().isNotFound());
+        }
+    }
+
+    @Test
+    void missingHistoricalFileReturnsNotFoundAndLeavesLatestDownloadAvailable() throws Exception {
+        UUID id = readyManual();
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
+                .thenReturn(typedPlan("Последняя версия"));
+        service.chat(USER, id, "Обнови презентацию", null);
+        Files.delete(service.downloadVersion(USER, id, 1));
+        mvc.perform(get("/api/generation/v1/presentations/{id}/versions/1/download", id))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/generation/v1/presentations/{id}/versions/2/download", id))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/generation/v1/presentations/{id}/download", id))
+                .andExpect(status().isOk());
     }
 
     private UUID readyManual() throws Exception {

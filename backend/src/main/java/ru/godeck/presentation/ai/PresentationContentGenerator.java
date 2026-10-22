@@ -4,12 +4,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
+import ru.godeck.presentation.model.AiCallContext;
 import ru.godeck.presentation.model.PresentationContent;
+import ru.godeck.presentation.service.PresentationAiCallHistory;
 
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -24,6 +28,8 @@ public class PresentationContentGenerator {
     private static final int MAX_OUTPUT_TOKENS = 12_000;
 
     private final RestClient client;
+    private final ObjectMapper json;
+    private final PresentationAiCallHistory history;
     private final PresentationContentCodec codec;
     private final String apiKey;
     private final boolean enabled;
@@ -31,9 +37,13 @@ public class PresentationContentGenerator {
     public PresentationContentGenerator(
             PresentationContentCodec codec,
             RestClient openAiClient,
+            ObjectMapper json,
+            PresentationAiCallHistory history,
             @Value("${godeck.generation.api-key:}") String apiKey,
             @Value("${godeck.generation.enabled:false}") boolean enabled) {
         this.codec = codec;
+        this.json = json;
+        this.history = history;
         this.apiKey = apiKey;
         this.enabled = enabled;
         this.client = openAiClient;
@@ -52,33 +62,59 @@ public class PresentationContentGenerator {
     }
 
     public PresentationContent generate(
+            AiCallContext context,
             String topic,
             Map<String, Integer> fields,
             List<Map<String, Object>> slideManifest,
             String selectedModel) {
         if (!enabled()) throw new IllegalStateException(GenerationError.OPENAI_DISABLED.code());
-        Map<String, Object> request = requestBody(topic, fields, slideManifest, selectedModel);
+        String requestBody =
+                json.writeValueAsString(requestBody(topic, fields, slideManifest, selectedModel));
+        var callId = history.start(context, selectedModel, redactKey(requestBody));
+        String responseBody = null;
+        Integer httpStatus = null;
+        String errorCode = GenerationError.GENERATION_FAILED.code();
         try {
-            JsonNode response =
+            var response =
                     client.post()
                             .uri(RESPONSES_URL)
                             .contentType(MediaType.APPLICATION_JSON)
                             .header("Authorization", "Bearer " + apiKey)
-                            .body(request)
+                            .body(requestBody)
                             .retrieve()
-                            .body(JsonNode.class);
-            if (response == null || !COMPLETED_STATUS.equals(response.path("status").asText())) {
+                            .toEntity(String.class);
+            responseBody = response.getBody();
+            httpStatus = response.getStatusCode().value();
+            JsonNode responseJson = responseBody == null ? null : json.readTree(responseBody);
+            if (responseJson == null
+                    || !COMPLETED_STATUS.equals(responseJson.path("status").asText())) {
                 throw new IllegalStateException(GenerationError.GENERATION_INCOMPLETE.code());
             }
-            String json = findOutputText(response.path("output"));
-            if (json == null)
+            String contentJson = findOutputText(responseJson.path("output"));
+            if (contentJson == null)
                 throw new IllegalStateException(GenerationError.GENERATION_EMPTY.code());
-            return codec.decode(json);
+            var content = codec.decode(contentJson);
+            errorCode = null;
+            return content;
+        } catch (RestClientResponseException e) {
+            httpStatus = e.getStatusCode().value();
+            responseBody = e.getResponseBodyAsString();
+            throw new IllegalStateException(GenerationError.GENERATION_FAILED.code());
         } catch (IllegalStateException e) {
-            throw e;
+            if (GenerationError.GENERATION_INCOMPLETE.code().equals(e.getMessage())
+                    || GenerationError.GENERATION_EMPTY.code().equals(e.getMessage())) {
+                errorCode = e.getMessage();
+            }
+            throw new IllegalStateException(errorCode);
         } catch (Exception e) {
-            throw new IllegalStateException(GenerationError.GENERATION_FAILED.code(), e);
+            throw new IllegalStateException(GenerationError.GENERATION_FAILED.code());
+        } finally {
+            history.complete(callId, redactKey(responseBody), httpStatus, errorCode);
         }
+    }
+
+    private String redactKey(String body) {
+        return body == null ? null : body.replace(apiKey, "[REDACTED]");
     }
 
     private Map<String, Object> requestBody(
