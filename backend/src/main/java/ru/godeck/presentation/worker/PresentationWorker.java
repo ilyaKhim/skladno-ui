@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import ru.godeck.presentation.ai.PresentationContentGenerator;
 import ru.godeck.presentation.ai.PresentationModelCatalog;
+import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
@@ -99,14 +100,18 @@ public class PresentationWorker {
                     job, codec.encode(content), output.toString(), content.slideCount());
         } catch (Exception error) {
             files.discard(output);
-            String code =
-                    error instanceof GenerationException known
-                            ? known.code()
-                            : GenerationError.OPENAI_DISABLED.code().equals(error.getMessage())
-                                    ? GenerationError.OPENAI_DISABLED.code()
-                                    : GenerationError.GENERATION_FAILED.code();
+            String code = failureCode(error);
             transactions.fail(claimed.id(), code);
             log.warn(GENERATION_FAILURE_LOG, claimed.id(), error.getClass().getSimpleName());
         }
+    }
+
+    private static String failureCode(Exception error) {
+        if (error instanceof GenerationException known) return known.code();
+        if (error instanceof AiGenerationException provider
+                && provider.error() == GenerationError.OPENAI_DISABLED) {
+            return provider.error().code();
+        }
+        return GenerationError.GENERATION_FAILED.code();
     }
 }

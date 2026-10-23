@@ -18,9 +18,12 @@ class PresentationModelCatalogTest {
         assertThat(catalog.resolve(null)).isEqualTo("gpt-custom-server-default");
         var generator =
                 new PresentationContentGenerator(
-                        new PresentationContentCodec(new ObjectMapper()),
                         org.springframework.web.client.RestClient.create(),
                         new ObjectMapper(),
+                        new PresentationRequestFactory(),
+                        new OpenAiResponseReader(
+                                new ObjectMapper(),
+                                new PresentationContentCodec(new ObjectMapper())),
                         org.mockito.Mockito.mock(
                                 ru.godeck.presentation.service.PresentationAiCallHistory.class),
                         "",

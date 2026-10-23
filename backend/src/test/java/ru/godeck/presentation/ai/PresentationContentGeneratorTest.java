@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
 import ru.godeck.presentation.model.AiCallContext;
 import ru.godeck.presentation.model.AiOperation;
@@ -44,9 +45,10 @@ class PresentationContentGeneratorTest {
         when(history.start(any(), anyString(), anyString())).thenReturn(callId);
         generator =
                 new PresentationContentGenerator(
-                        new PresentationContentCodec(json),
                         client,
                         json,
+                        new PresentationRequestFactory(),
+                        new OpenAiResponseReader(json, new PresentationContentCodec(json)),
                         history,
                         "unit-test-key",
                         true);
@@ -83,7 +85,7 @@ class PresentationContentGeneratorTest {
                 .andRespond(
                         withSuccess("{\"status\":\"" + status + "\"}", MediaType.APPLICATION_JSON));
         assertThatThrownBy(this::generate)
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(AiGenerationException.class)
                 .hasMessage("generation_incomplete");
         verify(history)
                 .complete(callId, "{\"status\":\"" + status + "\"}", 200, "generation_incomplete");
@@ -123,12 +125,19 @@ class PresentationContentGeneratorTest {
     void missingCredentialsAndDisabledModeNeverIssueAnHttpRequest() {
         var missing =
                 new PresentationContentGenerator(
-                        new PresentationContentCodec(json), client, json, history, "", true);
-        var disabled =
-                new PresentationContentGenerator(
-                        new PresentationContentCodec(json),
                         client,
                         json,
+                        new PresentationRequestFactory(),
+                        new OpenAiResponseReader(json, new PresentationContentCodec(json)),
+                        history,
+                        "",
+                        true);
+        var disabled =
+                new PresentationContentGenerator(
+                        client,
+                        json,
+                        new PresentationRequestFactory(),
+                        new OpenAiResponseReader(json, new PresentationContentCodec(json)),
                         history,
                         "unit-test-key",
                         false);
@@ -194,8 +203,75 @@ class PresentationContentGeneratorTest {
     void recordsNetworkFailuresWithoutInventingAResponse() {
         server.expect(requestTo(URL))
                 .andRespond(withException(new java.io.IOException("connection reset")));
-        assertThatThrownBy(this::generate).hasMessage("generation_failed");
+        assertThatThrownBy(this::generate)
+                .hasMessage("generation_failed")
+                .hasCauseInstanceOf(org.springframework.web.client.ResourceAccessException.class);
         verify(history).complete(callId, null, null, "generation_failed");
+    }
+
+    @Test
+    void diagnosticsFailureDoesNotDiscardTheSuccessfulProviderResult() {
+        doThrow(new IllegalStateException("database unavailable"))
+                .when(history)
+                .complete(any(), any(), any(), any());
+        server.expect(requestTo(URL))
+                .andRespond(
+                        withSuccess(
+                                completed(
+                                        "{\"fields\":{\"TITLE\":\"Сохранённый"
+                                                + " ответ\"},\"slides\":[]}"),
+                                MediaType.APPLICATION_JSON));
+        assertThat(generate().fields()).containsEntry("TITLE", "Сохранённый ответ");
+    }
+
+    @Test
+    void diagnosticsFailureDoesNotReplaceTheProviderError() {
+        doThrow(new IllegalStateException("database unavailable"))
+                .when(history)
+                .complete(any(), any(), any(), any());
+        server.expect(requestTo(URL))
+                .andRespond(withSuccess("{\"status\":\"incomplete\"}", MediaType.APPLICATION_JSON));
+        assertThatThrownBy(this::generate).hasMessage("generation_incomplete");
+    }
+
+    @Test
+    void unavailableHistoryPreventsAnUntrackedPaidCall() {
+        when(history.start(any(), anyString(), anyString()))
+                .thenThrow(new IllegalStateException("database unavailable"));
+        assertThatThrownBy(this::generate).hasMessage("database unavailable");
+        verify(history, never()).complete(any(), any(), any(), any());
+    }
+
+    @Test
+    void combinesAllOutputTextPartsBeforeReadingThePlan() {
+        String response =
+                json.writeValueAsString(
+                        Map.of(
+                                "status",
+                                "completed",
+                                "output",
+                                List.of(
+                                        Map.of("type", "reasoning"),
+                                        Map.of(
+                                                "content",
+                                                List.of(
+                                                        Map.of(
+                                                                "type",
+                                                                "output_text",
+                                                                "text",
+                                                                "{\"fields\":{\"TITLE\":\"Составной"
+                                                                        + " ответ\"},"))),
+                                        Map.of(
+                                                "content",
+                                                List.of(
+                                                        Map.of(
+                                                                "type",
+                                                                "output_text",
+                                                                "text",
+                                                                "\"slides\":[]}"))))));
+        server.expect(requestTo(URL)).andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
+        assertThat(generate().fields()).containsEntry("TITLE", "Составной ответ");
+        verify(history).complete(callId, response, 200, null);
     }
 
     private ru.godeck.presentation.model.PresentationContent generate() {

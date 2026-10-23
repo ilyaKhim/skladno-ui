@@ -11,6 +11,7 @@ frontend_check:
     - pnpm install --frozen-lockfile
   script:
     - pnpm typecheck
+    - pnpm test:frontend
     # Main is built by deploy_reg; branches/MRs also validate the static export.
     - if [ "$CI_COMMIT_BRANCH" != main ]; then STATIC_EXPORT=1 pnpm build; fi
   rules:

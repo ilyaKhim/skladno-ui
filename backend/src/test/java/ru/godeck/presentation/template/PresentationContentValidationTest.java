@@ -17,7 +17,10 @@ class PresentationContentValidationTest {
 
     @BeforeAll
     static void setUp() throws Exception {
-        templates = new PresentationTemplateService();
+        templates =
+                new PresentationTemplateService(
+                        new tools.jackson.databind.ObjectMapper(),
+                        new PresentationContentValidator());
     }
 
     private Map<String, String> fields() {

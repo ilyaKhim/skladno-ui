@@ -32,7 +32,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
+import ru.godeck.presentation.ai.OpenAiResponseReader;
 import ru.godeck.presentation.ai.PresentationContentGenerator;
+import ru.godeck.presentation.ai.PresentationRequestFactory;
 import ru.godeck.presentation.dto.PresentationView;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
@@ -919,7 +921,13 @@ class PresentationGenerationIntegrationTest {
         var server = MockRestServiceServer.bindTo(builder).build();
         var real =
                 new PresentationContentGenerator(
-                        codec, builder.build(), json, aiHistory, "integration-test-key", true);
+                        builder.build(),
+                        json,
+                        new PresentationRequestFactory(),
+                        new OpenAiResponseReader(json, codec),
+                        aiHistory,
+                        "integration-test-key",
+                        true);
         when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenAnswer(
                         invocation ->
