@@ -1,9 +1,10 @@
 import type { Deck, TextBlock } from './editor-types'
 
-type BlockSeed = Omit<TextBlock, 'weight' | 'align' | 'color'> & Partial<Pick<TextBlock, 'weight' | 'align' | 'color'>>
+type BlockSeed = Omit<TextBlock, 'weight' | 'align' | 'color' | 'height'> &
+  Partial<Pick<TextBlock, 'weight' | 'align' | 'color' | 'height'>>
 
 function block(seed: BlockSeed): TextBlock {
-  return { weight: 400, align: 'left', color: 'ink', ...seed }
+  return { height: 12, weight: 400, align: 'left', color: 'ink', ...seed }
 }
 
 export const editorDemoDeck: Deck = {
@@ -15,6 +16,7 @@ export const editorDemoDeck: Deck = {
       name: 'Обложка',
       theme: 'navy',
       hidden: false,
+      images: [],
       blocks: [
         block({
           id: 'cover-eyebrow',
@@ -64,6 +66,7 @@ export const editorDemoDeck: Deck = {
       name: 'Проблема',
       theme: 'paper',
       hidden: false,
+      images: [],
       blocks: [
         block({
           id: 'problem-eyebrow',
@@ -143,6 +146,7 @@ export const editorDemoDeck: Deck = {
       name: 'Целевой сегмент',
       theme: 'paper',
       hidden: false,
+      images: [],
       blocks: [
         block({
           id: 'segment-eyebrow',
@@ -242,6 +246,7 @@ export const editorDemoDeck: Deck = {
       name: 'Выход на рынок',
       theme: 'paper',
       hidden: false,
+      images: [],
       blocks: [
         block({
           id: 'gtm-eyebrow',
@@ -331,6 +336,7 @@ export const editorDemoDeck: Deck = {
       name: 'Юнит-экономика',
       theme: 'paper',
       hidden: false,
+      images: [],
       blocks: [
         block({
           id: 'economics-eyebrow',
@@ -431,6 +437,7 @@ export const editorDemoDeck: Deck = {
       name: 'Приложение: риски',
       theme: 'paper',
       hidden: true,
+      images: [],
       blocks: [
         block({
           id: 'risks-eyebrow',

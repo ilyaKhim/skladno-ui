@@ -28,6 +28,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
@@ -1015,6 +1016,57 @@ class PresentationGenerationIntegrationTest {
     }
 
     @Test
+    void aiEditsPreserveFreeformTextAddedByTheVisualEditor() throws Exception {
+        PresentationContent base = typedPlan("До AI-правки");
+        var custom =
+                new PresentationContent.TextBlock(
+                        "text-preserved",
+                        "Не удалять этот блок",
+                        12,
+                        18,
+                        36,
+                        14,
+                        24,
+                        400,
+                        "left",
+                        "ink");
+        PresentationContent withCustom =
+                new PresentationContent(
+                        base.fields(),
+                        base.slides().stream()
+                                .map(
+                                        slide ->
+                                                slide.slide() == 1
+                                                        ? new PresentationContent.Slide(
+                                                                slide.slide(),
+                                                                slide.include(),
+                                                                slide.reason(),
+                                                                slide.hiddenOrFalse(),
+                                                                List.of(custom))
+                                                        : slide)
+                                .toList());
+        UUID id = service.create(USER, "aurora", "Редактор и AI", "manual", null, null).id();
+        service.submitManual(USER, id, withCustom);
+        worker.processOne();
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
+                .thenReturn(typedPlan("После AI-правки"));
+
+        service.chat(USER, id, "Обнови заголовок", null);
+
+        try (var show =
+                new XMLSlideShow(
+                        new ByteArrayInputStream(Files.readAllBytes(service.download(USER, id))))) {
+            String text =
+                    show.getSlides().getFirst().getShapes().stream()
+                            .filter(org.apache.poi.xslf.usermodel.XSLFTextShape.class::isInstance)
+                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast)
+                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape::getText)
+                            .collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(text).contains("После AI-правки", "Не удалять этот блок");
+        }
+    }
+
+    @Test
     void rejectsDownloadsOfOtherOwnersUnknownProjectsAndMissingVersions() throws Exception {
         UUID owner = UUID.randomUUID();
         UUID foreignId =
@@ -1056,12 +1108,253 @@ class PresentationGenerationIntegrationTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void editorAutosavesDraftAndCommitsTextOrderAndHiddenStateAsOneVersion() throws Exception {
+        Map<String, String> fields = new LinkedHashMap<>();
+        templates.fields("atlas").keySet().forEach(field -> fields.put(field, "Текст"));
+        fields.put("TITLE", "Исходный заголовок");
+        var decisions =
+                java.util.stream.IntStream.rangeClosed(1, 13)
+                        .mapToObj(
+                                number ->
+                                        new PresentationContent.Slide(
+                                                number,
+                                                number == 1 || number == 13,
+                                                "Editor test"))
+                        .toList();
+        UUID id = service.create(USER, "atlas", "Редактор", "manual", null, null).id();
+        service.submitManual(USER, id, new PresentationContent(fields, decisions));
+        worker.processOne();
+        byte[] original = Files.readAllBytes(service.download(USER, id));
+
+        mvc.perform(
+                        multipart(
+                                        "/api/generation/v1/presentations/{id}/editor/assets",
+                                        id)
+                                .file(
+                                        new MockMultipartFile(
+                                                "file",
+                                                "fake.png",
+                                                "image/png",
+                                                "not an image".getBytes(UTF_8)))
+                                .with(csrf()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("invalid_image"));
+        mvc.perform(
+                        get(
+                                "/api/generation/v1/presentations/{id}/editor/assets/{assetId}",
+                                id,
+                                UUID.randomUUID()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("image_not_found"));
+
+        byte[] pixel = png();
+        String uploadedJson =
+                mvc.perform(
+                                multipart(
+                                                "/api/generation/v1/presentations/{id}/editor/assets",
+                                                id)
+                                        .file(
+                                                new MockMultipartFile(
+                                                        "file", "pixel.png", "image/png", pixel))
+                                        .with(csrf()))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.width").value(2))
+                        .andExpect(jsonPath("$.height").value(2))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        String assetId = json.readTree(uploadedJson).path("id").asText();
+        mvc.perform(
+                        get(
+                                "/api/generation/v1/presentations/{id}/editor/assets/{assetId}",
+                                id,
+                                assetId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("image/png"))
+                .andExpect(content().bytes(pixel));
+
+        String editorJson =
+                mvc.perform(get("/api/generation/v1/presentations/{id}/editor", id))
+                        .andExpect(status().isOk())
+                        .andExpect(header().string("Cache-Control", "no-store"))
+                        .andExpect(jsonPath("$.base_version").value(1))
+                        .andExpect(jsonPath("$.draft_revision").value(0))
+                        .andExpect(jsonPath("$.slides.length()").value(2))
+                        .andExpect(jsonPath("$.slides[0].blocks[0].max_chars").isNumber())
+                        .andExpect(jsonPath("$.slides[0].blocks[0].layout_id").isString())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        var editor = json.readTree(editorJson);
+        List<Map<String, Object>> loadedSlides =
+                json.convertValue(
+                        editor.path("slides"),
+                        new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+        java.util.Collections.reverse(loadedSlides);
+        List<Map<String, Object>> draftSlides = new ArrayList<>();
+        for (var loaded : loadedSlides) {
+            int source = ((Number) loaded.get("source_slide_number")).intValue();
+            List<Map<String, Object>> blocks = new ArrayList<>();
+            List<Map<String, Object>> layouts = new ArrayList<>();
+            var layoutIds = new java.util.LinkedHashSet<String>();
+            for (var block : (List<Map<String, Object>>) loaded.get("blocks")) {
+                blocks.add(
+                        Map.of(
+                                "field_key",
+                                block.get("field_key"),
+                                "text",
+                                "TITLE".equals(block.get("field_key"))
+                                        ? "Новый заголовок"
+                                        : block.get("text")));
+                String layoutId = (String) block.get("layout_id");
+                if (layoutId != null && layoutIds.add(layoutId))
+                    layouts.add(
+                            Map.of(
+                                    "id", layoutId,
+                                    "x", source == 13 && layouts.isEmpty() ? 20 : block.get("x"),
+                                    "y", source == 13 && layouts.isEmpty() ? 25 : block.get("y"),
+                                    "width", block.get("width"),
+                                    "height", block.get("height")));
+            }
+            draftSlides.add(
+                    Map.of(
+                            "source_slide_number",
+                            source,
+                            "name",
+                            loaded.get("name"),
+                            "hidden",
+                            source == 13,
+                            "blocks",
+                            blocks,
+                            "layouts",
+                            layouts,
+                            "custom_blocks",
+                            source == 13
+                                    ? List.of(
+                                            Map.of(
+                                                    "id", "text-editor-test",
+                                                    "text", "Добавленный текст",
+                                                    "x", 12,
+                                                    "y", 18,
+                                                    "width", 36,
+                                                    "height", 14,
+                                                    "font_size", 24,
+                                                    "weight", 700,
+                                                    "align", "center",
+                                                    "color", "brand"))
+                                    : List.of(),
+                            "images",
+                            source == 13
+                                    ? List.of(
+                                            Map.of(
+                                                    "id", "image-editor-test",
+                                                    "asset_id", assetId,
+                                                    "alt", "Тестовая точка",
+                                                    "x", 10,
+                                                    "y", 20,
+                                                    "width", 30,
+                                                    "height", 25))
+                                    : List.of()));
+        }
+        String draft =
+                json.writeValueAsString(
+                        Map.of(
+                                "base_version",
+                                1,
+                                "draft_revision",
+                                0,
+                                "title",
+                                "Редактор — новая версия",
+                                "slides",
+                                draftSlides));
+        mvc.perform(
+                        put("/api/generation/v1/presentations/{id}/editor/draft", id)
+                                .with(csrf())
+                                .contentType("application/json")
+                                .content(draft))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.draft_revision").value(1));
+        assertThat(service.get(USER, id).version()).isEqualTo(1);
+        assertThat(service.versions(USER, id)).hasSize(1);
+        mvc.perform(
+                        put("/api/generation/v1/presentations/{id}/editor/draft", id)
+                                .with(csrf())
+                                .contentType("application/json")
+                                .content(draft))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("edit_expired"));
+
+        mvc.perform(
+                        post("/api/generation/v1/presentations/{id}/editor/commit", id)
+                                .with(csrf())
+                                .contentType("application/json")
+                                .content("{\"base_version\":1,\"draft_revision\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(2));
+        assertThat(service.versions(USER, id)).hasSize(2);
+        assertThat(Files.readAllBytes(service.downloadVersion(USER, id, 1))).isEqualTo(original);
+        try (var show =
+                new XMLSlideShow(
+                        new ByteArrayInputStream(Files.readAllBytes(service.download(USER, id))))) {
+            assertThat(show.getSlides()).hasSize(2);
+            assertThat(show.getSlides().getFirst().isHidden()).isTrue();
+            assertThat(show.getSlides().getLast().isHidden()).isFalse();
+            String closing =
+                    show.getSlides().getFirst().getShapes().stream()
+                            .filter(org.apache.poi.xslf.usermodel.XSLFTextShape.class::isInstance)
+                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast)
+                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape::getText)
+                            .collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(closing).contains("Добавленный текст");
+            assertThat(show.getSlides().getFirst().getShapes())
+                    .anyMatch(org.apache.poi.xslf.usermodel.XSLFPictureShape.class::isInstance);
+            assertThat(show.getSlides().getFirst().getShapes().stream()
+                            .filter(org.apache.poi.xslf.usermodel.XSLFTextShape.class::isInstance)
+                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast)
+                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape::getAnchor)
+                            .filter(java.util.Objects::nonNull)
+                            .mapToDouble(java.awt.geom.Rectangle2D::getX))
+                    .anyMatch(
+                            x ->
+                                    Math.abs(
+                                                    x
+                                                            - show.getPageSize().getWidth()
+                                                                    * 0.20)
+                                            < 0.1);
+            String cover =
+                    show.getSlides().getLast().getShapes().stream()
+                            .filter(org.apache.poi.xslf.usermodel.XSLFTextShape.class::isInstance)
+                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast)
+                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape::getText)
+                            .collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(cover).contains("Новый заголовок");
+        }
+        mvc.perform(get("/api/generation/v1/presentations/{id}/editor", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.base_version").value(2))
+                .andExpect(jsonPath("$.draft_revision").value(2))
+                .andExpect(jsonPath("$.slides[0].blocks[?(@.id == 'text-editor-test')].text")
+                        .value("Добавленный текст"))
+                .andExpect(jsonPath("$.slides[0].images[?(@.id == 'image-editor-test')].alt")
+                        .value("Тестовая точка"));
+    }
+
     private UUID readyManual() throws Exception {
         UUID id = createManual();
         service.submitManual(USER, id, typedPlan("Исходный план"));
         worker.processOne();
         assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
         return id;
+    }
+
+    private static byte[] png() throws Exception {
+        var image = new java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        image.setRGB(0, 0, 0x335cc5);
+        var output = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, "png", output);
+        return output.toByteArray();
     }
 
     private PresentationContent typedPlan(String title) {

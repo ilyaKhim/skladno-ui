@@ -1,16 +1,28 @@
 'use client'
 
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import type { Deck, EditableBlockFields, SaveStatus, Slide } from './editor-types'
+import type {
+  Deck,
+  EditableBlockFields,
+  EditableImageFields,
+  ImageBlock,
+  SaveStatus,
+  Slide,
+  TextBlock,
+} from './editor-types'
 
 const HISTORY_LIMIT = 100
 const AUTOSAVE_DELAY_MS = 1600
-const SAVE_DURATION_MS = 700
 
-type DeckAction =
+export type DeckAction =
   | { type: 'renameDeck'; title: string }
   | { type: 'updateSlide'; slideId: string; patch: Partial<Pick<Slide, 'name' | 'hidden'>> }
   | { type: 'updateBlock'; slideId: string; blockId: string; patch: EditableBlockFields }
+  | { type: 'addBlock'; slideId: string; block: TextBlock }
+  | { type: 'removeBlock'; slideId: string; blockId: string }
+  | { type: 'updateImage'; slideId: string; imageId: string; patch: EditableImageFields }
+  | { type: 'addImage'; slideId: string; image: ImageBlock }
+  | { type: 'removeImage'; slideId: string; imageId: string }
   | { type: 'moveSlide'; fromIndex: number; toIndex: number }
 
 type HistoryAction =
@@ -27,29 +39,110 @@ interface HistoryState {
   lastKey: string | null
 }
 
-function applyDeckAction(deck: Deck, action: DeckAction): Deck {
+export function applyDeckAction(deck: Deck, action: DeckAction): Deck {
   switch (action.type) {
     case 'renameDeck':
       return deck.title === action.title ? deck : { ...deck, title: action.title }
-    case 'updateSlide':
+    case 'updateSlide': {
+      const target = deck.slides.find((slide) => slide.id === action.slideId)
+      if (!target || Object.entries(action.patch).every(([key, value]) => target[key as keyof Slide] === value)) return deck
       return {
         ...deck,
         slides: deck.slides.map((slide) => (slide.id === action.slideId ? { ...slide, ...action.patch } : slide)),
       }
-    case 'updateBlock':
+    }
+    case 'updateBlock': {
+      const selected = deck.slides
+        .flatMap((slide) => slide.blocks)
+        .find((block) => block.id === action.blockId)
+      if (!selected) return deck
+      const geometryPatch: EditableBlockFields = {
+        ...(action.patch.x === undefined ? {} : { x: action.patch.x }),
+        ...(action.patch.y === undefined ? {} : { y: action.patch.y }),
+        ...(action.patch.width === undefined ? {} : { width: action.patch.width }),
+        ...(action.patch.height === undefined ? {} : { height: action.patch.height }),
+      }
+      let changed = false
+      const slides = deck.slides.map((slide) => {
+        let slideChanged = false
+        const blocks = slide.blocks.map((block) => {
+          const sameBlock = slide.id === action.slideId && block.id === action.blockId
+          const sameSemanticField = Boolean(selected.fieldKey && block.fieldKey === selected.fieldKey)
+          const sameTemplateShape = Boolean(selected.layoutKey && block.layoutKey === selected.layoutKey)
+          const patch: EditableBlockFields = sameBlock
+            ? action.patch
+            : {
+                ...(sameSemanticField && action.patch.text !== undefined ? { text: action.patch.text } : {}),
+                ...(sameTemplateShape ? geometryPatch : {}),
+              }
+          if (Object.keys(patch).length === 0) return block
+          if (Object.entries(patch).every(([key, value]) => block[key as keyof typeof block] === value)) return block
+          changed = true
+          slideChanged = true
+          return { ...block, ...patch }
+        })
+        return slideChanged ? { ...slide, blocks } : slide
+      })
+      return changed ? { ...deck, slides } : deck
+    }
+    case 'addBlock': {
+      const slide = deck.slides.find((item) => item.id === action.slideId)
+      if (!slide || deck.slides.some((item) => item.blocks.some((block) => block.id === action.block.id))) return deck
       return {
         ...deck,
-        slides: deck.slides.map((slide) =>
-          slide.id === action.slideId
-            ? {
-                ...slide,
-                blocks: slide.blocks.map((block) =>
-                  block.id === action.blockId ? { ...block, ...action.patch } : block,
-                ),
-              }
-            : slide,
+        slides: deck.slides.map((item) =>
+          item.id === action.slideId ? { ...item, blocks: [...item.blocks, action.block] } : item,
         ),
       }
+    }
+    case 'removeBlock': {
+      const slide = deck.slides.find((item) => item.id === action.slideId)
+      const block = slide?.blocks.find((item) => item.id === action.blockId)
+      if (!slide || !block || block.fieldKey) return deck
+      return {
+        ...deck,
+        slides: deck.slides.map((item) =>
+          item.id === action.slideId
+            ? { ...item, blocks: item.blocks.filter((candidate) => candidate.id !== action.blockId) }
+            : item,
+        ),
+      }
+    }
+    case 'updateImage': {
+      const slide = deck.slides.find((item) => item.id === action.slideId)
+      const image = slide?.images.find((item) => item.id === action.imageId)
+      if (!slide || !image || Object.entries(action.patch).every(([key, value]) => image[key as keyof ImageBlock] === value)) return deck
+      return {
+        ...deck,
+        slides: deck.slides.map((item) =>
+          item.id === action.slideId
+            ? { ...item, images: item.images.map((candidate) => candidate.id === action.imageId ? { ...candidate, ...action.patch } : candidate) }
+            : item,
+        ),
+      }
+    }
+    case 'addImage': {
+      const slide = deck.slides.find((item) => item.id === action.slideId)
+      if (!slide || deck.slides.some((item) => item.images.some((image) => image.id === action.image.id))) return deck
+      return {
+        ...deck,
+        slides: deck.slides.map((item) =>
+          item.id === action.slideId ? { ...item, images: [...item.images, action.image] } : item,
+        ),
+      }
+    }
+    case 'removeImage': {
+      const slide = deck.slides.find((item) => item.id === action.slideId)
+      if (!slide?.images.some((image) => image.id === action.imageId)) return deck
+      return {
+        ...deck,
+        slides: deck.slides.map((item) =>
+          item.id === action.slideId
+            ? { ...item, images: item.images.filter((candidate) => candidate.id !== action.imageId) }
+            : item,
+        ),
+      }
+    }
     case 'moveSlide': {
       const { fromIndex } = action
       const toIndex = Math.min(Math.max(action.toIndex, 0), deck.slides.length - 1)
@@ -95,7 +188,7 @@ function historyReducer(state: HistoryState, action: HistoryAction): HistoryStat
   }
 }
 
-export function useEditorState(initialDeck: Deck) {
+export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promise<void>) {
   const [history, send] = useReducer(historyReducer, initialDeck, (deck) => ({
     past: [],
     present: deck,
@@ -104,6 +197,13 @@ export function useEditorState(initialDeck: Deck) {
   }))
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const timers = useRef<number[]>([])
+  const latestDeck = useRef(initialDeck)
+  const changeNumber = useRef(0)
+  const saving = useRef(false)
+
+  useEffect(() => {
+    latestDeck.current = history.present
+  }, [history.present])
 
   const clearTimers = useCallback(() => {
     timers.current.forEach((id) => window.clearTimeout(id))
@@ -112,24 +212,40 @@ export function useEditorState(initialDeck: Deck) {
 
   useEffect(() => clearTimers, [clearTimers])
 
-  const saveNow = useCallback(() => {
+  const saveNow = useCallback(async () => {
     clearTimers()
+    if (saving.current) return false
+    const savingChange = changeNumber.current
+    saving.current = true
     setSaveStatus('saving')
-    timers.current.push(window.setTimeout(() => setSaveStatus('saved'), SAVE_DURATION_MS))
-  }, [clearTimers])
+    try {
+      if (onSave) await onSave(latestDeck.current)
+      else await new Promise((resolve) => window.setTimeout(resolve, 700))
+      const unchanged = changeNumber.current === savingChange
+      setSaveStatus(unchanged ? 'saved' : 'dirty')
+      return unchanged
+    } catch {
+      setSaveStatus('error')
+      return false
+    } finally {
+      saving.current = false
+    }
+  }, [clearTimers, onSave])
 
   const markDirty = useCallback(() => {
     clearTimers()
+    changeNumber.current += 1
     setSaveStatus('dirty')
-    timers.current.push(window.setTimeout(saveNow, AUTOSAVE_DELAY_MS))
+    timers.current.push(window.setTimeout(() => void saveNow(), AUTOSAVE_DELAY_MS))
   }, [clearTimers, saveNow])
 
   const apply = useCallback(
     (action: DeckAction, coalesceKey?: string) => {
+      if (applyDeckAction(history.present, action) === history.present) return
       send({ type: 'apply', action, coalesceKey })
       markDirty()
     },
-    [markDirty],
+    [history.present, markDirty],
   )
 
   const canUndo = history.past.length > 0
@@ -168,6 +284,26 @@ export function useEditorState(initialDeck: Deck) {
     [apply],
   )
 
+  const addBlock = useCallback((slideId: string, block: TextBlock) => apply({ type: 'addBlock', slideId, block }), [apply])
+
+  const removeBlock = useCallback(
+    (slideId: string, blockId: string) => apply({ type: 'removeBlock', slideId, blockId }),
+    [apply],
+  )
+
+  const updateImage = useCallback(
+    (slideId: string, imageId: string, patch: EditableImageFields, coalesceKey?: string) =>
+      apply({ type: 'updateImage', slideId, imageId, patch }, coalesceKey),
+    [apply],
+  )
+
+  const addImage = useCallback((slideId: string, image: ImageBlock) => apply({ type: 'addImage', slideId, image }), [apply])
+
+  const removeImage = useCallback(
+    (slideId: string, imageId: string) => apply({ type: 'removeImage', slideId, imageId }),
+    [apply],
+  )
+
   return {
     deck: history.present,
     saveStatus,
@@ -180,6 +316,11 @@ export function useEditorState(initialDeck: Deck) {
     renameDeck,
     updateSlide,
     updateBlock,
+    addBlock,
+    removeBlock,
+    updateImage,
+    addImage,
+    removeImage,
     moveSlide,
   }
 }

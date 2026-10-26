@@ -34,6 +34,7 @@ import ru.godeck.presentation.template.PresentationTemplateService;
 
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -244,7 +245,9 @@ public class PresentationService {
         Path output = null;
         try {
             String topic = PresentationPrompts.edit(edit.topic(), edit.contentJson(), message);
-            PresentationContent content =
+            PresentationContent previous =
+                    templates.normalize(edit.templateId(), codec.decode(edit.contentJson()));
+            PresentationContent generated =
                     templates.normalize(
                             edit.templateId(),
                             generator.generate(
@@ -253,6 +256,9 @@ public class PresentationService {
                                     templates.fields(edit.templateId()),
                                     templates.slideManifest(edit.templateId()),
                                     edit.model()));
+            PresentationContent content =
+                    templates.normalize(
+                            edit.templateId(), preserveEditorBlocks(previous, generated));
             output = files.write(id, edit.baseVersion() + 1, edit.templateId(), content);
             PresentationView view =
                     transactions.completeEdit(
@@ -278,6 +284,31 @@ public class PresentationService {
     public List<PresentationAiCallView> aiCalls(UUID userId, UUID id) {
         owned(userId, id);
         return aiHistory.list(id);
+    }
+
+    private static PresentationContent preserveEditorBlocks(
+            PresentationContent previous, PresentationContent generated) {
+        Map<Integer, PresentationContent.Slide> bySlide = new LinkedHashMap<>();
+        for (var slide : previous.slides()) bySlide.put(slide.slide(), slide);
+        return new PresentationContent(
+                generated.fields(),
+                generated.slides().stream()
+                        .map(
+                                slide ->
+                                        new PresentationContent.Slide(
+                                                slide.slide(),
+                                                slide.include(),
+                                                slide.reason(),
+                                                slide.hiddenOrFalse(),
+                                                bySlide.containsKey(slide.slide())
+                                                        ? bySlide.get(slide.slide())
+                                                                .textBlocksOrEmpty()
+                                                        : List.of(),
+                                                bySlide.containsKey(slide.slide())
+                                                        ? bySlide.get(slide.slide())
+                                                                .imageBlocksOrEmpty()
+                                                        : List.of()))
+                        .toList());
     }
 
     private Presentation owned(UUID userId, UUID id) {

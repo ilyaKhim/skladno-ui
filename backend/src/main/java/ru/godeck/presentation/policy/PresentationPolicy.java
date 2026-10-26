@@ -14,6 +14,11 @@ public final class PresentationPolicy {
     public static final int INITIAL_VERSION = 1;
     public static final int DEFAULT_PAGE_SIZE = 20;
     public static final int MAX_PAGE_SIZE = 100;
+    public static final int MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+    public static final int MAX_IMAGE_DIMENSION = 8_192;
+    public static final long MAX_IMAGE_PIXELS = 32_000_000L;
+    public static final int MAX_IMAGES_PER_PRESENTATION = 100;
+    public static final long MAX_IMAGE_STORAGE_BYTES = 100L * 1024 * 1024;
     public static final int TEMPLATE_ID_MAX_LENGTH = 64;
     public static final int MODEL_ID_MAX_LENGTH = 100;
     public static final int STATUS_MAX_LENGTH = 24;

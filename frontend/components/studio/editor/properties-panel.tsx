@@ -1,7 +1,7 @@
 'use client'
 
 import { useId, type ReactNode, type Ref } from 'react'
-import { AlignCenter, AlignLeft, AlignRight, Eye, EyeOff, Minus, Plus, X } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, CopyPlus, Eye, EyeOff, ImageIcon, Minus, Plus, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -12,6 +12,8 @@ import {
   type BlockColor,
   type BlockWeight,
   type EditableBlockFields,
+  type EditableImageFields,
+  type ImageBlock,
   type Slide,
   type TextBlock,
 } from './editor-types'
@@ -40,30 +42,41 @@ interface PropertiesPanelProps {
   slide: Slide
   slideIndex: number
   block: TextBlock | null
+  image: ImageBlock | null
   open: boolean
   isDrawer: boolean
   textFieldRef: Ref<HTMLTextAreaElement>
   onClose: () => void
-  onSelectBlock: (blockId: string) => void
+  onSelectElement: (elementId: string) => void
   onUpdateBlock: (patch: EditableBlockFields, coalesceKey?: string) => void
+  onUpdateImage: (patch: EditableImageFields, coalesceKey?: string) => void
   onUpdateSlide: (patch: Partial<Pick<Slide, 'name' | 'hidden'>>, coalesceKey?: string) => void
   onCommitField: () => void
+  onDeleteElement: () => void
+  onDuplicateElement: () => void
+  contentOnly?: boolean
 }
 
 export function PropertiesPanel({
   slide,
   slideIndex,
   block,
+  image,
   open,
   isDrawer,
   textFieldRef,
   onClose,
-  onSelectBlock,
+  onSelectElement,
   onUpdateBlock,
+  onUpdateImage,
   onUpdateSlide,
   onCommitField,
+  onDeleteElement,
+  onDuplicateElement,
+  contentOnly = false,
 }: PropertiesPanelProps) {
   const ids = useId()
+  const canStyleBlock = Boolean(block && (!contentOnly || !block.fieldKey))
 
   return (
     <>
@@ -97,10 +110,12 @@ export function PropertiesPanel({
                   onChange={(event) => onUpdateBlock({ text: event.target.value }, `${block.id}:text`)}
                   onBlur={onCommitField}
                   rows={4}
+                  maxLength={block.maxChars}
                   className="max-h-48 min-h-20 bg-background text-sm leading-relaxed"
                 />
               </Field>
 
+              {canStyleBlock && <>
               <Field label="Размер шрифта" htmlFor={`${ids}-size`}>
                 <div className="flex items-center gap-1">
                   <Button
@@ -166,38 +181,61 @@ export function PropertiesPanel({
                 </Field>
               </div>
 
-              <Field label="Положение, % от слайда">
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(
-                    [
-                      { key: 'x', label: 'X' },
-                      { key: 'y', label: 'Y' },
-                      { key: 'width', label: 'Ш' },
-                    ] as const
-                  ).map(({ key, label }) => (
-                    <label key={key} className="flex items-center gap-1.5 rounded-lg border border-input bg-background pl-2 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
-                      <span className="text-[11px] text-muted-foreground">{label}</span>
-                      <NumberInput
-                        bare
-                        value={block[key]}
-                        min={key === 'width' ? 5 : 0}
-                        max={100}
-                        aria-label={key === 'width' ? 'Ширина' : `Позиция ${label}`}
-                        onChange={(value) => onUpdateBlock({ [key]: value }, `${block.id}:${key}`)}
-                        onBlur={onCommitField}
-                      />
-                    </label>
-                  ))}
-                </div>
+              </>}
+              <Field label="Положение и размер, %">
+                <GeometryFields
+                  element={block}
+                  minWidth={5}
+                  onUpdate={onUpdateBlock}
+                  onCommit={onCommitField}
+                />
               </Field>
+              {!block.fieldKey && (
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <Button variant="outline" size="sm" onClick={onDuplicateElement}>
+                    <CopyPlus /> Дублировать
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={onDeleteElement} className="text-destructive hover:text-destructive">
+                    <Trash2 /> Удалить
+                  </Button>
+                </div>
+              )}
+            </PanelSection>
+          ) : image ? (
+            <PanelSection title="Изображение" aside={image.alt || 'Без описания'}>
+              <div className="grid aspect-video place-items-center overflow-hidden rounded-lg border border-border bg-muted/40 p-2">
+                <img src={image.url} alt="" className="max-h-full max-w-full object-contain" />
+              </div>
+              <Field label="Описание" htmlFor={`${ids}-image-alt`}>
+                <Input
+                  id={`${ids}-image-alt`}
+                  value={image.alt}
+                  maxLength={500}
+                  placeholder="Например, график выручки"
+                  onChange={(event) => onUpdateImage({ alt: event.target.value }, `${image.id}:alt`)}
+                  onBlur={onCommitField}
+                  className="h-8 bg-background text-sm"
+                />
+              </Field>
+              <Field label="Положение и размер, %">
+                <GeometryFields element={image} onUpdate={onUpdateImage} onCommit={onCommitField} />
+              </Field>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Button variant="outline" size="sm" onClick={onDuplicateElement}>
+                  <CopyPlus /> Дублировать
+                </Button>
+                <Button variant="outline" size="sm" onClick={onDeleteElement} className="text-destructive hover:text-destructive">
+                  <Trash2 /> Удалить
+                </Button>
+              </div>
             </PanelSection>
           ) : (
             <div className="border-b border-border px-4 py-5 text-xs leading-relaxed text-muted-foreground">
-              Выберите текстовый блок на слайде или в списке ниже, чтобы изменить текст и оформление.
+              Выберите элемент, чтобы изменить его. Текст и изображения можно добавить с панели сверху или вставить через ⌘/Ctrl+V.
             </div>
           )}
 
-          <PanelSection title="Блоки на слайде" aside={String(slide.blocks.length)}>
+          <PanelSection title="Элементы на слайде" aside={String(slide.blocks.length + slide.images.length)}>
             <ul className="-mx-1 flex flex-col">
               {slide.blocks.map((item) => {
                 const active = item.id === block?.id
@@ -205,7 +243,7 @@ export function PropertiesPanel({
                   <li key={item.id}>
                     <button
                       type="button"
-                      onClick={() => onSelectBlock(item.id)}
+                      onClick={() => onSelectElement(item.id)}
                       aria-current={active ? 'true' : undefined}
                       className={cn(
                         'flex w-full items-baseline gap-2 rounded-md px-1.5 py-1 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
@@ -213,9 +251,30 @@ export function PropertiesPanel({
                       )}
                     >
                       <span className={cn('w-24 shrink-0', active ? 'font-medium text-primary' : 'text-muted-foreground')}>
-                        {BLOCK_ROLE_LABELS[item.role]}
+                        {item.fieldKey ? BLOCK_ROLE_LABELS[item.role] : 'Свободный текст'}
                       </span>
                       <span className="truncate text-foreground">{item.text}</span>
+                    </button>
+                  </li>
+                )
+              })}
+              {slide.images.map((item) => {
+                const active = item.id === image?.id
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectElement(item.id)}
+                      aria-current={active ? 'true' : undefined}
+                      className={cn(
+                        'flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                        active ? 'bg-secondary text-foreground' : 'hover:bg-muted',
+                      )}
+                    >
+                      <span className={cn('flex w-24 shrink-0 items-center gap-1', active ? 'font-medium text-primary' : 'text-muted-foreground')}>
+                        <ImageIcon className="size-3" /> Изображение
+                      </span>
+                      <span className="truncate text-foreground">{item.alt || 'Без описания'}</span>
                     </button>
                   </li>
                 )
@@ -224,7 +283,7 @@ export function PropertiesPanel({
           </PanelSection>
 
           <PanelSection title="Слайд" aside={`№ ${slideIndex + 1}`}>
-            <Field label="Название слайда" htmlFor={`${ids}-slide-name`}>
+            {!contentOnly && <Field label="Название слайда" htmlFor={`${ids}-slide-name`}>
               <Input
                 id={`${ids}-slide-name`}
                 value={slide.name}
@@ -232,7 +291,7 @@ export function PropertiesPanel({
                 onBlur={onCommitField}
                 className="h-8 bg-background text-sm"
               />
-            </Field>
+            </Field>}
             <Button
               variant="outline"
               size="sm"
@@ -273,6 +332,58 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; 
         <span className="text-xs text-muted-foreground">{label}</span>
       )}
       {children}
+    </div>
+  )
+}
+
+type Geometry = Pick<ImageBlock, 'id' | 'x' | 'y' | 'width' | 'height'>
+type GeometryPatch = Partial<Pick<Geometry, 'x' | 'y' | 'width' | 'height'>>
+
+const GEOMETRY_FIELDS = [
+  { key: 'x', label: 'X', ariaLabel: 'Позиция X' },
+  { key: 'y', label: 'Y', ariaLabel: 'Позиция Y' },
+  { key: 'width', label: 'Ш', ariaLabel: 'Ширина' },
+  { key: 'height', label: 'В', ariaLabel: 'Высота' },
+] as const
+
+function GeometryFields({
+  element,
+  minWidth = 4,
+  onUpdate,
+  onCommit,
+}: {
+  element: Geometry
+  minWidth?: number
+  onUpdate: (patch: GeometryPatch, coalesceKey?: string) => void
+  onCommit: () => void
+}) {
+  return (
+    <div className="grid grid-cols-4 gap-1.5">
+      {GEOMETRY_FIELDS.map(({ key, label, ariaLabel }) => {
+        const min = key === 'width' ? minWidth : key === 'height' ? 4 : 0
+        const max =
+          key === 'x'
+            ? 100 - element.width
+            : key === 'y'
+              ? 100 - element.height
+              : key === 'width'
+                ? 100 - element.x
+                : 100 - element.y
+        return (
+          <label key={key} className="flex items-center gap-1.5 rounded-lg border border-input bg-background pl-2 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+            <span className="text-[11px] text-muted-foreground">{label}</span>
+            <NumberInput
+              bare
+              value={element[key]}
+              min={min}
+              max={max}
+              aria-label={ariaLabel}
+              onChange={(value) => onUpdate({ [key]: value }, `${element.id}:${key}`)}
+              onBlur={onCommit}
+            />
+          </label>
+        )
+      })}
     </div>
   )
 }

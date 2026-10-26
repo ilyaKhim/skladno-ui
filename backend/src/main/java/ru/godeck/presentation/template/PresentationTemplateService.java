@@ -7,10 +7,14 @@ import org.apache.poi.xslf.usermodel.XSLFSlide;
 import org.apache.poi.xslf.usermodel.XSLFTextParagraph;
 import org.apache.poi.xslf.usermodel.XSLFTextRun;
 import org.apache.poi.xslf.usermodel.XSLFTextShape;
+import org.apache.poi.sl.usermodel.PictureData;
+import org.apache.poi.sl.usermodel.TextParagraph.TextAlign;
+import org.apache.poi.sl.usermodel.VerticalAlignment;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import ru.godeck.common.text.BackendMessages;
+import ru.godeck.presentation.dto.EditorDeckView;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.model.PresentationContent;
@@ -21,12 +25,15 @@ import tools.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.awt.Color;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.function.Function;
 
 @Service
 public class PresentationTemplateService {
@@ -84,7 +91,8 @@ public class PresentationTemplateService {
                                 java.util.Collections.unmodifiableMap(fields),
                                 show.getSlides().size(),
                                 description,
-                                readManifest(show)));
+                                readManifest(show),
+                                readTextLayoutIds(show)));
             }
         }
         templates = java.util.Collections.unmodifiableMap(loaded);
@@ -114,7 +122,8 @@ public class PresentationTemplateService {
             Map<String, Integer> fields,
             int slideCount,
             JsonNode description,
-            List<Map<String, Object>> slideManifest) {}
+            List<Map<String, Object>> slideManifest,
+            Map<Integer, List<String>> textLayoutIds) {}
 
     public Map<String, Object> catalog() {
         return catalog(TEMPLATE_ID);
@@ -166,6 +175,10 @@ public class PresentationTemplateService {
         return get(id).slideManifest();
     }
 
+    public List<String> textLayoutIds(String id, int slideNumber) {
+        return get(id).textLayoutIds().getOrDefault(slideNumber, List.of());
+    }
+
     private static List<Map<String, Object>> readManifest(XMLSlideShow show) {
         List<Map<String, Object>> slides = new ArrayList<>();
         int number = 0;
@@ -183,6 +196,23 @@ public class PresentationTemplateService {
             slides.add(Map.of("slide", ++number, "fields", List.copyOf(names)));
         }
         return List.copyOf(slides);
+    }
+
+    private static Map<Integer, List<String>> readTextLayoutIds(XMLSlideShow show) {
+        Map<Integer, List<String>> result = new LinkedHashMap<>();
+        int slideNumber = 0;
+        for (XSLFSlide slide : show.getSlides()) {
+            slideNumber++;
+            List<String> ids = new ArrayList<>();
+            int layoutIndex = 0;
+            for (XSLFShape shape : allShapes(slide.getShapes())) {
+                if (shape instanceof XSLFTextShape textShape
+                        && TOKEN.matcher(textShape.getText()).find())
+                    ids.add(textLayoutId(slideNumber, ++layoutIndex));
+            }
+            result.put(slideNumber, List.copyOf(ids));
+        }
+        return java.util.Collections.unmodifiableMap(result);
     }
 
     public Map<String, String> normalizeValues(Map<String, String> values) {
@@ -203,9 +233,23 @@ public class PresentationTemplateService {
     }
 
     public byte[] render(String id, PresentationContent content) throws Exception {
+        return render(
+                id,
+                content,
+                assetId -> {
+                    throw new GenerationException(GenerationError.IMAGE_NOT_FOUND);
+                });
+    }
+
+    public byte[] render(
+            String id, PresentationContent content, Function<String, byte[]> imageResolver)
+            throws Exception {
         PresentationContent plan = normalize(id, content);
         Map<String, String> normalized = plan.fields();
         try (XMLSlideShow show = open(id)) {
+            Map<Integer, XSLFSlide> bySourceNumber = new LinkedHashMap<>();
+            for (int i = 0; i < show.getSlides().size(); i++)
+                bySourceNumber.put(i + 1, show.getSlides().get(i));
             var included =
                     plan.slides().stream()
                             .filter(s -> Boolean.TRUE.equals(s.include()))
@@ -213,7 +257,22 @@ public class PresentationTemplateService {
                             .collect(java.util.stream.Collectors.toSet());
             for (int i = show.getSlides().size() - 1; i >= 0; i--)
                 if (!included.contains(i + 1)) show.removeSlide(i);
-            for (XSLFSlide slide : show.getSlides()) {
+            int order = 0;
+            for (var decision : plan.slides()) {
+                if (!Boolean.TRUE.equals(decision.include())) continue;
+                XSLFSlide slide = bySourceNumber.get(decision.slide());
+                show.setSlideOrder(slide, order++);
+                slide.setHidden(decision.hiddenOrFalse());
+            }
+            for (var decision : plan.slides()) {
+                if (!Boolean.TRUE.equals(decision.include())) continue;
+                XSLFSlide slide = bySourceNumber.get(decision.slide());
+                applyTextLayouts(
+                        slide,
+                        decision.slide(),
+                        decision.textLayoutsOrEmpty(),
+                        show.getPageSize().getWidth(),
+                        show.getPageSize().getHeight());
                 for (XSLFShape shape : allShapes(slide.getShapes())) {
                     if (shape instanceof XSLFTextShape textShape) {
                         for (XSLFTextParagraph paragraph : textShape.getTextParagraphs()) {
@@ -222,14 +281,261 @@ public class PresentationTemplateService {
                     }
                 }
             }
+            var page = show.getPageSize();
+            for (var decision : plan.slides()) {
+                if (!Boolean.TRUE.equals(decision.include())) continue;
+                XSLFSlide slide = bySourceNumber.get(decision.slide());
+                for (var block : decision.textBlocksOrEmpty()) {
+                    addTextBlock(slide, block, page.getWidth(), page.getHeight(), id);
+                }
+                for (var image : decision.imageBlocksOrEmpty()) {
+                    addImageBlock(
+                            show,
+                            slide,
+                            image,
+                            page.getWidth(),
+                            page.getHeight(),
+                            imageResolver);
+                }
+            }
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             show.write(output);
             return output.toByteArray();
         }
     }
 
+    public EditorDeckView editorDeck(
+            String templateId,
+            java.util.UUID presentationId,
+            String title,
+            int baseVersion,
+            long draftRevision,
+            Map<Integer, String> slideNames,
+            PresentationContent content)
+            throws Exception {
+        PresentationContent plan = normalize(templateId, content);
+        try (XMLSlideShow show = open(templateId)) {
+            var page = show.getPageSize();
+            List<EditorDeckView.Slide> slides = new ArrayList<>();
+            for (var decision : plan.slides()) {
+                if (!Boolean.TRUE.equals(decision.include())) continue;
+                int source = decision.slide();
+                XSLFSlide slide = show.getSlides().get(source - 1);
+                List<EditorDeckView.TextBlock> blocks = new ArrayList<>();
+                Map<String, Integer> occurrences = new LinkedHashMap<>();
+                Map<String, PresentationContent.TextLayout> layoutOverrides =
+                        decision.textLayoutsOrEmpty().stream()
+                                .collect(
+                                        java.util.stream.Collectors.toMap(
+                                                PresentationContent.TextLayout::id,
+                                                Function.identity()));
+                int layoutIndex = 0;
+                for (XSLFShape shape : allShapes(slide.getShapes())) {
+                    if (!(shape instanceof XSLFTextShape textShape)) continue;
+                    Matcher matcher = TOKEN.matcher(textShape.getText());
+                    if (!matcher.find()) continue;
+                    String layoutId = textLayoutId(source, ++layoutIndex);
+                    PresentationContent.TextLayout override = layoutOverrides.get(layoutId);
+                    Rectangle2D anchor = textShape.getAnchor();
+                    double x =
+                            override != null
+                                    ? override.x()
+                                    : anchor == null ? 8 : percent(anchor.getX(), page.getWidth());
+                    double y =
+                            override != null
+                                    ? override.y()
+                                    : anchor == null
+                                            ? 8 + blocks.size() * 8
+                                            : percent(anchor.getY(), page.getHeight());
+                    double width =
+                            override != null
+                                    ? override.width()
+                                    : anchor == null
+                                            ? 84
+                                            : percent(anchor.getWidth(), page.getWidth());
+                    double height =
+                            override != null
+                                    ? override.height()
+                                    : anchor == null
+                                            ? 7
+                                            : percent(anchor.getHeight(), page.getHeight());
+                    do {
+                        String field = matcher.group(1);
+                        int occurrence = occurrences.merge(field, 1, Integer::sum);
+                        XSLFTextRun run = firstRun(textShape);
+                        XSLFTextParagraph paragraph =
+                                textShape.getTextParagraphs().isEmpty()
+                                        ? null
+                                        : textShape.getTextParagraphs().getFirst();
+                        String role = role(field);
+                        blocks.add(
+                                new EditorDeckView.TextBlock(
+                                        "slide-" + source + "-field-" + field + "-" + occurrence,
+                                        field,
+                                        layoutId,
+                                        get(templateId).fields().get(field),
+                                        role,
+                                        plan.fields().get(field),
+                                        x,
+                                        y,
+                                        width,
+                                        height,
+                                        fontSize(run),
+                                        run != null && run.isBold() ? 700 : 400,
+                                        alignment(paragraph),
+                                        color(role)));
+                    } while (matcher.find());
+                }
+                for (var block : decision.textBlocksOrEmpty()) {
+                    blocks.add(
+                            new EditorDeckView.TextBlock(
+                                    block.id(),
+                                    null,
+                                    null,
+                                    4_000,
+                                    "body",
+                                    block.text(),
+                                    block.x(),
+                                    block.y(),
+                                    block.width(),
+                                    block.height(),
+                                    block.fontSize(),
+                                    block.weight(),
+                                    block.align(),
+                                    block.color()));
+                }
+                List<EditorDeckView.ImageBlock> images =
+                        decision.imageBlocksOrEmpty().stream()
+                                .map(
+                                        image ->
+                                                new EditorDeckView.ImageBlock(
+                                                        image.id(),
+                                                        image.assetId(),
+                                                        "/api/generation/v1/presentations/"
+                                                                + presentationId
+                                                                + "/editor/assets/"
+                                                                + image.assetId(),
+                                                        image.alt(),
+                                                        image.x(),
+                                                        image.y(),
+                                                        image.width(),
+                                                        image.height()))
+                                .toList();
+                slides.add(
+                        new EditorDeckView.Slide(
+                                "slide-" + source,
+                                source,
+                                slideNames.getOrDefault(source, "Слайд " + source),
+                                "monolith".equals(templateId) ? "navy" : "paper",
+                                decision.hiddenOrFalse(),
+                                List.copyOf(blocks),
+                                images));
+            }
+            return new EditorDeckView(
+                    presentationId,
+                    title,
+                    baseVersion,
+                    draftRevision,
+                    new EditorDeckView.SlideSize(960, 540),
+                    List.copyOf(slides));
+        }
+    }
+
     private XMLSlideShow open(String id) throws Exception {
         return new XMLSlideShow(new ByteArrayInputStream(get(id).source()));
+    }
+
+    private static void applyTextLayouts(
+            XSLFSlide slide,
+            int slideNumber,
+            List<PresentationContent.TextLayout> layouts,
+            double pageWidth,
+            double pageHeight) {
+        if (layouts.isEmpty()) return;
+        Map<String, PresentationContent.TextLayout> byId =
+                layouts.stream()
+                        .collect(
+                                java.util.stream.Collectors.toMap(
+                                        PresentationContent.TextLayout::id, Function.identity()));
+        int layoutIndex = 0;
+        for (XSLFShape shape : allShapes(slide.getShapes())) {
+            if (!(shape instanceof XSLFTextShape textShape)
+                    || !TOKEN.matcher(textShape.getText()).find()) continue;
+            var layout = byId.get(textLayoutId(slideNumber, ++layoutIndex));
+            if (layout == null) continue;
+            textShape.setAnchor(
+                    new Rectangle2D.Double(
+                            pageWidth * layout.x() / 100,
+                            pageHeight * layout.y() / 100,
+                            pageWidth * layout.width() / 100,
+                            pageHeight * layout.height() / 100));
+        }
+    }
+
+    private static String textLayoutId(int slideNumber, int layoutIndex) {
+        return "slide-" + slideNumber + "-layout-" + layoutIndex;
+    }
+
+    private static void addTextBlock(
+            XSLFSlide slide,
+            PresentationContent.TextBlock block,
+            double pageWidth,
+            double pageHeight,
+            String templateId) {
+        var box = slide.createTextBox();
+        box.setAnchor(
+                new Rectangle2D.Double(
+                        pageWidth * block.x() / 100,
+                        pageHeight * block.y() / 100,
+                        pageWidth * block.width() / 100,
+                        pageHeight * block.height() / 100));
+        box.setLeftInset(0);
+        box.setRightInset(0);
+        box.setTopInset(0);
+        box.setBottomInset(0);
+        box.setWordWrap(true);
+        box.setVerticalAlignment(VerticalAlignment.TOP);
+        XSLFTextRun run = box.setText(block.text());
+        run.setFontSize(block.fontSize() * 0.75);
+        run.setBold(block.weight() >= 700);
+        run.setFontFamily("Arial");
+        run.setFontColor(textColor(templateId, block.color()));
+        XSLFTextParagraph paragraph = run.getParagraph();
+        paragraph.setTextAlign(
+                switch (block.align()) {
+                    case "center" -> TextAlign.CENTER;
+                    case "right" -> TextAlign.RIGHT;
+                    default -> TextAlign.LEFT;
+                });
+        paragraph.setSpaceBefore(0d);
+        paragraph.setSpaceAfter(0d);
+    }
+
+    private static void addImageBlock(
+            XMLSlideShow show,
+            XSLFSlide slide,
+            PresentationContent.ImageBlock image,
+            double pageWidth,
+            double pageHeight,
+            Function<String, byte[]> resolver) {
+        byte[] bytes = resolver.apply(image.assetId());
+        var pictureData = show.addPicture(bytes, PictureData.PictureType.PNG);
+        var picture = slide.createPicture(pictureData);
+        picture.setAnchor(
+                new Rectangle2D.Double(
+                        pageWidth * image.x() / 100,
+                        pageHeight * image.y() / 100,
+                        pageWidth * image.width() / 100,
+                        pageHeight * image.height() / 100));
+    }
+
+    private static Color textColor(String templateId, String color) {
+        boolean dark = "monolith".equals(templateId);
+        return switch (color) {
+            case "brand" -> dark ? new Color(0xD7F36A) : new Color(0x335CC5);
+            case "muted" -> dark ? new Color(0xB4C0D3) : new Color(0x5B6675);
+            default -> dark ? new Color(0xF5F7FB) : new Color(0x142033);
+        };
     }
 
     private static Map<String, Integer> inspect(XMLSlideShow show) {
@@ -284,6 +590,50 @@ public class PresentationTemplateService {
                                 * Math.max(1, height / (font * TemplateTextPolicy.LINE_HEIGHT_EM)));
         return Math.clamp(
                 estimate, TemplateTextPolicy.MIN_FIELD_LENGTH, TemplateTextPolicy.MAX_FIELD_LENGTH);
+    }
+
+    private static XSLFTextRun firstRun(XSLFTextShape shape) {
+        return shape.getTextParagraphs().stream()
+                .flatMap(paragraph -> paragraph.getTextRuns().stream())
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static int fontSize(XSLFTextRun run) {
+        double points = run == null || run.getFontSize() == null ? 14 : run.getFontSize();
+        return Math.clamp((int) Math.round(points * 4 / 3), 8, 96);
+    }
+
+    private static double percent(double value, double total) {
+        return Math.round(value / total * 10_000.0) / 100.0;
+    }
+
+    private static String alignment(XSLFTextParagraph paragraph) {
+        if (paragraph == null || paragraph.getTextAlign() == null) return "left";
+        return switch (paragraph.getTextAlign()) {
+            case CENTER -> "center";
+            case RIGHT -> "right";
+            default -> "left";
+        };
+    }
+
+    private static String role(String field) {
+        if (field.contains("VALUE") || field.matches(".*(?:METRIC|NUM)_?\\d*$")) return "metric";
+        if (field.contains("SUBTITLE") || field.contains("INTRO")) return "subtitle";
+        if (field.contains("TITLE") || field.equals("STATEMENT")) return "title";
+        if (field.contains("FOOTER")
+                || field.contains("AUTHOR")
+                || field.contains("CONTACT")
+                || field.contains("CAPTION")) return "caption";
+        return "body";
+    }
+
+    private static String color(String role) {
+        return switch (role) {
+            case "metric" -> "brand";
+            case "caption" -> "muted";
+            default -> "ink";
+        };
     }
 
     private static void replaceParagraph(XSLFTextParagraph paragraph, Map<String, String> values) {

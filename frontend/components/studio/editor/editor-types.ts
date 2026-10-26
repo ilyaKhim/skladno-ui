@@ -3,16 +3,22 @@ export type BlockColor = 'ink' | 'muted' | 'brand'
 export type BlockAlign = 'left' | 'center' | 'right'
 export type BlockWeight = 400 | 500 | 700
 export type SlideTheme = 'paper' | 'navy'
-export type SaveStatus = 'saved' | 'dirty' | 'saving'
+export type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error'
 
 export interface TextBlock {
   id: string
+  /** Semantic template field. Repeated occurrences are edited together. */
+  fieldKey?: string
+  /** Template text shape whose geometry is shared by all fields inside it. */
+  layoutKey?: string
+  maxChars?: number
   role: BlockRole
   text: string
   /** Position and width are percentages of the slide frame. */
   x: number
   y: number
   width: number
+  height: number
   /** Font size in px relative to a 960px-wide slide; scales with the frame. */
   fontSize: number
   weight: BlockWeight
@@ -20,21 +26,40 @@ export interface TextBlock {
   color: BlockColor
 }
 
+export interface ImageBlock {
+  id: string
+  assetId: string
+  url: string
+  alt: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface Slide {
   id: string
+  sourceSlideNumber?: number
   name: string
   theme: SlideTheme
   hidden: boolean
   blocks: TextBlock[]
+  images: ImageBlock[]
 }
 
 export interface Deck {
   id: string
   title: string
+  baseVersion?: number
+  draftRevision?: number
+  downloadUrl?: string
   slides: Slide[]
 }
 
 export type EditableBlockFields = Partial<Omit<TextBlock, 'id' | 'role'>>
+export type EditableImageFields = Partial<Omit<ImageBlock, 'id' | 'assetId' | 'url'>>
+
+export const CUSTOM_TEXT_MAX_CHARS = 4000
 
 export const BLOCK_ROLE_LABELS: Record<BlockRole, string> = {
   eyebrow: 'Надзаголовок',

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Check, CircleDot, Download, LoaderCircle, PanelRight, Redo2, Undo2 } from 'lucide-react'
+import { ArrowLeft, Check, CircleDot, Download, ImagePlus, LoaderCircle, PanelRight, Redo2, Type, Undo2 } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -22,7 +22,12 @@ interface EditorToolbarProps {
   onUndo: () => void
   onRedo: () => void
   onSave: () => void
+  onAddText?: () => void
+  onAddImage?: (file: File) => void
+  imageUploading?: boolean
+  onExport?: () => Promise<void>
   onTogglePanel: () => void
+  titleEditable?: boolean
 }
 
 export function EditorToolbar({
@@ -39,8 +44,14 @@ export function EditorToolbar({
   onUndo,
   onRedo,
   onSave,
+  onAddText,
+  onAddImage,
+  imageUploading = false,
+  onExport,
   onTogglePanel,
+  titleEditable = true,
 }: EditorToolbarProps) {
+  const imageInput = useRef<HTMLInputElement>(null)
   return (
     <header className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border bg-card px-2 sm:px-3">
       <Link
@@ -59,6 +70,7 @@ export function EditorToolbar({
       <input
         id="deck-title"
         value={title}
+        readOnly={!titleEditable}
         onChange={(event) => onRename(event.target.value)}
         onBlur={onCommitTitle}
         onKeyDown={(event) => {
@@ -66,7 +78,10 @@ export function EditorToolbar({
             event.currentTarget.blur()
           }
         }}
-        className="h-8 min-w-0 flex-1 truncate rounded-md bg-transparent px-1.5 text-sm font-medium text-foreground outline-none hover:bg-muted focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/50 sm:max-w-80"
+        className={cn(
+          'h-8 min-w-0 flex-1 truncate rounded-md bg-transparent px-1.5 text-sm font-medium text-foreground outline-none sm:max-w-80',
+          titleEditable && 'hover:bg-muted focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/50',
+        )}
       />
       <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">
         {slideCount} слайдов{hiddenCount > 0 && `, ${hiddenCount} скрыт`}
@@ -75,6 +90,38 @@ export function EditorToolbar({
       <div className="ml-auto flex shrink-0 items-center gap-1">
         <SaveIndicator status={saveStatus} onSave={onSave} />
         <span aria-hidden className="mx-1 hidden h-5 w-px bg-border sm:block" />
+        {onAddText && (
+          <Button variant="outline" size="sm" onClick={onAddText} title="Добавить текст (T)">
+            <Type />
+            <span className="hidden sm:inline">Текст</span>
+          </Button>
+        )}
+        {onAddImage && (
+          <>
+            <input
+              ref={imageInput}
+              type="file"
+              accept="image/png,image/jpeg"
+              className="sr-only"
+              aria-label="Выбрать изображение"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) onAddImage(file)
+                event.target.value = ''
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={imageUploading}
+              onClick={() => imageInput.current?.click()}
+              title="Добавить изображение"
+            >
+              {imageUploading ? <LoaderCircle className="animate-spin" /> : <ImagePlus />}
+              <span className="hidden lg:inline">Изображение</span>
+            </Button>
+          </>
+        )}
         <Button variant="ghost" size="icon-sm" onClick={onUndo} disabled={!canUndo} aria-label="Отменить" title="Отменить (Ctrl+Z)">
           <Undo2 />
         </Button>
@@ -100,7 +147,7 @@ export function EditorToolbar({
             <PanelRight />
           </Button>
         )}
-        <ExportMenu title={title} hiddenCount={hiddenCount} />
+        <ExportMenu title={title} hiddenCount={hiddenCount} onExport={onExport} />
       </div>
     </header>
   )
@@ -110,6 +157,7 @@ const SAVE_LABELS: Record<SaveStatus, string> = {
   saved: 'Все изменения сохранены',
   dirty: 'Есть несохранённые изменения',
   saving: 'Сохранение…',
+  error: 'Не удалось сохранить',
 }
 
 function SaveIndicator({ status, onSave }: { status: SaveStatus; onSave: () => void }) {
@@ -126,10 +174,11 @@ function SaveIndicator({ status, onSave }: { status: SaveStatus; onSave: () => v
         {status === 'saved' && <Check className="size-3.5 text-primary" aria-hidden />}
         {status === 'dirty' && <CircleDot className="size-3.5 text-[#b7791f]" aria-hidden />}
         {status === 'saving' && <LoaderCircle className="size-3.5 animate-spin" aria-hidden />}
+        {status === 'error' && <CircleDot className="size-3.5 text-destructive" aria-hidden />}
         <span className="hidden md:inline">{SAVE_LABELS[status]}</span>
         <span className="sr-only md:hidden">{SAVE_LABELS[status]}</span>
       </span>
-      {status === 'dirty' && (
+      {(status === 'dirty' || status === 'error') && (
         <Button variant="link" size="xs" className="hidden px-1 sm:inline-flex" onClick={onSave} title="Сохранить (Ctrl+S)">
           Сохранить
         </Button>
@@ -146,7 +195,15 @@ const EXPORT_FORMATS: { value: ExportFormat; label: string; hint: string }[] = [
   { value: 'png', label: 'Изображения', hint: 'PNG каждого слайда' },
 ]
 
-function ExportMenu({ title, hiddenCount }: { title: string; hiddenCount: number }) {
+function ExportMenu({
+  title,
+  hiddenCount,
+  onExport,
+}: {
+  title: string
+  hiddenCount: number
+  onExport?: () => Promise<void>
+}) {
   const [format, setFormat] = useState<ExportFormat>('pdf')
   const [includeHidden, setIncludeHidden] = useState(false)
   const [phase, setPhase] = useState<'idle' | 'preparing' | 'ready'>('idle')
@@ -155,6 +212,13 @@ function ExportMenu({ title, hiddenCount }: { title: string; hiddenCount: number
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
   const startExport = () => {
+    if (onExport) {
+      setPhase('preparing')
+      void onExport()
+        .then(() => setPhase('ready'))
+        .catch(() => setPhase('idle'))
+      return
+    }
     setPhase('preparing')
     window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => setPhase('ready'), 900)
@@ -171,7 +235,7 @@ function ExportMenu({ title, hiddenCount }: { title: string; hiddenCount: number
       <PopoverContent align="end" className="w-72 p-3">
         <div className="flex flex-col gap-3">
           <p className="text-xs font-medium text-foreground">Экспорт презентации</p>
-          <div role="radiogroup" aria-label="Формат" className="flex flex-col gap-1">
+          {!onExport && <div role="radiogroup" aria-label="Формат" className="flex flex-col gap-1">
             {EXPORT_FORMATS.map((option) => {
               const checked = option.value === format
               return (
@@ -194,9 +258,16 @@ function ExportMenu({ title, hiddenCount }: { title: string; hiddenCount: number
                 </button>
               )
             })}
-          </div>
+          </div>}
 
-          {hiddenCount > 0 && (
+          {onExport && (
+            <div className="rounded-lg border border-primary bg-secondary px-2.5 py-2">
+              <p className="text-sm font-medium text-foreground">PowerPoint</p>
+              <p className="text-xs text-muted-foreground">Редактируемый .pptx</p>
+            </div>
+          )}
+
+          {hiddenCount > 0 && !onExport && (
             <label className="flex items-center gap-2 text-xs text-foreground">
               <input
                 type="checkbox"
@@ -215,8 +286,12 @@ function ExportMenu({ title, hiddenCount }: { title: string; hiddenCount: number
 
           <p role="status" aria-live="polite" className="text-xs leading-relaxed text-muted-foreground">
             {phase === 'ready'
-              ? `Файл «${title || 'Презентация'}.${extension}» подготовлен. В прототипе скачивание отключено.`
-              : 'Прототип: файл не скачивается.'}
+              ? onExport
+                ? `Файл «${title || 'Презентация'}.pptx» отправлен на скачивание.`
+                : `Файл «${title || 'Презентация'}.${extension}» подготовлен. В прототипе скачивание отключено.`
+              : onExport
+                ? 'Скрытые слайды сохранятся в файле, но будут пропущены при показе.'
+                : 'Прототип: файл не скачивается.'}
           </p>
         </div>
       </PopoverContent>

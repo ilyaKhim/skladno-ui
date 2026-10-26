@@ -1,8 +1,12 @@
 import type {
   AiCall,
+  EditorDeck,
+  EditorAsset,
+  EditorDraftSaved,
   ModelOption,
   PresentationJob,
   Revision,
+  SaveEditorDraft,
   Template,
   TemplateContext,
 } from './generation-types'
@@ -80,7 +84,8 @@ async function request<T>(
   try {
     const method = init.method ?? 'GET'
     const headers = new Headers(init.headers)
-    if (init.body) headers.set('Content-Type', 'application/json')
+    const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData
+    if (init.body && !isFormData) headers.set('Content-Type', 'application/json')
     if (method !== 'GET') {
       const csrf = await csrfHeaders(init.signal ?? undefined)
       for (const [key, value] of Object.entries(csrf)) headers.set(key, value)
@@ -133,6 +138,27 @@ export const generationApi = {
   templates: () => request<{ items: Template[] }>('/v1/templates'),
   models: () => request<{ items: ModelOption[]; default_model: string }>('/v1/models'),
   presentations: () => request<{ items: PresentationJob[] }>('/v1/presentations?limit=20&offset=0'),
+  editor: (id: string, signal?: AbortSignal) =>
+    request<EditorDeck>(`${presentationPath(id)}/editor`, { signal }),
+  uploadEditorImage: (id: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<EditorAsset>(
+      `${presentationPath(id)}/editor/assets`,
+      { method: 'POST', body: form },
+      30_000,
+    )
+  },
+  saveEditorDraft: (id: string, draft: SaveEditorDraft) =>
+    request<EditorDraftSaved>(`${presentationPath(id)}/editor/draft`, {
+      method: 'PUT',
+      body: JSON.stringify(draft),
+    }),
+  commitEditor: (id: string, baseVersion: number, draftRevision: number) =>
+    request<PresentationJob>(
+      `${presentationPath(id)}/editor/commit`,
+      post({ base_version: baseVersion, draft_revision: draftRevision }),
+    ),
   context: (id: string) => request<TemplateContext>(`/v1/templates/${segment(id)}/context`),
   create: (input: CreateInput) =>
     request<PresentationJob>('/v1/presentations', {
