@@ -20,6 +20,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Audited boundary around the OpenAI Responses API for presentation content generation.
+ *
+ * <p>The service uses the same request factory for preview and execution, records a redacted request
+ * before making a paid call, converts provider output into the semantic document model, and records
+ * the response/error best-effort afterward. Template validation remains outside this class because
+ * provider parsing and template business rules are separate concerns.
+ */
 @Service
 public class PresentationContentGenerator {
     private static final String RESPONSES_URL = "https://api.openai.com/v1/responses";
@@ -52,10 +60,12 @@ public class PresentationContentGenerator {
         this.enabled = enabled;
     }
 
+    /** Returns true only when generation is enabled and a nonblank provider key is configured. */
     public boolean enabled() {
         return enabled && !apiKey.isBlank();
     }
 
+    /** Returns the exact provider payload that {@link #generate} would send, without network I/O. */
     public Map<String, Object> preview(
             String topic,
             Map<String, Integer> fields,
@@ -64,6 +74,13 @@ public class PresentationContentGenerator {
         return requests.create(topic, fields, slides, model);
     }
 
+    /**
+     * Performs one tracked structured-output request and returns decoded semantic content.
+     *
+     * <p>History creation is deliberately before the HTTP request: if auditing cannot be established,
+     * the application does not make an untracked paid call. Completing history is best-effort so a
+     * diagnostics outage cannot discard valid provider output or hide the original provider failure.
+     */
     public PresentationContent generate(
             AiCallContext context,
             String topic,
@@ -105,6 +122,7 @@ public class PresentationContentGenerator {
         }
     }
 
+    /** Records redacted response diagnostics without replacing the primary operation's outcome. */
     private void recordResponse(
             UUID callId, String body, Integer httpStatus, GenerationError error) {
         try {
@@ -116,6 +134,7 @@ public class PresentationContentGenerator {
         }
     }
 
+    /** Removes any accidental occurrence of the configured secret from persisted diagnostics. */
     private String redactKey(String body) {
         return body == null ? null : body.replace(apiKey, REDACTED_KEY);
     }

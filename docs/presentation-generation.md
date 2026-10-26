@@ -1,5 +1,8 @@
 # Генерация PPTX в Java backend
 
+Сквозные UML-диаграммы генерации, редактора, изображений, версий и AI-правок находятся в
+[application-processes-uml.md](application-processes-uml.md).
+
 Студия находится на `/studio/`. Все API ниже находятся под `/api/generation`, требуют сессию пользователя (или локальный `AUTH_BYPASS`) и CSRF-токен для изменяющих запросов. Токен выдаёт `/api/auth/csrf`.
 
 | Метод и путь | Назначение |

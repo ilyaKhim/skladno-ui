@@ -13,6 +13,21 @@ import ru.godeck.presentation.policy.PresentationPolicy;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * Mutable aggregate root for one user-owned presentation.
+ *
+ * <p>The entity keeps three related but distinct pieces of state:
+ *
+ * <ul>
+ *   <li>generation lifecycle ({@code status}, error, and initial queue data),
+ *   <li>the currently published semantic content and PPTX version,
+ *   <li>an unpublished editor draft plus a short-lived lease for expensive edits.
+ * </ul>
+ *
+ * <p>State transitions are expressed as domain methods so services do not update partially related
+ * columns independently. Immutable historical versions live in {@link PresentationRevision}; this
+ * entity only points at the current output.
+ */
 @Entity
 @Table(name = "generated_presentations")
 public class Presentation {
@@ -86,28 +101,43 @@ public class Presentation {
 
     protected Presentation() {}
 
+    /**
+     * Moves a manual presentation from content collection to the worker queue.
+     *
+     * @param contentJson validated semantic plan to render
+     * @param now transition time
+     */
     public void enqueue(String contentJson, Instant now) {
         this.contentJson = contentJson;
         status = PresentationStatus.QUEUED;
         updatedAt = now;
     }
 
+    /** Marks a queue claim as running before slow generation starts outside the transaction. */
     public void start(Instant now) {
         status = PresentationStatus.RUNNING;
         updatedAt = now;
     }
 
+    /** Records a terminal generation error while retaining diagnostic content already stored. */
     public void fail(String code, Instant now) {
         status = PresentationStatus.FAILED;
         errorCode = code;
         updatedAt = now;
     }
 
+    /** Cancels a presentation that has not started rendering yet. */
     public void cancel(Instant now) {
         status = PresentationStatus.CANCELLED;
         updatedAt = now;
     }
 
+    /**
+     * Publishes semantic content and a rendered file as the current successful version.
+     *
+     * <p>Any compatible editor draft is cleared because its base document has just changed. Draft
+     * revision monotonicity is handled separately by the caller when needed for ABA protection.
+     */
     public void succeed(
             String contentJson,
             String path,
@@ -126,16 +156,26 @@ public class Presentation {
         clearEditorDraft();
     }
 
+    /** Installs a random lease token that identifies the only expensive edit allowed to complete. */
     public void beginEdit(UUID token, Instant now) {
         editId = token;
         editStartedAt = now;
     }
 
+    /** Clears the active edit lease after success or token-checked compensation. */
     public void clearEdit() {
         editId = null;
         editStartedAt = null;
     }
 
+    /**
+     * Stores a complete editor snapshot with the published version from which it was derived.
+     *
+     * @param json serialized {@code PresentationEditorDraft}
+     * @param baseVersion current published version
+     * @param revision next monotonic autosave revision
+     * @param now acknowledgement time
+     */
     public void saveEditorDraft(String json, int baseVersion, long revision, Instant now) {
         editorJson = json;
         editorBaseVersion = baseVersion;
@@ -144,12 +184,16 @@ public class Presentation {
         updatedAt = now;
     }
 
+    /** Removes unpublished editor data while intentionally retaining the revision counter. */
     public void clearEditorDraft() {
         editorJson = null;
         editorBaseVersion = null;
         editorUpdatedAt = null;
     }
 
+    /**
+     * Advances the draft generation after commit/clear so stale clients cannot reuse an old value.
+     */
     public void bumpEditorRevision(Instant now) {
         editorRevision++;
         updatedAt = now;

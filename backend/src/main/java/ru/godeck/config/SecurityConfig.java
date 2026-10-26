@@ -21,21 +21,35 @@ import ru.godeck.auth.service.AuthService;
 import java.io.IOException;
 import java.time.Clock;
 
+/**
+ * Defines password hashing, UTC time, session security, CSRF, and endpoint authorization policy.
+ * Authentication is deliberately session-based: the browser stores only the session cookie while
+ * Spring persists the principal and CSRF state server-side.
+ */
 @Configuration
 class SecurityConfig {
     private static final String UNSAFE_BYPASS_BINDING =
             "AUTH_BYPASS is allowed only when SERVER_ADDRESS is loopback.";
 
+    /** Supplies one UTC clock so expiry and lockout logic can be deterministic in tests. */
     @Bean
     Clock clock() {
         return Clock.systemUTC();
     }
 
+    /** Supplies BCrypt as the one-way encoder for passwords and short-lived verification codes. */
     @Bean
     PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * Builds the single application security chain.
+     *
+     * <p>Only authentication bootstrap endpoints are anonymous; all application endpoints require a
+     * current session. CSRF remains enabled for both anonymous state changes and authenticated API
+     * calls. The development bypass is rejected unless the server itself is loopback-bound.
+     */
     @Bean
     SecurityFilterChain security(
             HttpSecurity http,
@@ -87,6 +101,7 @@ class SecurityConfig {
                 .build();
     }
 
+    /** Writes stable JSON errors for failures that occur inside Spring Security, before MVC. */
     private static void error(HttpServletResponse response, HttpStatus status, AuthError error)
             throws IOException {
         response.setStatus(status.value());

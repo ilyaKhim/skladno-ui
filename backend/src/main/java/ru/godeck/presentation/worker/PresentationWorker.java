@@ -23,6 +23,13 @@ import ru.godeck.presentation.template.PresentationTemplateService;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Single-process queue consumer that turns queued semantic jobs into published PPTX revisions.
+ *
+ * <p>The database supplies the durable queue and row locking; {@link #processOne()} merely polls for
+ * one claim. An in-memory guard prevents overlapping scheduled invocations in this JVM, while the
+ * transaction layer protects against claims by other application instances.
+ */
 @Component
 public class PresentationWorker {
     private static final String QUEUE_FAILURE_LOG = "Could not process presentation queue";
@@ -55,6 +62,12 @@ public class PresentationWorker {
         this.models = models;
     }
 
+    /**
+     * Claims at most one queued row and processes it.
+     *
+     * <p>The guard is always released, and an infrastructure failure is logged without disabling
+     * subsequent scheduler ticks.
+     */
     @Scheduled(initialDelayString = POLL_INTERVAL, fixedDelayString = POLL_INTERVAL)
     public void processOne() {
         if (!working.compareAndSet(false, true)) return;
@@ -67,6 +80,10 @@ public class PresentationWorker {
         }
     }
 
+    /**
+     * Generates or decodes content, validates it, renders the initial file, and publishes success.
+     * Any failure removes an unpublished file and records a stable terminal error code.
+     */
     private void process(PresentationTransactions.Job claimed) {
         Path output = null;
         try {
@@ -106,6 +123,7 @@ public class PresentationWorker {
         }
     }
 
+    /** Maps internal/provider failures onto the deliberately small public generation error set. */
     private static String failureCode(Exception error) {
         if (error instanceof GenerationException known) return known.code();
         if (error instanceof AiGenerationException provider

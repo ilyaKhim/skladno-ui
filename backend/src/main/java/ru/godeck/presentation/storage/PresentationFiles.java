@@ -25,6 +25,13 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
+/**
+ * Private filesystem boundary for rendered presentations and editor image assets.
+ *
+ * <p>The component owns path construction, atomic publication, image decoding/normalization, quota
+ * checks, and containment checks. Callers work with presentation/asset ids and never concatenate
+ * untrusted request paths themselves.
+ */
 @Component
 public class PresentationFiles {
     private static final String OUTPUT_DELETE_FAILURE_LOG =
@@ -41,6 +48,13 @@ public class PresentationFiles {
         this.directory = Path.of(directory).toAbsolutePath().normalize();
     }
 
+    /**
+     * Renders and atomically publishes one immutable PPTX version.
+     *
+     * <p>A random final filename avoids collisions between retries. Rendering first to a temporary
+     * file means downloaders never observe a partial ZIP/PPTX. If rendering fails, the temporary file
+     * is removed and the transaction layer can safely leave the previous version current.
+     */
     public Path write(UUID id, int version, String templateId, PresentationContent content)
             throws Exception {
         Files.createDirectories(directory);
@@ -65,6 +79,13 @@ public class PresentationFiles {
         }
     }
 
+    /**
+     * Validates, decodes, re-encodes, and atomically stores an uploaded image.
+     *
+     * <p>Re-encoding accepted JPEG/PNG input as PNG strips unrelated payload/metadata and guarantees
+     * the renderer receives a known representation. Dimension, pixel, per-file, count, and aggregate
+     * limits bound memory and disk use.
+     */
     public ImageAsset storeImage(UUID presentationId, byte[] bytes) {
         if (bytes == null || bytes.length == 0)
             throw new GenerationException(GenerationError.INVALID_IMAGE);
@@ -95,6 +116,7 @@ public class PresentationFiles {
         }
     }
 
+    /** Reads image headers and pixels while rejecting unsupported formats and decompression bombs. */
     private static DecodedImage decodeImage(byte[] bytes) {
         try (ImageInputStream input =
                 ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
@@ -147,6 +169,10 @@ public class PresentationFiles {
         }
     }
 
+    /**
+     * Resolves an asset through real paths and verifies that it remains inside this presentation's
+     * private directory, including in the presence of symlinks.
+     */
     public Path image(UUID presentationId, UUID assetId) {
         try {
             Path assets = assetDirectory(presentationId).toRealPath();
@@ -158,6 +184,7 @@ public class PresentationFiles {
         }
     }
 
+    /** Returns trusted bytes for insertion into a rendered presentation. */
     public byte[] imageBytes(UUID presentationId, UUID assetId) {
         try {
             return Files.readAllBytes(image(presentationId, assetId));
@@ -170,6 +197,7 @@ public class PresentationFiles {
         return directory.resolve("assets").resolve(presentationId.toString()).normalize();
     }
 
+    /** Enforces per-presentation asset count and byte quotas before publishing a new image. */
     private static void enforceAssetQuota(Path assets, long incomingBytes) throws IOException {
         int count = 0;
         long total = 0;
@@ -185,10 +213,21 @@ public class PresentationFiles {
             throw new GenerationException(GenerationError.IMAGE_LIMIT);
     }
 
+    /**
+     * Metadata returned after a normalized image has been durably stored.
+     *
+     * @param id opaque presentation-scoped asset identifier
+     * @param width decoded pixel width
+     * @param height decoded pixel height
+     */
     public record ImageAsset(UUID id, int width, int height) {}
 
     private record DecodedImage(BufferedImage image, int width, int height) {}
 
+    /**
+     * Resolves a previously persisted PPTX path and proves that it is a regular file inside the
+     * configured output directory before a controller exposes it for download.
+     */
     public Path existing(String path) {
         try {
             if (path == null) throw new IOException();
@@ -201,6 +240,7 @@ public class PresentationFiles {
         }
     }
 
+    /** Best-effort compensation for a rendered file whose database publication did not succeed. */
     public void discard(Path output) {
         if (output != null)
             try {

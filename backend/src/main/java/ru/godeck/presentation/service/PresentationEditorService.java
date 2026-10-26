@@ -25,8 +25,8 @@ import ru.godeck.presentation.repository.PresentationRepository;
 import ru.godeck.presentation.storage.PresentationFiles;
 import ru.godeck.presentation.template.PresentationTemplateService;
 
-import java.nio.file.Path;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -36,6 +36,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Orchestrates the visual editor without coupling browser state to Apache POI or JPA entities.
+ *
+ * <p>The service maintains a two-phase model:
+ *
+ * <ol>
+ *   <li>{@link #save(UUID, UUID, SaveEditorDraftRequest)} validates and persists a lightweight
+ *       semantic draft under optimistic revision control.
+ *   <li>{@link #commit(UUID, UUID, int, long)} reserves an edit lease, renders a file outside the
+ *       database transaction, and atomically publishes a new immutable revision.
+ * </ol>
+ *
+ * <p>This separation is why frequent autosaves do not create files or consume the daily edit
+ * quota. It also gives commit a stable server-side snapshot and prevents a stale browser tab from
+ * overwriting a newer draft.
+ */
 @Service
 public class PresentationEditorService {
     private static final Logger log = LoggerFactory.getLogger(PresentationEditorService.class);
@@ -66,6 +82,18 @@ public class PresentationEditorService {
         this.clock = clock;
     }
 
+    /**
+     * Loads the effective editor document owned by a user.
+     *
+     * <p>A draft is used only when its base version still equals the published presentation
+     * version. Otherwise the editor is reconstructed from canonical {@code content_json}. The
+     * template service enriches semantic content with real PPTX shape coordinates and styles.
+     *
+     * @param userId owner resolved from the authenticated session
+     * @param id presentation identifier
+     * @return browser-facing deck with optimistic versions and editable blocks
+     * @throws GenerationException when the presentation is missing, not ready, or cannot be mapped
+     */
     @Transactional(readOnly = true)
     public EditorDeckView get(UUID userId, UUID id) {
         Presentation presentation = owned(userId, id);
@@ -87,6 +115,19 @@ public class PresentationEditorService {
         }
     }
 
+    /**
+     * Validates and stores a complete autosave snapshot under a row lock.
+     *
+     * <p>Both the published version and draft revision must match. This double comparison prevents
+     * writes from an old presentation version and serializes multiple browser tabs without relying
+     * on arrival order. The operation stores JSON only; no PPTX or revision record is created.
+     *
+     * @param userId owner resolved from the authenticated session
+     * @param id presentation identifier
+     * @param input complete client snapshot and expected versions
+     * @return acknowledged base version, incremented draft revision, and save time
+     * @throws GenerationException on ownership, state, validation, lease, or version conflict
+     */
     @Transactional
     public EditorDraftSavedView save(
             UUID userId, UUID id, SaveEditorDraftRequest input) {
@@ -111,6 +152,18 @@ public class PresentationEditorService {
                 presentation.getCurrentVersion(), revision, now.getEpochSecond());
     }
 
+    /**
+     * Stores an editor image in the presentation's private asset namespace.
+     *
+     * <p>Ownership and readiness are checked before bytes are accepted. The storage module performs
+     * content decoding and normalization, so the returned metadata describes a trusted PNG rather
+     * than browser-provided MIME information.
+     *
+     * @param userId presentation owner
+     * @param id presentation identifier used to scope storage
+     * @param upload multipart image supplied by the browser
+     * @return opaque asset metadata suitable for insertion into an editor draft
+     */
     @Transactional(readOnly = true)
     public EditorAssetView uploadImage(
             UUID userId, UUID id, MultipartFile upload) {
@@ -132,6 +185,14 @@ public class PresentationEditorService {
         }
     }
 
+    /**
+     * Resolves a private asset after checking that the requesting user owns a ready presentation.
+     *
+     * @param userId presentation owner
+     * @param id presentation identifier
+     * @param assetId opaque asset identifier
+     * @return validated local path that remains inside the presentation asset directory
+     */
     @Transactional(readOnly = true)
     public Path image(UUID userId, UUID id, UUID assetId) {
         Presentation presentation = owned(userId, id);
@@ -139,6 +200,21 @@ public class PresentationEditorService {
         return files.image(id, assetId);
     }
 
+    /**
+     * Publishes the persisted editor draft as the next PowerPoint revision.
+     *
+     * <p>The method intentionally spans two short transactions implemented by {@link
+     * PresentationTransactions}. Rendering and filesystem I/O happen between them without holding
+     * a database lock. A random lease token plus base/draft revisions prove that the same snapshot
+     * is still current when publication completes. If rendering or the final commit fails, the new
+     * file is discarded and the draft remains available for retry.
+     *
+     * @param userId presentation owner
+     * @param id presentation identifier
+     * @param baseVersion expected published version
+     * @param draftRevision exact saved draft revision to publish
+     * @return metadata for the newly published presentation version
+     */
     public PresentationView commit(
             UUID userId, UUID id, int baseVersion, long draftRevision) {
         var edit = transactions.beginEditorCommit(userId, id, baseVersion, draftRevision);
@@ -161,6 +237,16 @@ public class PresentationEditorService {
         }
     }
 
+    /**
+     * Applies a browser snapshot to the current semantic document and enforces round-trip
+     * invariants.
+     *
+     * <p>The client must return exactly the included source slides and exactly the template fields
+     * available on each slide. Repeated semantic fields must agree across occurrences. Template
+     * layout ids are validated against the source PPTX, and every image must resolve inside this
+     * presentation's asset namespace. These checks stop a crafted request from introducing unknown
+     * placeholders, foreign assets, or shape ids that the renderer cannot address.
+     */
     private PresentationEditorDraft apply(Presentation presentation, SaveEditorDraftRequest input) {
         PresentationEditorDraft current = currentDraft(presentation);
         PresentationContent content = current.content();
@@ -250,6 +336,12 @@ public class PresentationEditorService {
         return new PresentationEditorDraft(input.title().strip(), Map.copyOf(names), updated);
     }
 
+    /**
+     * Selects the valid staging snapshot or reconstructs editor state from published content.
+     *
+     * <p>An editor JSON value based on an older published version is never merged implicitly. This
+     * keeps the source of truth unambiguous after AI edits or another successful commit.
+     */
     private PresentationEditorDraft currentDraft(Presentation presentation) {
         if (presentation.getEditorJson() != null
                 && presentation.getEditorBaseVersion() != null
@@ -267,12 +359,19 @@ public class PresentationEditorService {
                 content);
     }
 
+    /** Derives an initial editor title from the primary template field, then from the topic. */
     private static String defaultTitle(Presentation presentation, PresentationContent content) {
         String title = content.fields().get("TITLE");
         if (title == null || title.isBlank()) title = presentation.getTopic().strip();
         return title.length() > 240 ? title.substring(0, 240) : title;
     }
 
+    /**
+     * Builds human-readable slide labels from title-like template fields.
+     *
+     * <p>Slide names are editor metadata and are not required for PowerPoint rendering; deriving
+     * them makes old presentations usable before they have an explicit editor draft.
+     */
     private Map<Integer, String> defaultNames(String templateId, PresentationContent content) {
         Map<Integer, List<String>> manifest = manifest(templateId);
         Map<Integer, String> names = new LinkedHashMap<>();
@@ -290,6 +389,7 @@ public class PresentationEditorService {
         return Map.copyOf(names);
     }
 
+    /** Converts the template manifest into a slide-to-field map used for exact request validation. */
     @SuppressWarnings("unchecked")
     private Map<Integer, List<String>> manifest(String templateId) {
         Map<Integer, List<String>> result = new LinkedHashMap<>();
@@ -298,17 +398,20 @@ public class PresentationEditorService {
         return result;
     }
 
+    /** Resolves a presentation only inside the authenticated owner's tenant boundary. */
     private Presentation owned(UUID userId, UUID id) {
         return presentations
                 .findByIdAndUserId(id, userId)
                 .orElseThrow(PresentationEditorService::missing);
     }
 
+    /** Requires a published source version before editor operations may proceed. */
     private static void ready(Presentation presentation) {
         if (presentation.getStatus() != SUCCEEDED)
             throw new GenerationException(GenerationError.PRESENTATION_NOT_READY);
     }
 
+    /** Throws the stable public error used for malformed editor snapshots. */
     private static void invalid() {
         throw new GenerationException(GenerationError.INVALID_CONTENT);
     }
@@ -317,6 +420,7 @@ public class PresentationEditorService {
         return new GenerationException(GenerationError.PRESENTATION_NOT_FOUND);
     }
 
+    /** Builds an authenticated API URL; storage paths never leave the backend. */
     private static String imageUrl(UUID presentationId, UUID assetId) {
         return "/api/generation/v1/presentations/"
                 + presentationId
@@ -324,6 +428,12 @@ public class PresentationEditorService {
                 + assetId;
     }
 
+    /**
+     * Resolves and verifies an image reference supplied inside draft JSON.
+     *
+     * <p>The lookup is deliberately performed during autosave, not deferred until export, so a
+     * draft cannot acknowledge a missing or cross-presentation asset.
+     */
     private PresentationContent.ImageBlock validatedImageBlock(
             UUID presentationId, SaveEditorDraftRequest.ImageBlock image) {
         UUID assetId;
@@ -343,6 +453,12 @@ public class PresentationEditorService {
                 image.height());
     }
 
+    /**
+     * Accepts only the complete set of layout ids discovered for the source slide.
+     *
+     * <p>Requiring the exact set prevents partial snapshots from silently resetting other shapes
+     * and prevents unknown ids from being persisted until a later render failure.
+     */
     private List<PresentationContent.TextLayout> validatedTextLayouts(
             String templateId,
             int slideNumber,
@@ -368,6 +484,7 @@ public class PresentationEditorService {
         return layouts;
     }
 
+    /** Removes path components and control characters before a filename becomes editor alt text. */
     private static String safeImageName(String filename) {
         if (filename == null || filename.isBlank()) return "Изображение";
         String name = filename.replace('\\', '/').replaceAll("[\\p{Cntrl}]", "");

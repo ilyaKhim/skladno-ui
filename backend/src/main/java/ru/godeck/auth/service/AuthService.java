@@ -29,6 +29,14 @@ import java.util.Base64;
 import java.util.Locale;
 import java.util.UUID;
 
+/**
+ * Transactional application service for account discovery, verification, sign-in, and recovery.
+ *
+ * <p>{@link AuthException} does not roll back the surrounding transaction because failed-attempt and
+ * lockout counters are security state that must survive an expected rejection. Infrastructure
+ * failures still roll back. Registration has a separate transaction strategy in {@link
+ * RegistrationService} to handle concurrent attempts safely.
+ */
 @Service
 @Transactional(noRollbackFor = AuthException.class)
 public class AuthService {
@@ -57,10 +65,15 @@ public class AuthService {
         this.dummyHash = passwords.encode(UUID.randomUUID().toString());
     }
 
+    /** Canonicalizes email identifiers before every lookup and uniqueness decision. */
     private static String normalize(String email) {
         return email.strip().toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * Determines whether the browser should sign in, create a password, or continue verification.
+     * A pending verification is visible only when its challenge id matches this browser session.
+     */
     @Transactional(readOnly = true)
     public AuthIdentification identify(String rawEmail, UUID challengeId) {
         String email = normalize(rawEmail);
@@ -75,7 +88,10 @@ public class AuthService {
                 .orElseGet(() -> new AuthIdentification(AuthStep.CREATE_PASSWORD, null));
     }
 
-    // Each attempt owns a separate transaction: a uniqueness failure must roll back before retry.
+    /**
+     * Starts registration in an independent transaction and resolves a concurrent first-insert race.
+     * The first failed transaction must fully roll back before retrying the winning pending row.
+     */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public UUID register(String rawEmail, String password) {
         String email = normalize(rawEmail);
@@ -89,6 +105,7 @@ public class AuthService {
         }
     }
 
+    /** Returns true only for the known pending-registration primary-key collision. */
     private static boolean isConcurrentRegistration(Throwable error) {
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {
             if (cause instanceof ConstraintViolationException violation) {
@@ -98,6 +115,11 @@ public class AuthService {
         return false;
     }
 
+    /**
+     * Validates a session-bound email code and atomically converts pending registration into a user.
+     * Failed attempts are committed and eventually lock the challenge; a successful conversion
+     * deletes the pending secret material.
+     */
     public AuthPrincipal verify(String rawEmail, String code, UUID challengeId) {
         EmailVerification pending = pending(normalize(rawEmail), challengeId);
         if (pending.getAttempts() >= AuthPolicy.MAX_FAILED_ATTEMPTS)
@@ -122,6 +144,7 @@ public class AuthService {
         return principal(user);
     }
 
+    /** Rotates the verification code after the resend cooldown and resets its expiry window. */
     public void resend(String rawEmail, UUID challengeId) {
         EmailVerification pending = pending(normalize(rawEmail), challengeId);
         int remaining = remaining(pending.getSentAt());
@@ -136,6 +159,11 @@ public class AuthService {
         mail.sendCode(pending.getEmail(), code);
     }
 
+    /**
+     * Verifies a password under row lock and persists progressive lockout state.
+     * Missing users still execute a BCrypt comparison against a dummy hash to reduce timing-based
+     * account enumeration.
+     */
     public AuthPrincipal signIn(String rawEmail, String password) {
         if (password.getBytes(StandardCharsets.UTF_8).length > AuthPolicy.PASSWORD_MAX_BYTES)
             throw new AuthException(AuthError.INVALID_CREDENTIALS);
@@ -162,6 +190,10 @@ public class AuthService {
         return principal(user);
     }
 
+    /**
+     * Issues a random, one-way-stored reset token when the account exists and cooldown has elapsed.
+     * The method otherwise returns silently so callers cannot enumerate registered addresses.
+     */
     public void requestReset(String rawEmail) {
         UserAccount user = users.findByEmailForUpdate(normalize(rawEmail)).orElse(null);
         if (user == null || user.getResetSentAt() != null && remaining(user.getResetSentAt()) > 0)
@@ -175,6 +207,10 @@ public class AuthService {
         mail.sendReset(user.getEmail(), token);
     }
 
+    /**
+     * Consumes a valid reset token and changes the password. The entity increments its credential
+     * version so all previously issued sessions fail subsequent validation.
+     */
     public void resetPassword(String token, String password) {
         checkPassword(password);
         UserAccount user = users.findByResetTokenHashForUpdate(Hashing.sha256(token)).orElse(null);
@@ -186,12 +222,14 @@ public class AuthService {
         user.resetPassword(passwords.encode(password));
     }
 
+    /** Checks that the account still exists and the session's credential version is current. */
     @Transactional(readOnly = true)
     public boolean sessionValid(AuthPrincipal principal) {
         return users.existsByIdAndCredentialsVersion(
                 principal.id(), principal.credentialsVersion());
     }
 
+    /** Resolves a pending verification only when email and browser challenge both match. */
     private EmailVerification pending(String email, UUID challengeId) {
         if (challengeId == null) throw new AuthException(AuthError.INVALID_CODE);
         return verifications
@@ -213,6 +251,7 @@ public class AuthService {
         return Math.toIntExact(Math.ceilDiv(millis, Duration.ofSeconds(1).toMillis()));
     }
 
+    /** Enforces password length in characters and encoded bytes before expensive hashing. */
     private void checkPassword(String password) {
         if (password.length() < AuthPolicy.PASSWORD_MIN_LENGTH
                 || password.getBytes(StandardCharsets.UTF_8).length > AuthPolicy.PASSWORD_MAX_BYTES)

@@ -25,7 +25,14 @@ import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-// Added only to the security chain: making it a servlet component would register it twice.
+/**
+ * Per-request session revocation and coarse IP rate-limit filter for authentication endpoints.
+ *
+ * <p>The filter is instantiated only by {@link SecurityConfig}; registering it as a servlet
+ * component would execute it twice. In normal mode it invalidates sessions whose credential version
+ * became stale after a password reset. The development bypass installs a fixed local principal and
+ * is permitted only on a loopback-bound server.
+ */
 final class SessionSecurityFilter extends OncePerRequestFilter {
     private static final AuthPrincipal DEBUG_PRINCIPAL =
             new AuthPrincipal(
@@ -44,6 +51,11 @@ final class SessionSecurityFilter extends OncePerRequestFilter {
         this.devBypass = devBypass;
     }
 
+    /**
+     * Refreshes authentication validity, rate-limits auth POST requests, and then continues the
+     * security chain. Rate limiting occurs before controller work and never trusts forwarded IP
+     * headers supplied by a client.
+     */
     @Override
     protected void doFilterInternal(
             HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -71,6 +83,7 @@ final class SessionSecurityFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
+    /** Maintains a bounded in-memory fixed window per directly connected remote address. */
     private boolean rateLimited(HttpServletRequest request, HttpServletResponse response)
             throws IOException {
         Instant now = clock.instant();
@@ -100,6 +113,7 @@ final class SessionSecurityFilter extends OncePerRequestFilter {
         return false;
     }
 
+    /** Writes the small stable JSON rejection used before MVC exception handling is available. */
     private void reject(HttpServletResponse response) throws IOException {
         response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);

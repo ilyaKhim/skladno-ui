@@ -7,11 +7,21 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Builds the same structured request for preview and actual generation. */
+/**
+ * Builds the canonical OpenAI structured-output request for both preview and actual generation.
+ *
+ * <p>Keeping request construction pure prevents the diagnostics preview from drifting from the paid
+ * call and makes the strict JSON Schema independently testable.
+ */
 @Component
 public class PresentationRequestFactory {
     private static final int MAX_OUTPUT_TOKENS = 12_000;
 
+    /**
+     * Creates a Responses API payload whose schema requires every template field and slide decision.
+     * Strict objects reject invented keys, and the slide-number enum prevents references to slides
+     * absent from the selected template.
+     */
     public Map<String, Object> create(
             String topic,
             Map<String, Integer> fields,
@@ -57,6 +67,7 @@ public class PresentationRequestFactory {
                 false);
     }
 
+    /** Builds a strict JSON object schema with every declared property required. */
     private static Map<String, Object> objectSchema(Map<String, Object> properties) {
         return Map.of(
                 "type",

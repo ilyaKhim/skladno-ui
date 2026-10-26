@@ -39,6 +39,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Application facade for presentation discovery, creation, history, downloads, and AI edits.
+ *
+ * <p>Fast database-only operations are handled directly here. Operations that combine a database
+ * state transition with slow AI/file work are split through {@link PresentationTransactions}: the
+ * transaction layer reserves an immutable input snapshot, this service performs external work, and
+ * a second transaction conditionally publishes the result. That boundary prevents database locks
+ * from being held while calling a provider or writing a PPTX.
+ */
 @Service
 public class PresentationService {
     private static final String EDIT_RELEASE_FAILURE_LOG = "Could not release edit {}";
@@ -78,18 +87,25 @@ public class PresentationService {
         this.aiHistory = aiHistory;
     }
 
+    /** Exposes process readiness and whether paid OpenAI generation is actually configured. */
     public Map<String, Object> health() {
         return Map.of("status", "ok", "openai_enabled", generator.enabled(), "engine", "java");
     }
 
+    /** Returns the template catalog consumed by the template-selection UI. */
     public Map<String, Object> catalog() {
         return Map.of("items", templates.catalogs());
     }
 
+    /** Returns the curated AI model catalog and defaults accepted by generation endpoints. */
     public Map<String, Object> models() {
         return models.catalog();
     }
 
+    /**
+     * Returns the exact field and slide contract for manual clients and prompt inspection.
+     * Resolving the template first also turns an unknown id into the normal public error.
+     */
     public Map<String, Object> context(String templateId) {
         checkTemplate(templateId);
         return Map.of(
@@ -101,6 +117,10 @@ public class PresentationService {
                 templates.description(templateId));
     }
 
+    /**
+     * Builds, but does not send, the structured provider request. This makes prompt/schema changes
+     * inspectable and testable without spending tokens.
+     */
     public Map<String, Object> previewPrompt(String templateId, String topic, String model) {
         checkTemplate(templateId);
         checkTopic(topic);
@@ -111,6 +131,14 @@ public class PresentationService {
                 models.resolve(model));
     }
 
+    /**
+     * Creates a presentation aggregate after validating mode, model, quotas, and idempotency.
+     *
+     * <p>OpenAI jobs enter {@code QUEUED}; manual jobs enter {@code AWAITING_CONTENT}. The method
+     * stores only queue metadata and returns quickly so expensive generation remains asynchronous.
+     * A repeated idempotency key returns the original aggregate only when the normalized request
+     * hash matches.
+     */
     @Transactional
     public PresentationView create(
             UUID userId, String templateId, String topic, String mode, String key, String model) {
@@ -169,6 +197,10 @@ public class PresentationService {
                         hash);
     }
 
+    /**
+     * Validates the complete semantic document supplied for a manual presentation and enqueues it.
+     * The row is locked so two submissions cannot both transition the same awaiting job.
+     */
     @Transactional
     public PresentationView submitManual(UUID userId, UUID id, PresentationContent content) {
         Presentation p =
@@ -180,6 +212,7 @@ public class PresentationService {
         return PresentationView.from(p);
     }
 
+    /** Lists only the caller's presentations using a bounded offset page. */
     @Transactional(readOnly = true)
     public PresentationPage list(UUID userId, int limit, int offset) {
         int size = Math.clamp(limit, 1, PresentationPolicy.MAX_PAGE_SIZE);
@@ -193,11 +226,13 @@ public class PresentationService {
                 start);
     }
 
+    /** Returns one caller-owned presentation without exposing another tenant's existence. */
     @Transactional(readOnly = true)
     public PresentationView get(UUID userId, UUID id) {
         return PresentationView.from(owned(userId, id));
     }
 
+    /** Resolves the current successful PPTX through the storage containment boundary. */
     @Transactional(readOnly = true)
     public Path download(UUID userId, UUID id) {
         Presentation p = owned(userId, id);
@@ -206,6 +241,7 @@ public class PresentationService {
         return files.existing(p.getOutputPath());
     }
 
+    /** Resolves one immutable historical PPTX version after ownership verification. */
     @Transactional(readOnly = true)
     public Path downloadVersion(UUID userId, UUID id, int version) {
         owned(userId, id);
@@ -217,6 +253,7 @@ public class PresentationService {
         return files.existing(revision.getOutputPath());
     }
 
+    /** Cancels only work that has not begun running or rendering. */
     @Transactional
     public PresentationView cancel(UUID userId, UUID id) {
         Presentation p =
@@ -227,6 +264,7 @@ public class PresentationService {
         return PresentationView.from(p);
     }
 
+    /** Returns immutable published versions in version order for the history UI. */
     @Transactional(readOnly = true)
     public List<PresentationRevisionView> versions(UUID userId, UUID id) {
         owned(userId, id);
@@ -235,6 +273,14 @@ public class PresentationService {
                 .toList();
     }
 
+    /**
+     * Applies a natural-language edit as a new immutable presentation version.
+     *
+     * <p>The edit lease captures the current version and prevents concurrent commits. AI receives
+     * the published semantic snapshot, while editor-created text and image blocks are copied onto
+     * the newly generated field/slide plan. Rendering happens outside a transaction. Publication
+     * succeeds only if the lease and base version still match; otherwise the orphan file is removed.
+     */
     public ChatReply chat(UUID userId, UUID id, String message, String model) {
         if (!generator.enabled()) throw new GenerationException(GenerationError.CHAT_DISABLED);
         if (message == null
@@ -281,11 +327,16 @@ public class PresentationService {
         }
     }
 
+    /** Returns redacted provider-call diagnostics after presentation ownership is established. */
     public List<PresentationAiCallView> aiCalls(UUID userId, UUID id) {
         owned(userId, id);
         return aiHistory.list(id);
     }
 
+    /**
+     * Keeps user-created editor shapes when AI rewrites template fields and inclusion decisions.
+     * Generated semantic choices win, while per-slide freeform content remains user-owned.
+     */
     private static PresentationContent preserveEditorBlocks(
             PresentationContent previous, PresentationContent generated) {
         Map<Integer, PresentationContent.Slide> bySlide = new LinkedHashMap<>();
@@ -311,6 +362,7 @@ public class PresentationService {
                         .toList());
     }
 
+    /** Centralizes tenant ownership lookup so callers receive one non-enumerating missing error. */
     private Presentation owned(UUID userId, UUID id) {
         return presentations
                 .findByIdAndUserId(id, userId)
@@ -321,6 +373,7 @@ public class PresentationService {
         return new GenerationException(GenerationError.PRESENTATION_NOT_FOUND);
     }
 
+    /** Verifies that an idempotent retry represents the same normalized creation request. */
     private static PresentationView idempotent(Presentation p, String hash) {
         if (!p.getRequestHash().equals(hash))
             throw new GenerationException(GenerationError.IDEMPOTENCY_CONFLICT);
