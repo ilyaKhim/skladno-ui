@@ -10,6 +10,11 @@ import ru.godeck.presentation.model.PresentationContent;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * Converts a successful OpenAI Responses API envelope into the application's semantic content.
+ * Provider-envelope validation stays here so {@link PresentationContentCodec} only needs to parse
+ * the inner application JSON.
+ */
 @Component
 public class OpenAiResponseReader {
     private static final String COMPLETED_STATUS = "completed";
@@ -22,6 +27,11 @@ public class OpenAiResponseReader {
         this.codec = codec;
     }
 
+    /**
+     * Requires a completed response, concatenates all output-text parts, and decodes their JSON.
+     * Multiple parts are supported because the provider may segment output independently of the
+     * structured document boundary.
+     */
     public PresentationContent read(String body) {
         JsonNode response = body == null ? null : json.readTree(body);
         if (response == null || !COMPLETED_STATUS.equals(response.path("status").asText())) {

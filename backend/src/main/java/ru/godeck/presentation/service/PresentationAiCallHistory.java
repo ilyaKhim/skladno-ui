@@ -15,6 +15,13 @@ import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Persists an audit trail for paid AI calls independently of presentation transactions.
+ *
+ * <p>Each boundary uses {@code REQUIRES_NEW}, so no database connection or row lock remains open
+ * during provider I/O. Stored bodies are expected to be redacted by the caller; this service owns
+ * timing, outcome recording, and retrieval order.
+ */
 @Service
 public class PresentationAiCallHistory {
     private static final Logger log = LoggerFactory.getLogger(PresentationAiCallHistory.class);
@@ -26,7 +33,12 @@ public class PresentationAiCallHistory {
         this.clock = clock;
     }
 
-    // Short independent transactions: no database connection is held during the provider request.
+    /**
+     * Creates and flushes a call record before provider I/O begins.
+     *
+     * <p>Flushing proves that auditing is available before the application spends tokens and gives
+     * the caller a durable correlation id for logs and the eventual response.
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public UUID start(AiCallContext context, String model, String requestBody) {
         var call =
@@ -41,6 +53,7 @@ public class PresentationAiCallHistory {
         return call.getId();
     }
 
+    /** Completes a call record with response diagnostics, status, duration, and stable error code. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void complete(UUID id, String responseBody, Integer httpStatus, String errorCode) {
         var call = calls.findById(id).orElseThrow();
@@ -57,6 +70,7 @@ public class PresentationAiCallHistory {
                 errorCode);
     }
 
+    /** Lists the newest provider calls first for one already-authorized presentation. */
     @Transactional(readOnly = true)
     public List<PresentationAiCallView> list(UUID presentationId) {
         return calls.findByPresentationIdOrderByStartedAtDesc(presentationId).stream()

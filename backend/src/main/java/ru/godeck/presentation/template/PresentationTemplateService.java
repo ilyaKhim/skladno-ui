@@ -35,6 +35,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.function.Function;
 
+/**
+ * Owns the contract between semantic presentation content and the physical PPTX templates.
+ *
+ * <p>At startup the service loads every bundled template, verifies its sidecar metadata, discovers
+ * {@code {{FIELD}}} markers, and builds an immutable registry. During a request it can expose that
+ * registry to the AI/editor or render a validated {@link PresentationContent} into a new PPTX.
+ * Keeping template inspection and rendering together is intentional: field limits, source slide
+ * numbers, editor layout identifiers, and the final Apache POI mutations must all describe the same
+ * template revision.
+ */
 @Service
 public class PresentationTemplateService {
     private static final String TEMPLATE_MARKERS_MISSING = "The template has no {{FIELD}} markers.";
@@ -98,20 +108,30 @@ public class PresentationTemplateService {
         templates = java.util.Collections.unmodifiableMap(loaded);
     }
 
+    /** Returns public metadata for every selectable template in stable UI order. */
     public List<Map<String, Object>> catalogs() {
         return TEMPLATE_IDS.stream().map(this::catalog).toList();
     }
 
+    /**
+     * Resolves an internal template definition and converts unknown identifiers into a stable API
+     * error instead of leaking a map lookup failure.
+     */
     private Template get(String id) {
         Template template = id == null ? null : templates.get(id);
         if (template == null) throw new GenerationException(GenerationError.TEMPLATE_NOT_FOUND);
         return template;
     }
 
+    /** Returns a defensive copy of the JSON description used in prompts and template discovery. */
     public JsonNode description(String id) {
         return get(id).description().deepCopy();
     }
 
+    /**
+     * Adds template-specific design guidance to the user's topic before it is sent to the model.
+     * This gives generation enough context to choose slides and write copy that fits the template.
+     */
     public String withDescription(String id, String topic) {
         JsonNode description = get(id).description();
         return description.isEmpty() ? topic : TEMPLATE_BRIEF.formatted(description, topic);
@@ -125,6 +145,7 @@ public class PresentationTemplateService {
             List<Map<String, Object>> slideManifest,
             Map<Integer, List<String>> textLayoutIds) {}
 
+    /** Returns the default template catalog entry retained for backward-compatible clients. */
     public Map<String, Object> catalog() {
         return catalog(TEMPLATE_ID);
     }
@@ -155,26 +176,41 @@ public class PresentationTemplateService {
                 "manual");
     }
 
+    /** Returns discovered field names and maximum character counts for the default template. */
     public Map<String, Integer> fields() {
         return fields(TEMPLATE_ID);
     }
 
+    /**
+     * Returns the immutable field contract for a template. The same contract drives JSON Schema,
+     * manual content validation, editor values, and marker replacement.
+     */
     public Map<String, Integer> fields(String id) {
         return get(id).fields();
     }
 
+    /** Returns a defensive copy of the default binary template. */
     public byte[] source() {
         return get(TEMPLATE_ID).source().clone();
     }
 
+    /** Returns the source-slide/field manifest for the default template. */
     public List<Map<String, Object>> slideManifest() {
         return slideManifest(TEMPLATE_ID);
     }
 
+    /**
+     * Returns the source-slide manifest supplied to AI generation so slide decisions use real slide
+     * numbers and only fields that occur on each slide.
+     */
     public List<Map<String, Object>> slideManifest(String id) {
         return get(id).slideManifest();
     }
 
+    /**
+     * Returns stable identifiers for editable marker shapes on one source slide. These identifiers
+     * let an editor draft move template-owned shapes without storing Apache POI object identities.
+     */
     public List<String> textLayoutIds(String id, int slideNumber) {
         return get(id).textLayoutIds().getOrDefault(slideNumber, List.of());
     }
@@ -215,23 +251,33 @@ public class PresentationTemplateService {
         return java.util.Collections.unmodifiableMap(result);
     }
 
+    /** Validates and truncates values against the default template field contract. */
     public Map<String, String> normalizeValues(Map<String, String> values) {
         return validator.normalizeValues(values, fields());
     }
 
+    /** Validates semantic content against the default template. */
     public PresentationContent normalize(PresentationContent content) {
         return normalize(TEMPLATE_ID, content);
     }
 
+    /**
+     * Produces the canonical content snapshot for a template.
+     *
+     * <p>All entry points call this before rendering or exposing editor state so malformed geometry,
+     * duplicate block identifiers, invalid slide decisions, and overlong text cannot reach POI.
+     */
     public PresentationContent normalize(String id, PresentationContent content) {
         Template template = get(id);
         return validator.normalize(content, template.fields(), template.slideCount());
     }
 
+    /** Renders content with the default template and no external image assets. */
     public byte[] render(PresentationContent content) throws Exception {
         return render(TEMPLATE_ID, content);
     }
 
+    /** Renders content with the selected template and rejects unresolved image assets. */
     public byte[] render(String id, PresentationContent content) throws Exception {
         return render(
                 id,
@@ -241,6 +287,14 @@ public class PresentationTemplateService {
                 });
     }
 
+    /**
+     * Materializes semantic content as a PPTX byte array.
+     *
+     * <p>The renderer removes excluded source slides, applies the semantic list order, preserves the
+     * hidden flag, moves template-owned text shapes, replaces markers, and finally adds user-created
+     * text/image shapes. Images are resolved by opaque asset id so the template layer never needs to
+     * know where tenant files are stored.
+     */
     public byte[] render(
             String id, PresentationContent content, Function<String, byte[]> imageResolver)
             throws Exception {
@@ -304,6 +358,14 @@ public class PresentationTemplateService {
         }
     }
 
+    /**
+     * Builds the browser editor projection from the same template and semantic snapshot used for
+     * export.
+     *
+     * <p>Template marker shapes become editable text blocks with percentage geometry; user-created
+     * blocks are appended unchanged. Using one projection method prevents the canvas and exported
+     * PPTX from developing different coordinate systems or shape identities.
+     */
     public EditorDeckView editorDeck(
             String templateId,
             java.util.UUID presentationId,
@@ -445,6 +507,7 @@ public class PresentationTemplateService {
         return new XMLSlideShow(new ByteArrayInputStream(get(id).source()));
     }
 
+    /** Applies percentage-based overrides to template-owned marker shapes before text replacement. */
     private static void applyTextLayouts(
             XSLFSlide slide,
             int slideNumber,
@@ -476,6 +539,7 @@ public class PresentationTemplateService {
         return "slide-" + slideNumber + "-layout-" + layoutIndex;
     }
 
+    /** Creates a new PPTX text box for a user-created editor block. */
     private static void addTextBlock(
             XSLFSlide slide,
             PresentationContent.TextBlock block,
@@ -511,6 +575,7 @@ public class PresentationTemplateService {
         paragraph.setSpaceAfter(0d);
     }
 
+    /** Resolves a normalized asset and creates a positioned PNG picture shape in the slide. */
     private static void addImageBlock(
             XMLSlideShow show,
             XSLFSlide slide,
@@ -551,6 +616,10 @@ public class PresentationTemplateService {
         return result;
     }
 
+    /**
+     * Flattens top-level and grouped shapes in document order. The order is part of the stable
+     * editor layout-id contract, so both manifest creation and rendering use this method.
+     */
     private static List<XSLFShape> allShapes(List<XSLFShape> shapes) {
         List<XSLFShape> result = new ArrayList<>();
         for (XSLFShape shape : shapes) {
@@ -636,6 +705,10 @@ public class PresentationTemplateService {
         };
     }
 
+    /**
+     * Replaces markers after concatenating paragraph runs, then retains formatting from the first
+     * run. Concatenation is necessary because PowerPoint may split one marker across XML runs.
+     */
     private static void replaceParagraph(XSLFTextParagraph paragraph, Map<String, String> values) {
         List<XSLFTextRun> runs = paragraph.getTextRuns();
         if (runs.isEmpty()) return;

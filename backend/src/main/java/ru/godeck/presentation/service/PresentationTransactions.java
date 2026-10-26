@@ -24,6 +24,15 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Defines the short transactional boundaries around long-running presentation work.
+ *
+ * <p>AI calls, Apache POI rendering, and filesystem writes must not hold database locks. This
+ * service therefore claims or reserves work in one transaction, lets an orchestrator perform slow
+ * work outside the transaction, and verifies the captured token/version again in a final
+ * transaction. The records returned by begin methods are immutable snapshots that carry exactly
+ * the evidence required for safe completion.
+ */
 @Service
 @Transactional
 public class PresentationTransactions {
@@ -44,6 +53,15 @@ public class PresentationTransactions {
         this.clock = clock;
     }
 
+    /**
+     * Atomically claims the next queued presentation for one worker.
+     *
+     * <p>Before claiming, stale {@code running} jobs are failed so a process crash cannot block the
+     * queue forever. The repository uses {@code FOR UPDATE SKIP LOCKED}; multiple workers can claim
+     * different rows without waiting for each other.
+     *
+     * @return immutable job snapshot, or empty when the queue has no claimable row
+     */
     public Optional<Job> claim() {
         Instant now = clock.instant();
         presentations.failInterrupted(
@@ -67,6 +85,17 @@ public class PresentationTransactions {
                         });
     }
 
+    /**
+     * Publishes the initial generated file and creates version one in the same transaction.
+     *
+     * <p>Coupling presentation state and revision insertion guarantees that a succeeded project
+     * always has a matching immutable revision record.
+     *
+     * @param job claimed work item
+     * @param json normalized semantic content that produced the file
+     * @param path safely written PPTX path
+     * @param slideCount number of included slides
+     */
     public void complete(Job job, String json, String path, int slideCount) {
         Presentation p =
                 presentations
@@ -95,6 +124,12 @@ public class PresentationTransactions {
                         clock.instant()));
     }
 
+    /**
+     * Marks a claimed job failed only while it is still running.
+     *
+     * <p>The state guard prevents a late worker error from overwriting a terminal state written by
+     * another recovery path.
+     */
     public void fail(UUID id, String code) {
         presentations
                 .findForCompletion(id)
@@ -102,6 +137,18 @@ public class PresentationTransactions {
                 .ifPresent(p -> p.fail(code, clock.instant()));
     }
 
+    /**
+     * Reserves an AI edit and captures the published document it is allowed to modify.
+     *
+     * <p>The row is locked with fail-fast semantics. Existing editor drafts block AI edits because
+     * generating from older {@code content_json} would discard unpublished manual work. The random
+     * token and base version later prevent stale results from committing.
+     *
+     * @param userId owner of the presentation
+     * @param id presentation being edited
+     * @param requestedModel optional model override
+     * @return immutable AI edit snapshot used outside the transaction
+     */
     public Edit beginEdit(UUID userId, UUID id, String requestedModel) {
         Presentation p;
         try {
@@ -151,6 +198,16 @@ public class PresentationTransactions {
                 p.getContentJson());
     }
 
+    /**
+     * Atomically publishes an AI edit if its lease token and base version are still current.
+     *
+     * @param edit reservation returned by {@link #beginEdit(UUID, UUID, String)}
+     * @param message user instruction recorded in revision history
+     * @param json semantic content rendered into the new file
+     * @param path new PPTX path
+     * @param count included slide count
+     * @return updated presentation view
+     */
     public PresentationView completeEdit(
             Edit edit, String message, String json, String path, int count) {
         Presentation p =
@@ -178,6 +235,11 @@ public class PresentationTransactions {
         return PresentationView.from(p);
     }
 
+    /**
+     * Releases a failed AI edit only when the same token still owns the lease.
+     *
+     * <p>The token check prevents cleanup from an old request from clearing a newer reservation.
+     */
     public void releaseEdit(Edit edit) {
         presentations
                 .findForCompletion(edit.id())
@@ -185,6 +247,19 @@ public class PresentationTransactions {
                 .ifPresent(Presentation::clearEdit);
     }
 
+    /**
+     * Reserves publication of one exact editor draft revision.
+     *
+     * <p>Published version, draft base version, and monotonic draft revision are checked together.
+     * This closes both ordinary stale-write races and the ABA case where a draft is cleared and
+     * recreated while an earlier commit is still rendering.
+     *
+     * @param userId owner of the presentation
+     * @param id presentation being published
+     * @param expectedBaseVersion published version observed by the browser
+     * @param expectedDraftRevision exact autosave revision selected for export
+     * @return immutable commit snapshot and lease token
+     */
     public EditorCommit beginEditorCommit(
             UUID userId, UUID id, int expectedBaseVersion, long expectedDraftRevision) {
         Presentation p;
@@ -231,6 +306,13 @@ public class PresentationTransactions {
                 p.getEditorJson());
     }
 
+    /**
+     * Publishes a rendered editor snapshot if no version, revision, or lease changed meanwhile.
+     *
+     * <p>Success updates canonical content, increments the published version, records an immutable
+     * revision, clears the draft, and bumps the draft revision so stale clients cannot reuse an old
+     * identifier.
+     */
     public PresentationView completeEditorCommit(
             EditorCommit edit, String json, String path, int count) {
         Presentation p =
@@ -260,6 +342,7 @@ public class PresentationTransactions {
         return PresentationView.from(p);
     }
 
+    /** Releases a failed editor commit without clearing a lease acquired by another request. */
     public void releaseEditorCommit(EditorCommit edit) {
         presentations
                 .findForCompletion(edit.id())
@@ -275,6 +358,16 @@ public class PresentationTransactions {
         return new GenerationException(GenerationError.PRESENTATION_NOT_FOUND);
     }
 
+    /**
+     * Immutable queue claim consumed by {@code PresentationWorker} outside a transaction.
+     *
+     * @param id presentation identifier
+     * @param templateId selected immutable template id
+     * @param topic normalized user brief
+     * @param mode AI or manual content source
+     * @param model selected AI model, retained for manual jobs for aggregate consistency
+     * @param contentJson manual content snapshot, or {@code null} for AI generation
+     */
     public record Job(
             UUID id,
             String templateId,
@@ -283,6 +376,18 @@ public class PresentationTransactions {
             String model,
             String contentJson) {}
 
+    /**
+     * Immutable AI-edit reservation carrying the lease token and published source snapshot.
+     *
+     * @param id presentation identifier
+     * @param userId owning tenant identifier
+     * @param token random lease ownership proof
+     * @param baseVersion exact published version being edited
+     * @param templateId selected immutable template id
+     * @param topic original presentation topic
+     * @param model resolved model for this edit
+     * @param contentJson canonical published semantic snapshot
+     */
     public record Edit(
             UUID id,
             UUID userId,
@@ -293,6 +398,18 @@ public class PresentationTransactions {
             String model,
             String contentJson) {}
 
+    /**
+     * Immutable editor-commit reservation carrying the exact saved draft to render.
+     *
+     * @param id presentation identifier
+     * @param userId owning tenant identifier
+     * @param token random lease ownership proof
+     * @param baseVersion exact published version from which the draft was derived
+     * @param draftRevision exact monotonic autosave revision selected for publication
+     * @param templateId selected immutable template id
+     * @param model model metadata retained on the presentation aggregate
+     * @param editorJson complete persisted draft captured before rendering
+     */
     public record EditorCommit(
             UUID id,
             UUID userId,

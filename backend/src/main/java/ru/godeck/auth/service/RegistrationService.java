@@ -18,6 +18,11 @@ import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
 
+/**
+ * Owns the lock-and-flush transaction for creating or refreshing pending email registrations.
+ * It is separate from {@link AuthService} so a uniqueness collision can roll back completely before
+ * the outer service retries against the row created by a concurrent request.
+ */
 @Service
 public class RegistrationService {
     private final EmailVerificationRepository verifications;
@@ -40,6 +45,13 @@ public class RegistrationService {
         this.clock = clock;
     }
 
+    /**
+     * Persists password/code hashes and sends one verification code for a registration attempt.
+     *
+     * <p>The pending row is flushed before SMTP. Therefore a request that loses a concurrent insert
+     * cannot send a second usable code. Existing rows are updated only after the cooldown, while a
+     * just-completed account is rejected after the lock-aware lookup.
+     */
     @Transactional
     public UUID register(String email, String password) {
         EmailVerification pending = verifications.findByEmail(email).orElse(null);

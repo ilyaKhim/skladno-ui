@@ -2,6 +2,9 @@
 
 Java 26, Spring Boot 4.1.1, Spring Data JPA/Hibernate, PostgreSQL, Flyway.
 
+Sequence-, state- и component-диаграммы основных сценариев находятся в
+[application-processes-uml.md](application-processes-uml.md).
+
 ## Пакеты и слои
 
 ```text

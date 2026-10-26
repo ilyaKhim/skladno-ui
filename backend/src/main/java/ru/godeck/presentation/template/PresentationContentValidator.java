@@ -14,7 +14,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-/** Validates slide decisions and field values without loading or rendering a PPTX. */
+/**
+ * Validates and canonicalizes the semantic document shared by AI generation, the visual editor,
+ * and PPTX rendering.
+ *
+ * <p>The validator intentionally has no Apache POI dependency. It is therefore cheap enough to run
+ * at every trust boundary and gives every producer the same limits for text, geometry, identifiers,
+ * and template fields before any file work begins.
+ */
 @Component
 public class PresentationContentValidator {
     private static final String FIELDS_MISMATCH = "Fields do not match the template.";
@@ -29,6 +36,13 @@ public class PresentationContentValidator {
     private static final Set<String> TEXT_ALIGNS = Set.of("left", "center", "right");
     private static final Set<String> TEXT_COLORS = Set.of("ink", "muted", "brand");
 
+    /**
+     * Returns an immutable, canonical snapshot or a public {@code INVALID_CONTENT} error.
+     *
+     * <p>Every source slide must occur exactly once, while {@code include} decides whether it belongs
+     * in the output and list order decides the output order. Block identifiers are unique across the
+     * full deck because the frontend uses them as stable drag/edit keys.
+     */
     public PresentationContent normalize(
             PresentationContent content, Map<String, Integer> fields, int slideCount) {
         try {
@@ -72,6 +86,7 @@ public class PresentationContentValidator {
         }
     }
 
+    /** Validates user-created text blocks and enforces deck-wide identifier uniqueness. */
     private static List<PresentationContent.TextBlock> normalizeTextBlocks(
             List<PresentationContent.TextBlock> blocks, Set<String> ids) {
         if (blocks.size() > MAX_TEXT_BLOCKS_PER_SLIDE) throw new IllegalArgumentException();
@@ -107,6 +122,7 @@ public class PresentationContentValidator {
         return true;
     }
 
+    /** Validates image references and geometry without reading the underlying asset. */
     private static List<PresentationContent.ImageBlock> normalizeImageBlocks(
             List<PresentationContent.ImageBlock> blocks, Set<String> ids) {
         if (blocks.size() > MAX_IMAGE_BLOCKS_PER_SLIDE) throw new IllegalArgumentException();
@@ -139,6 +155,10 @@ public class PresentationContentValidator {
                 && y + height <= 100.001;
     }
 
+    /**
+     * Validates moves of template-owned text shapes. Layout ids only need to be unique per slide
+     * because their source-slide number is embedded in the id.
+     */
     private static List<PresentationContent.TextLayout> normalizeTextLayouts(
             List<PresentationContent.TextLayout> layouts) {
         if (layouts.size() > MAX_TEXT_LAYOUTS_PER_SLIDE) throw new IllegalArgumentException();
@@ -170,6 +190,10 @@ public class PresentationContentValidator {
         }
     }
 
+    /**
+     * Requires exactly the fields discovered from the template and applies per-shape text limits.
+     * Rejecting marker-like text prevents a second accidental substitution pass during rendering.
+     */
     public Map<String, String> normalizeValues(
             Map<String, String> values, Map<String, Integer> fields) {
         if (!values.keySet().equals(fields.keySet()))
@@ -185,6 +209,10 @@ public class PresentationContentValidator {
         return normalized;
     }
 
+    /**
+     * Shortens overlong text at a useful word boundary and keeps UTF-16 surrogate pairs intact.
+     * Truncation, instead of rejection, makes AI output resilient while still protecting layouts.
+     */
     private static String limit(String value, int max) {
         if (value.length() <= max) return value;
         if (max <= TemplateTextPolicy.MIN_LENGTH_FOR_ELLIPSIS)
