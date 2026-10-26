@@ -10,8 +10,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.model.PresentationContent;
+import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.template.PresentationTemplateService;
 
+import javax.imageio.ImageIO;
+
+import java.awt.Color;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
@@ -82,6 +88,63 @@ class PresentationFilesTest {
         files.discard(output);
         files.discard(null);
         assertThat(Files.exists(output)).isFalse();
+    }
+
+    @Test
+    void uploadedImagesAreValidatedNormalizedAndScopedToTheirPresentation() throws Exception {
+        UUID presentationId = UUID.randomUUID();
+        var stored = files.storeImage(presentationId, png(12, 7));
+
+        assertThat(stored.width()).isEqualTo(12);
+        assertThat(stored.height()).isEqualTo(7);
+        assertThat(files.image(presentationId, stored.id())).exists();
+        assertThat(files.imageBytes(presentationId, stored.id()))
+                .startsWith((byte) 0x89, (byte) 0x50, (byte) 0x4e, (byte) 0x47);
+        assertThatThrownBy(() -> files.image(UUID.randomUUID(), stored.id()))
+                .isInstanceOf(GenerationException.class)
+                .extracting(e -> ((GenerationException) e).code())
+                .isEqualTo("image_not_found");
+    }
+
+    @Test
+    void rejectsEmptyUndecodableAndUnsupportedImages() throws Exception {
+        for (byte[] invalid : List.of(new byte[0], "not an image".getBytes(), image(2, 2, "gif")))
+            assertImageError(invalid, "invalid_image");
+        assertImageError(null, "invalid_image");
+    }
+
+    @Test
+    void rejectsUploadsAboveTheByteLimitBeforeDecoding() {
+        assertImageError(
+                new byte[PresentationPolicy.MAX_IMAGE_UPLOAD_BYTES + 1], "image_limit");
+    }
+
+    @Test
+    void rejectsImagesAboveTheDimensionLimitBeforeFullDecode() throws Exception {
+        assertImageError(
+                png(PresentationPolicy.MAX_IMAGE_DIMENSION + 1, 1), "image_limit");
+    }
+
+    private static byte[] png(int width, int height) throws IOException {
+        return image(width, height, "png");
+    }
+
+    private static byte[] image(int width, int height, String format) throws IOException {
+        var image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        var graphics = image.createGraphics();
+        graphics.setColor(new Color(0x33, 0x5c, 0xc5));
+        graphics.fillRect(0, 0, width, height);
+        graphics.dispose();
+        var output = new ByteArrayOutputStream();
+        ImageIO.write(image, format, output);
+        return output.toByteArray();
+    }
+
+    private void assertImageError(byte[] bytes, String code) {
+        assertThatThrownBy(() -> files.storeImage(UUID.randomUUID(), bytes))
+                .isInstanceOf(GenerationException.class)
+                .extracting(e -> ((GenerationException) e).code())
+                .isEqualTo(code);
     }
 
     private void assertMissing(String path) {

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowDownToLine, LoaderCircle } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowDownToLine, LoaderCircle, Pencil } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { AiCallHistory } from '@/components/studio/ai-call-history'
 import { generationApi, loadAiCalls } from '@/lib/generation-client'
@@ -99,16 +100,25 @@ export function PresentationCard({
           {job.slide_count ? ` · ${job.slide_count} слайдов` : ''}
         </span>
         {job.status === 'succeeded' && job.download_url && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              if (job.download_url) window.location.assign(job.download_url)
-            }}
-          >
-            <ArrowDownToLine className="mr-2 size-4" />
-            Скачать PPTX
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Link
+              href={`/studio/editor/?presentation=${encodeURIComponent(job.id)}`}
+              className={buttonVariants({ size: 'sm' })}
+            >
+              <Pencil className="mr-2 size-4" />
+              Редактировать
+            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (job.download_url) window.location.assign(job.download_url)
+              }}
+            >
+              <ArrowDownToLine className="mr-2 size-4" />
+              Скачать PPTX
+            </Button>
+          </div>
         )}
       </div>
       {job.error_code && <p className="mt-3 text-sm text-destructive">{job.error_code}</p>}

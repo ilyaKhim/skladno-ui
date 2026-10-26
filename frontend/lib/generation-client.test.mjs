@@ -99,3 +99,56 @@ test('closing the AI panel cancels its in-flight request instead of returning la
   controller.abort()
   await assert.rejects(pending, error => error.name === 'AbortError')
 })
+
+test('editor draft and commit use optimistic versions and protected mutation endpoints', async () => {
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    calls.push({ url, init })
+    return json(url.endsWith('/commit') ? { version: 3 } : { base_version: 2, draft_revision: 8, saved_at: 1 })
+  }
+  const draft = {
+    base_version: 2,
+    draft_revision: 7,
+    title: 'План',
+    slides: [{
+      source_slide_number: 3,
+      name: 'Итоги',
+      hidden: true,
+      blocks: [{ field_key: 'TITLE', text: 'Новый текст' }],
+      layouts: [{ id: 'slide-3-layout-1', x: 12, y: 18, width: 36, height: 14 }],
+      custom_blocks: [{
+        id: 'text-1', text: 'Новый блок', x: 12, y: 18, width: 36, height: 14,
+        font_size: 24, weight: 400, align: 'left', color: 'ink',
+      }],
+      images: [{ id: 'image-1', asset_id: 'asset-1', alt: 'График', x: 10, y: 20, width: 30, height: 25 }],
+    }],
+  }
+  await generationApi.saveEditorDraft('deck/id', draft)
+  await generationApi.commitEditor('deck/id', 2, 8)
+
+  assert.equal(calls[0].url, '/api/generation/v1/presentations/deck%2Fid/editor/draft')
+  assert.equal(calls[0].init.method, 'PUT')
+  assert.deepEqual(JSON.parse(calls[0].init.body), draft)
+  assert.equal(calls[1].url, '/api/generation/v1/presentations/deck%2Fid/editor/commit')
+  assert.deepEqual(JSON.parse(calls[1].init.body), { base_version: 2, draft_revision: 8 })
+  assert.equal(calls[1].init.headers.get('X-CSRF-TOKEN'), 'csrf')
+})
+
+test('editor image upload uses multipart data without overriding its content type', async () => {
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    calls.push({ url, init })
+    return json({ id: 'asset-id', url: '/asset.png', name: 'chart.png', width: 640, height: 360 })
+  }
+  const file = new File([new Uint8Array([1, 2, 3])], 'chart.png', { type: 'image/png' })
+  const result = await generationApi.uploadEditorImage('deck', file)
+
+  assert.equal(result.id, 'asset-id')
+  assert.equal(calls[0].url, '/api/generation/v1/presentations/deck/editor/assets')
+  assert.ok(calls[0].init.body instanceof FormData)
+  assert.equal(calls[0].init.body.get('file').name, 'chart.png')
+  assert.equal(calls[0].init.headers.has('Content-Type'), false)
+  assert.equal(calls[0].init.headers.get('X-CSRF-TOKEN'), 'csrf')
+})

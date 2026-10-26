@@ -8,8 +8,16 @@ import org.springframework.stereotype.Component;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.model.PresentationContent;
+import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.template.PresentationTemplateService;
 
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
+
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -39,13 +47,147 @@ public class PresentationFiles {
         Path output = directory.resolve(id + "-v" + version + "-" + UUID.randomUUID() + ".pptx");
         Path temp = Files.createTempFile(directory, id.toString(), ".tmp");
         try {
-            Files.write(temp, templates.render(templateId, content));
+            boolean hasImages =
+                    content.slides().stream()
+                            .anyMatch(slide -> !slide.imageBlocksOrEmpty().isEmpty());
+            byte[] rendered =
+                    hasImages
+                            ? templates.render(
+                                    templateId,
+                                    content,
+                                    assetId -> imageBytes(id, UUID.fromString(assetId)))
+                            : templates.render(templateId, content);
+            Files.write(temp, rendered);
             Files.move(temp, output, StandardCopyOption.ATOMIC_MOVE);
             return output;
         } finally {
             Files.deleteIfExists(temp);
         }
     }
+
+    public ImageAsset storeImage(UUID presentationId, byte[] bytes) {
+        if (bytes == null || bytes.length == 0)
+            throw new GenerationException(GenerationError.INVALID_IMAGE);
+        if (bytes.length > PresentationPolicy.MAX_IMAGE_UPLOAD_BYTES)
+            throw new GenerationException(GenerationError.IMAGE_LIMIT);
+        DecodedImage decoded = decodeImage(bytes);
+        byte[] normalized = encodePng(decoded.image());
+        if (normalized.length > PresentationPolicy.MAX_IMAGE_UPLOAD_BYTES)
+            throw new GenerationException(GenerationError.IMAGE_LIMIT);
+
+        Path assets = assetDirectory(presentationId);
+        UUID assetId = UUID.randomUUID();
+        Path output = assets.resolve(assetId + ".png");
+        Path temp = null;
+        try {
+            Files.createDirectories(assets);
+            enforceAssetQuota(assets, normalized.length);
+            temp = Files.createTempFile(assets, assetId.toString(), ".tmp");
+            Files.write(temp, normalized);
+            Files.move(temp, output, StandardCopyOption.ATOMIC_MOVE);
+            return new ImageAsset(assetId, decoded.width(), decoded.height());
+        } catch (GenerationException known) {
+            throw known;
+        } catch (Exception failure) {
+            throw new GenerationException(GenerationError.INVALID_IMAGE);
+        } finally {
+            deleteTemporaryImage(temp);
+        }
+    }
+
+    private static DecodedImage decodeImage(byte[] bytes) {
+        try (ImageInputStream input =
+                ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+            if (input == null) throw new IOException();
+            var readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new IOException();
+            ImageReader reader = readers.next();
+            try {
+                String format = reader.getFormatName();
+                if (!"png".equalsIgnoreCase(format) && !"jpeg".equalsIgnoreCase(format))
+                    throw new IOException();
+                reader.setInput(input, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                if (width < 1
+                        || height < 1
+                        || width > PresentationPolicy.MAX_IMAGE_DIMENSION
+                        || height > PresentationPolicy.MAX_IMAGE_DIMENSION
+                        || (long) width * height > PresentationPolicy.MAX_IMAGE_PIXELS)
+                    throw new GenerationException(GenerationError.IMAGE_LIMIT);
+                BufferedImage image = reader.read(0);
+                if (image == null) throw new IOException();
+                return new DecodedImage(image, width, height);
+            } finally {
+                reader.dispose();
+            }
+        } catch (GenerationException known) {
+            throw known;
+        } catch (Exception invalid) {
+            throw new GenerationException(GenerationError.INVALID_IMAGE);
+        }
+    }
+
+    private static byte[] encodePng(BufferedImage image) {
+        try {
+            ByteArrayOutputStream normalized = new ByteArrayOutputStream();
+            if (!ImageIO.write(image, "png", normalized)) throw new IOException();
+            return normalized.toByteArray();
+        } catch (Exception failure) {
+            throw new GenerationException(GenerationError.INVALID_IMAGE);
+        }
+    }
+
+    private static void deleteTemporaryImage(Path temp) {
+        if (temp == null) return;
+        try {
+            Files.deleteIfExists(temp);
+        } catch (IOException ignored) {
+            // The temporary file remains inside the private asset directory.
+        }
+    }
+
+    public Path image(UUID presentationId, UUID assetId) {
+        try {
+            Path assets = assetDirectory(presentationId).toRealPath();
+            Path image = assets.resolve(assetId + ".png").toRealPath();
+            if (!image.startsWith(assets) || !Files.isRegularFile(image)) throw new IOException();
+            return image;
+        } catch (IOException | InvalidPathException missing) {
+            throw new GenerationException(GenerationError.IMAGE_NOT_FOUND);
+        }
+    }
+
+    public byte[] imageBytes(UUID presentationId, UUID assetId) {
+        try {
+            return Files.readAllBytes(image(presentationId, assetId));
+        } catch (IOException missing) {
+            throw new GenerationException(GenerationError.IMAGE_NOT_FOUND);
+        }
+    }
+
+    private Path assetDirectory(UUID presentationId) {
+        return directory.resolve("assets").resolve(presentationId.toString()).normalize();
+    }
+
+    private static void enforceAssetQuota(Path assets, long incomingBytes) throws IOException {
+        int count = 0;
+        long total = 0;
+        try (var paths = Files.list(assets)) {
+            for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                if (!path.getFileName().toString().endsWith(".png")) continue;
+                count++;
+                total += Files.size(path);
+            }
+        }
+        if (count >= PresentationPolicy.MAX_IMAGES_PER_PRESENTATION
+                || total + incomingBytes > PresentationPolicy.MAX_IMAGE_STORAGE_BYTES)
+            throw new GenerationException(GenerationError.IMAGE_LIMIT);
+    }
+
+    public record ImageAsset(UUID id, int width, int height) {}
+
+    private record DecodedImage(BufferedImage image, int width, int height) {}
 
     public Path existing(String path) {
         try {

@@ -34,6 +34,16 @@ public enum GenerationError {
             "presentation.error.generation-limit"),
     IDEMPOTENCY_CONFLICT(
             HttpStatus.CONFLICT, "idempotency_conflict", "presentation.error.idempotency-conflict"),
+    IMAGE_LIMIT(
+            HttpStatus.PAYLOAD_TOO_LARGE,
+            "image_limit",
+            "presentation.error.image-limit"),
+    IMAGE_NOT_FOUND(
+            HttpStatus.NOT_FOUND, "image_not_found", "presentation.error.image-not-found"),
+    INVALID_IMAGE(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "invalid_image",
+            "presentation.error.invalid-image"),
     INVALID_CONTENT(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "invalid_content",

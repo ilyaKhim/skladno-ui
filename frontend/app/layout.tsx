@@ -1,6 +1,8 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
-import { Inter, Manrope } from 'next/font/google'
+import '@fontsource-variable/inter'
+import '@fontsource-variable/inter/wght-italic.css'
+import '@fontsource-variable/manrope'
 import { DemoDialogProvider } from '@/components/demo-dialog-provider'
 import {
   DEFAULT_OG_IMAGE,
@@ -11,21 +13,6 @@ import {
   SITE_URL,
 } from '@/lib/seo'
 import './globals.css'
-
-const manrope = Manrope({
-  subsets: ['latin', 'cyrillic'],
-  weight: ['600', '700', '800'],
-  variable: '--font-manrope',
-  display: 'swap',
-})
-
-const inter = Inter({
-  subsets: ['latin', 'cyrillic'],
-  weight: ['400', '500'],
-  style: ['normal', 'italic'],
-  variable: '--font-inter',
-  display: 'swap',
-})
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -63,7 +50,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="ru" className={`bg-background ${manrope.variable} ${inter.variable}`}>
+    <html lang="ru" className="bg-background">
       <body className="font-sans antialiased">
         <DemoDialogProvider>{children}</DemoDialogProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}

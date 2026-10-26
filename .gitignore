@@ -28,3 +28,6 @@ __pycache__/
 
 .m2/
 backend/data/
+
+# Local design-review snapshots
+.impeccable/

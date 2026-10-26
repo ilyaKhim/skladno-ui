@@ -121,6 +121,8 @@ public class PresentationTransactions {
             throw new GenerationException(GenerationError.PRESENTATION_NOT_READY);
         if (p.getContentJson() == null)
             throw new GenerationException(GenerationError.CONTENT_UNAVAILABLE);
+        if (p.getEditorJson() != null)
+            throw new GenerationException(GenerationError.EDIT_IN_PROGRESS);
         if (p.getEditId() != null
                 && p.getEditStartedAt().isAfter(now.minus(PresentationPolicy.EDIT_LEASE_TIMEOUT)))
             throw editing();
@@ -183,6 +185,88 @@ public class PresentationTransactions {
                 .ifPresent(Presentation::clearEdit);
     }
 
+    public EditorCommit beginEditorCommit(
+            UUID userId, UUID id, int expectedBaseVersion, long expectedDraftRevision) {
+        Presentation p;
+        try {
+            p =
+                    presentations
+                            .findForUpdate(id, userId)
+                            .orElseThrow(PresentationTransactions::missing);
+        } catch (DataAccessException e) {
+            if (e instanceof PessimisticLockingFailureException
+                    || e.getMostSpecificCause() instanceof java.sql.SQLException sql
+                            && POSTGRES_LOCK_NOT_AVAILABLE.equals(sql.getSQLState()))
+                throw editing();
+            throw e;
+        }
+        Instant now = clock.instant();
+        if (p.getStatus() != SUCCEEDED)
+            throw new GenerationException(GenerationError.PRESENTATION_NOT_READY);
+        if (p.getEditorJson() == null
+                || p.getEditorBaseVersion() == null
+                || p.getCurrentVersion() != expectedBaseVersion
+                || p.getEditorBaseVersion() != expectedBaseVersion
+                || p.getEditorRevision() != expectedDraftRevision)
+            throw new GenerationException(GenerationError.EDIT_EXPIRED);
+        if (p.getEditId() != null
+                && p.getEditStartedAt().isAfter(now.minus(PresentationPolicy.EDIT_LEASE_TIMEOUT)))
+            throw editing();
+        if (revisions.countByUserIdAndVersionGreaterThanAndCreatedAtAfter(
+                        userId,
+                        PresentationPolicy.INITIAL_VERSION,
+                        now.minus(PresentationPolicy.QUOTA_WINDOW))
+                >= PresentationPolicy.MAX_EDITS_PER_DAY)
+            throw new GenerationException(GenerationError.EDIT_LIMIT);
+        UUID token = UUID.randomUUID();
+        p.beginEdit(token, now);
+        return new EditorCommit(
+                id,
+                userId,
+                token,
+                p.getCurrentVersion(),
+                p.getEditorRevision(),
+                p.getTemplateId(),
+                p.getModel(),
+                p.getEditorJson());
+    }
+
+    public PresentationView completeEditorCommit(
+            EditorCommit edit, String json, String path, int count) {
+        Presentation p =
+                presentations
+                        .findForCompletion(edit.id())
+                        .orElseThrow(PresentationTransactions::missing);
+        if (!edit.token().equals(p.getEditId())
+                || p.getCurrentVersion() != edit.baseVersion()
+                || p.getEditorRevision() != edit.draftRevision())
+            throw new GenerationException(GenerationError.EDIT_EXPIRED);
+        int version = edit.baseVersion() + 1;
+        p.succeed(json, path, count, edit.model(), version, clock.instant());
+        p.bumpEditorRevision(clock.instant());
+        p.clearEdit();
+        revisions.save(
+                new PresentationRevision(
+                        p.getId(),
+                        p.getUserId(),
+                        version,
+                        BackendMessages.text("presentation.revision.editor-message"),
+                        BackendMessages.text("presentation.revision.editor-reply"),
+                        json,
+                        path,
+                        count,
+                        null,
+                        clock.instant()));
+        return PresentationView.from(p);
+    }
+
+    public void releaseEditorCommit(EditorCommit edit) {
+        presentations
+                .findForCompletion(edit.id())
+                .filter(p -> edit.token().equals(p.getEditId()))
+                .ifPresent(Presentation::clearEdit);
+    }
+
     private static GenerationException editing() {
         return new GenerationException(GenerationError.EDIT_IN_PROGRESS);
     }
@@ -208,4 +292,14 @@ public class PresentationTransactions {
             String topic,
             String model,
             String contentJson) {}
+
+    public record EditorCommit(
+            UUID id,
+            UUID userId,
+            UUID token,
+            int baseVersion,
+            long draftRevision,
+            String templateId,
+            String model,
+            String editorJson) {}
 }

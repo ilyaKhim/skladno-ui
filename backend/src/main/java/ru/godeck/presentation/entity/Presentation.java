@@ -72,6 +72,18 @@ public class Presentation {
     @Column(name = "edit_started_at")
     private Instant editStartedAt;
 
+    @Column(name = "editor_json", columnDefinition = "text")
+    private String editorJson;
+
+    @Column(name = "editor_base_version")
+    private Integer editorBaseVersion;
+
+    @Column(name = "editor_revision", nullable = false)
+    private long editorRevision;
+
+    @Column(name = "editor_updated_at")
+    private Instant editorUpdatedAt;
+
     protected Presentation() {}
 
     public void enqueue(String contentJson, Instant now) {
@@ -111,6 +123,7 @@ public class Presentation {
         status = PresentationStatus.SUCCEEDED;
         errorCode = null;
         updatedAt = now;
+        clearEditorDraft();
     }
 
     public void beginEdit(UUID token, Instant now) {
@@ -121,6 +134,25 @@ public class Presentation {
     public void clearEdit() {
         editId = null;
         editStartedAt = null;
+    }
+
+    public void saveEditorDraft(String json, int baseVersion, long revision, Instant now) {
+        editorJson = json;
+        editorBaseVersion = baseVersion;
+        editorRevision = revision;
+        editorUpdatedAt = now;
+        updatedAt = now;
+    }
+
+    public void clearEditorDraft() {
+        editorJson = null;
+        editorBaseVersion = null;
+        editorUpdatedAt = null;
+    }
+
+    public void bumpEditorRevision(Instant now) {
+        editorRevision++;
+        updatedAt = now;
     }
 
     public UUID getId() {
@@ -193,5 +225,21 @@ public class Presentation {
 
     public Instant getEditStartedAt() {
         return editStartedAt;
+    }
+
+    public String getEditorJson() {
+        return editorJson;
+    }
+
+    public Integer getEditorBaseVersion() {
+        return editorBaseVersion;
+    }
+
+    public long getEditorRevision() {
+        return editorRevision;
+    }
+
+    public Instant getEditorUpdatedAt() {
+        return editorUpdatedAt;
     }
 }
