@@ -13,6 +13,7 @@ __v0_jsx-dev-runtime.ts
 .idea/
 *.iml
 node_modules
+.pnpm-store/
 .next/
 .DS_Store
 out/
@@ -31,3 +32,8 @@ backend/data/
 
 # Local design-review snapshots
 .impeccable/
+
+# Browser verification artifacts (golden screenshots under e2e/ remain versioned)
+playwright-report/
+test-results/
+.next-e2e/

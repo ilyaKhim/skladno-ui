@@ -19,6 +19,26 @@ STATIC_EXPORT=1 pnpm build
 
 Готовые файлы находятся в `frontend/out/`. Эта конфигурация публикует только статический фронтенд; для Java API потребуется отдельный деплой.
 
+## Фоны слайдов в Java API
+
+Редактор получает фон через `/api/generation/v1/templates/{templateId}/slides/{sourceSlide}/background.png`.
+Маршрут должен проксироваться на Java API вместе с остальными `/api/*`. Исходные PPTX находятся внутри
+backend JAR; PNG создаётся через Apache POI и кешируется в памяти процесса. Отдельные PowerPoint,
+LibreOffice и внешний сервис рендеринга не нужны.
+
+Для серверного рендеринга в Linux установите системную поддержку шрифтов. Например, для Debian/Ubuntu:
+
+```sh
+apt-get update && apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core
+```
+
+JDK/JRE должен включать `java.desktop` (стандартные полные дистрибутивы Temurin включают его).
+В контейнере без дисплея Java работает в headless-режиме; при необходимости задайте
+`-Djava.awt.headless=true`. Google Fonts не используются. Точное соответствие гарнитурам PowerPoint
+зависит от установленных шрифтов; фоновые изображения и графические shapes не зависят от веб-шрифтов.
+
+Перед выпуском запускайте `pnpm verify` и [checklist редактора](release-checklist.md).
+
 ## Деплой из GitLab на REG.RU
 
 Корневой `.gitlab-ci.yml` подключает `.gitlab/ci/deploy-reg.yml`. Pipeline запускается после push в `main` или вручную через **Build → Pipelines → New pipeline**, с выбранной веткой `main`. Другие ветки и merge requests проходят проверки, но не публикуются.

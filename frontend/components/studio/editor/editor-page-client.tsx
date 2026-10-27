@@ -22,6 +22,7 @@ function toDeck(source: EditorDeck): Deck {
       sourceSlideNumber: slide.source_slide_number,
       name: slide.name,
       theme: slide.theme,
+      backgroundUrl: slide.background_url,
       hidden: slide.hidden,
       blocks: slide.blocks.map((block) => ({
         id: block.id,
@@ -38,6 +39,19 @@ function toDeck(source: EditorDeck): Deck {
         weight: block.weight,
         align: block.align,
         color: block.color,
+        fontColor: block.font_color ?? undefined,
+        paragraph: block.paragraph
+          ? {
+              index: block.paragraph.index,
+              bullet: block.paragraph.bullet ?? undefined,
+              bulletColor: block.paragraph.bullet_color ?? undefined,
+              lineHeight: block.paragraph.line_height ?? undefined,
+              spaceBefore: block.paragraph.space_before,
+              spaceAfter: block.paragraph.space_after,
+              leftMargin: block.paragraph.left_margin,
+              indent: block.paragraph.indent,
+            }
+          : undefined,
       })),
       images: slide.images.map((image) => ({
         id: image.id,

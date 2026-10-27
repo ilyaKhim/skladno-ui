@@ -199,6 +199,54 @@ class PresentationTemplateServiceTest {
     }
 
     @Test
+    void editorDeckPreservesParagraphsInsideOneTemplateTextShape() throws Exception {
+        var service =
+                new PresentationTemplateService(
+                        new tools.jackson.databind.ObjectMapper(),
+                        new PresentationContentValidator());
+        Map<String, String> values = new LinkedHashMap<>();
+        service.fields("atlas").keySet().forEach(field -> values.put(field, "Demo " + field));
+        var slides =
+                java.util.stream.IntStream.rangeClosed(1, 13)
+                        .mapToObj(
+                                number ->
+                                        new PresentationContent.Slide(
+                                                number, number == 9, "Paragraph projection"))
+                        .toList();
+
+        var deck =
+                service.editorDeck(
+                        "atlas",
+                        UUID.randomUUID(),
+                        "Text shape",
+                        1,
+                        0,
+                        Map.of(9, "List"),
+                        new PresentationContent(values, slides));
+        var list =
+                deck.slides().getFirst().blocks().stream()
+                        .filter(block -> block.fieldKey().matches("LIST_\\d+"))
+                        .toList();
+
+        assertThat(list).hasSize(5);
+        assertThat(list).extracting(block -> block.layoutId()).containsOnly(list.getFirst().layoutId());
+        assertThat(list)
+                .extracting(block -> block.paragraph().index())
+                .containsExactly(0, 1, 2, 3, 4);
+        assertThat(list)
+                .allSatisfy(
+                        block -> {
+                            assertThat(block.paragraph().bullet()).isEqualTo("—");
+                            assertThat(block.paragraph().bulletColor()).isEqualTo("#8c2f22");
+                            assertThat(block.paragraph().lineHeight()).isEqualTo(1.1);
+                            assertThat(block.fontSize()).isEqualTo(20);
+                            assertThat(block.paragraph().spaceAfter()).isCloseTo(20, within(0.05));
+                            assertThat(block.paragraph().leftMargin()).isPositive();
+                            assertThat(block.paragraph().indent()).isNegative();
+                        });
+    }
+
+    @Test
     void freeformTextBlocksRoundTripThroughEditorAndPowerPoint() throws Exception {
         var service =
                 new PresentationTemplateService(
@@ -261,9 +309,11 @@ class PresentationTemplateServiceTest {
                             .findFirst()
                             .orElseThrow();
             assertThat(rendered.getAnchor().getX())
-                    .isCloseTo(show.getPageSize().getWidth() * 0.12, within(0.1));
+                    .isCloseTo(show.getCTPresentation().getSldSz().getCx() / 12_700.0 * 0.12, within(0.01));
             assertThat(rendered.getTextParagraphs().getFirst().getTextAlign())
                     .isEqualTo(org.apache.poi.sl.usermodel.TextParagraph.TextAlign.CENTER);
+            assertThat(rendered.getTextParagraphs().getFirst().getTextRuns().getFirst().getFontSize())
+                    .isCloseTo(24 * show.getCTPresentation().getSldSz().getCx() / 12_700.0 / 960, within(0.01));
         }
     }
 
@@ -320,9 +370,9 @@ class PresentationTemplateServiceTest {
                             .findFirst()
                             .orElseThrow();
             assertThat(rendered.getAnchor().getX())
-                    .isCloseTo(show.getPageSize().getWidth() * 0.20, within(0.1));
+                    .isCloseTo(show.getCTPresentation().getSldSz().getCx() / 12_700.0 * 0.20, within(0.01));
             assertThat(rendered.getAnchor().getY())
-                    .isCloseTo(show.getPageSize().getHeight() * 0.25, within(0.1));
+                    .isCloseTo(show.getCTPresentation().getSldSz().getCy() / 12_700.0 * 0.25, within(0.01));
         }
     }
 
@@ -381,9 +431,9 @@ class PresentationTemplateServiceTest {
                             .reduce((first, second) -> second)
                             .orElseThrow();
             assertThat(rendered.getAnchor().getX())
-                    .isCloseTo(show.getPageSize().getWidth() * 0.10, within(0.1));
+                    .isCloseTo(show.getCTPresentation().getSldSz().getCx() / 12_700.0 * 0.10, within(0.01));
             assertThat(rendered.getAnchor().getWidth())
-                    .isCloseTo(show.getPageSize().getWidth() * 0.30, within(0.1));
+                    .isCloseTo(show.getCTPresentation().getSldSz().getCx() / 12_700.0 * 0.30, within(0.01));
         }
     }
 
