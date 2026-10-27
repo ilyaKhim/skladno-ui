@@ -30,6 +30,7 @@
   "devDependencies": {
     "@playwright/test": "^1.64.1",
     "@types/node": "24.10.4",
+    "@types/pg": "^8.23.1",
     "fflate": "^0.8.3",
     "pg": "^8.23.1"
   }

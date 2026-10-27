@@ -1,7 +1,7 @@
 import { test, expect, canvas, downloadPptx, editorState, inspectPresentationOrder, inspectSlide, listShape, openList, saved } from './support'
 import { strFromU8 } from 'fflate'
 
-test('создать презентацию через студию и открыть редактор с настоящим фоном', async ({ page, plan }) => {
+test('создать презентацию через студию и открыть редактор с настоящим фоном', async ({ page, plan, createdDecks }) => {
   await page.goto('/studio')
   await page.getByRole('button', { name: /Вставить ответ LLM/ }).click()
   await page.locator('label:has(input[name="template"][value="opal"])').click()
@@ -9,6 +9,7 @@ test('создать презентацию через студию и откр�
   const created = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/v1/presentations'))
   await page.getByRole('button', { name: 'Собрать PPTX', exact: true }).click()
   const { id } = await (await created).json()
+  createdDecks.push(id)
   await page.locator(`a[href*="presentation=${id}"]`).click({ timeout: 30_000 })
   await expect(page).toHaveURL(new RegExp(`presentation=${id}`))
   await expect(canvas(page).locator('[data-slide-background]')).toHaveJSProperty('naturalWidth', 960)

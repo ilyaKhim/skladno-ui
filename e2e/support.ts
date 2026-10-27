@@ -1,6 +1,7 @@
 import { test as base, expect, type APIRequestContext, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { unzipSync, strFromU8 } from 'fflate'
+import pg from 'pg'
 
 export type Plan = {
   fields: Record<string, string>
@@ -16,7 +17,26 @@ export async function mutation(request: APIRequestContext, method: 'post' | 'put
   return response.json()
 }
 
-export const test = base.extend<{ plan: Plan; deckId: string; browserErrors: void }>({
+export const test = base.extend<{ plan: Plan; deckId: string; createdDecks: string[]; browserErrors: void }>({
+  createdDecks: async ({}, use) => {
+    const schema = process.env.E2E_SCHEMA
+    if (!schema?.match(/^editor_e2e_[a-f0-9]{12}$/)) throw new Error('E2E cleanup requires an isolated runner schema.')
+    const ids: string[] = []
+    try {
+      await use(ids)
+    } finally {
+      if (ids.length) {
+        const database = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL, connectionTimeoutMillis: 10_000 })
+        try {
+          await database.connect()
+          // Keep real generation quotas enabled; delete only decks owned by this test in its run's schema.
+          await database.query(`DELETE FROM "${schema}".generated_presentations WHERE id = ANY($1::uuid[])`, [ids])
+        } finally {
+          await database.end()
+        }
+      }
+    }
+  },
   browserErrors: [async ({ page }, use) => {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
@@ -52,10 +72,11 @@ export const test = base.extend<{ plan: Plan; deckId: string; browserErrors: voi
       })),
     })
   },
-  deckId: async ({ request, plan }, use) => {
+  deckId: async ({ request, plan, createdDecks }, use) => {
     const job = await mutation(request, 'post', '/api/generation/v1/presentations', {
       template_id: 'opal', topic: 'E2E Subaru Impreza WRX', mode: 'manual',
     })
+    createdDecks.push(job.id)
     await mutation(request, 'put', `/api/generation/v1/presentations/${job.id}/content`, plan)
     await expect.poll(async () => {
       const response = await request.get(`/api/generation/v1/presentations/${job.id}`)

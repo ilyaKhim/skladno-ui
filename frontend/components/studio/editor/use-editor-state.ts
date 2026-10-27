@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { createAutosaveQueue, type AutosaveQueue } from './autosave-queue.ts'
 import type {
   Deck,
   EditableBlockFields,
@@ -12,7 +13,6 @@ import type {
 } from './editor-types'
 
 const HISTORY_LIMIT = 100
-const AUTOSAVE_DELAY_MS = 1600
 
 export type DeckAction =
   | { type: 'renameDeck'; title: string }
@@ -196,74 +196,58 @@ export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promi
     lastKey: null,
   }))
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
-  const timers = useRef<number[]>([])
-  const latestDeck = useRef(initialDeck)
-  const changeNumber = useRef(0)
-  const saving = useRef(false)
+  const currentHistory = useRef(history)
+  const saveCallback = useRef(onSave)
+  const autosave = useRef<AutosaveQueue<Deck> | null>(null)
 
   useEffect(() => {
-    latestDeck.current = history.present
-  }, [history.present])
+    saveCallback.current = onSave
+  }, [onSave])
 
-  const clearTimers = useCallback(() => {
-    timers.current.forEach((id) => window.clearTimeout(id))
-    timers.current = []
+  useEffect(() => {
+    const queue = createAutosaveQueue({
+      initialValue: currentHistory.current.present,
+      save: async (deck) => {
+        if (saveCallback.current) await saveCallback.current(deck)
+        else await new Promise((resolve) => window.setTimeout(resolve, 700))
+      },
+      onStatusChange: setSaveStatus,
+    })
+    autosave.current = queue
+    return () => {
+      queue.dispose()
+      autosave.current = null
+    }
   }, [])
 
-  useEffect(() => clearTimers, [clearTimers])
+  const saveNow = useCallback(() => autosave.current?.saveNow() ?? Promise.resolve(false), [])
 
-  const saveNow = useCallback(async () => {
-    clearTimers()
-    if (saving.current) return false
-    const savingChange = changeNumber.current
-    saving.current = true
-    setSaveStatus('saving')
-    try {
-      if (onSave) await onSave(latestDeck.current)
-      else await new Promise((resolve) => window.setTimeout(resolve, 700))
-      const unchanged = changeNumber.current === savingChange
-      setSaveStatus(unchanged ? 'saved' : 'dirty')
-      return unchanged
-    } catch {
-      setSaveStatus('error')
-      return false
-    } finally {
-      saving.current = false
-    }
-  }, [clearTimers, onSave])
-
-  const markDirty = useCallback(() => {
-    clearTimers()
-    changeNumber.current += 1
-    setSaveStatus('dirty')
-    timers.current.push(window.setTimeout(() => void saveNow(), AUTOSAVE_DELAY_MS))
-  }, [clearTimers, saveNow])
+  const dispatch = useCallback((action: HistoryAction) => {
+    // Use the same transition for React and autosave, including multiple actions in one event.
+    // Save/Export can then see the latest state before React's next render or effect.
+    const previous = currentHistory.current
+    const next = historyReducer(previous, action)
+    if (next === previous) return
+    currentHistory.current = next
+    send(action)
+    if (next.present !== previous.present) autosave.current?.update(next.present)
+  }, [])
 
   const apply = useCallback(
     (action: DeckAction, coalesceKey?: string) => {
-      if (applyDeckAction(history.present, action) === history.present) return
-      send({ type: 'apply', action, coalesceKey })
-      markDirty()
+      dispatch({ type: 'apply', action, coalesceKey })
     },
-    [history.present, markDirty],
+    [dispatch],
   )
 
   const canUndo = history.past.length > 0
   const canRedo = history.future.length > 0
 
-  const undo = useCallback(() => {
-    if (!canUndo) return
-    send({ type: 'undo' })
-    markDirty()
-  }, [canUndo, markDirty])
+  const undo = useCallback(() => dispatch({ type: 'undo' }), [dispatch])
 
-  const redo = useCallback(() => {
-    if (!canRedo) return
-    send({ type: 'redo' })
-    markDirty()
-  }, [canRedo, markDirty])
+  const redo = useCallback(() => dispatch({ type: 'redo' }), [dispatch])
 
-  const sealHistory = useCallback(() => send({ type: 'seal' }), [])
+  const sealHistory = useCallback(() => dispatch({ type: 'seal' }), [dispatch])
 
   const renameDeck = useCallback((title: string) => apply({ type: 'renameDeck', title }, 'deck:title'), [apply])
 
