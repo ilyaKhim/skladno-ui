@@ -30,6 +30,7 @@ type HistoryAction =
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'seal' }
+  | { type: 'restore'; deck: Deck }
 
 interface HistoryState {
   past: Deck[]
@@ -185,10 +186,17 @@ function historyReducer(state: HistoryState, action: HistoryAction): HistoryStat
     }
     case 'seal':
       return state.lastKey === null ? state : { ...state, lastKey: null }
+    case 'restore':
+      return { past: [...state.past, state.present].slice(-HISTORY_LIMIT), present: action.deck, future: [], lastKey: null }
   }
 }
 
-export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promise<void>) {
+interface PersistenceObservers {
+  onChange?: (deck: Deck) => void
+  onSaved?: () => void
+}
+
+export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promise<void>, observers: PersistenceObservers = {}) {
   const [history, send] = useReducer(historyReducer, initialDeck, (deck) => ({
     past: [],
     present: deck,
@@ -199,10 +207,12 @@ export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promi
   const currentHistory = useRef(history)
   const saveCallback = useRef(onSave)
   const autosave = useRef<AutosaveQueue<Deck> | null>(null)
+  const observerCallbacks = useRef(observers)
 
   useEffect(() => {
     saveCallback.current = onSave
-  }, [onSave])
+    observerCallbacks.current = observers
+  }, [onSave, observers])
 
   useEffect(() => {
     const queue = createAutosaveQueue({
@@ -211,7 +221,10 @@ export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promi
         if (saveCallback.current) await saveCallback.current(deck)
         else await new Promise((resolve) => window.setTimeout(resolve, 700))
       },
-      onStatusChange: setSaveStatus,
+      onStatusChange: (status) => {
+        setSaveStatus(status)
+        if (status === 'saved') observerCallbacks.current.onSaved?.()
+      },
     })
     autosave.current = queue
     return () => {
@@ -221,6 +234,8 @@ export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promi
   }, [])
 
   const saveNow = useCallback(() => autosave.current?.saveNow() ?? Promise.resolve(false), [])
+  const hasUnsavedChanges = useCallback(() => autosave.current?.hasUnsavedChanges() ?? false, [])
+  const getDeck = useCallback(() => currentHistory.current.present, [])
 
   const dispatch = useCallback((action: HistoryAction) => {
     // Use the same transition for React and autosave, including multiple actions in one event.
@@ -230,7 +245,10 @@ export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promi
     if (next === previous) return
     currentHistory.current = next
     send(action)
-    if (next.present !== previous.present) autosave.current?.update(next.present)
+    if (next.present !== previous.present) {
+      observerCallbacks.current.onChange?.(next.present)
+      autosave.current?.update(next.present)
+    }
   }, [])
 
   const apply = useCallback(
@@ -248,6 +266,7 @@ export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promi
   const redo = useCallback(() => dispatch({ type: 'redo' }), [dispatch])
 
   const sealHistory = useCallback(() => dispatch({ type: 'seal' }), [dispatch])
+  const restoreDeck = useCallback((deck: Deck) => dispatch({ type: 'restore', deck }), [dispatch])
 
   const renameDeck = useCallback((title: string) => apply({ type: 'renameDeck', title }, 'deck:title'), [apply])
 
@@ -296,6 +315,9 @@ export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promi
     undo,
     redo,
     saveNow,
+    hasUnsavedChanges,
+    getDeck,
+    restoreDeck,
     sealHistory,
     renameDeck,
     updateSlide,

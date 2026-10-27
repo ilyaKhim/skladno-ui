@@ -15,6 +15,7 @@ import {
   BLOCK_ROLE_LABELS,
   CUSTOM_TEXT_MAX_CHARS,
   type Deck,
+  type EditorOperationError,
   type ImageBlock,
   type TextBlock,
 } from './editor-types'
@@ -22,6 +23,9 @@ import { PropertiesPanel } from './properties-panel'
 import { SlideCanvas } from './slide-canvas'
 import { SlideRail } from './slide-rail'
 import { useEditorState } from './use-editor-state'
+import { useEditorRecovery } from './use-editor-recovery'
+import { restoreRecovery, type EditorVersion } from './editor-recovery'
+import { EditorSafety } from './editor-safety'
 
 const WIDE_LAYOUT_QUERY = '(min-width: 1024px)'
 const ELEMENT_CLIPBOARD_TYPE = 'application/x-godeck-element'
@@ -52,18 +56,96 @@ type EditorShellProps = {
   onExport?: () => Promise<void>
   onUploadImage?: (file: File) => Promise<EditorAsset>
   contentOnly?: boolean
+  ownerId?: string
+  getVersion?: () => EditorVersion
+  operationError?: EditorOperationError | null
+  onReloadServer?: () => Promise<void>
 }
 
-export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, contentOnly = false }: EditorShellProps) {
-  const editor = useEditorState(initialDeck, onSave)
+export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, contentOnly = false,
+  ownerId, getVersion, operationError, onReloadServer }: EditorShellProps) {
+  const recovery = useEditorRecovery(initialDeck, ownerId, getVersion)
+  const editor = useEditorState(initialDeck, onSave, { onChange: recovery.backup, onSaved: recovery.clear })
   const { deck } = editor
   const [selectedSlideId, setSelectedSlideId] = useState(initialDeck.slides[0]?.id ?? '')
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState('')
+  const [processing, setProcessing] = useState<'export' | 'leave' | 'reload' | null>(null)
+  const busy = useRef(false)
   const isWide = useMediaQuery(WIDE_LAYOUT_QUERY)
   const textFieldRef = useRef<HTMLTextAreaElement>(null)
+
+  const protectUnload = useEffectEvent((event: BeforeUnloadEvent) => {
+    if (!editor.hasUnsavedChanges() && !imageUploading) return
+    event.preventDefault()
+    event.returnValue = 'unsaved'
+  })
+  const protectBackground = useEffectEvent(() => {
+    if (!editor.hasUnsavedChanges()) return
+    recovery.backup(editor.getDeck())
+    // A document being unloaded cannot safely start a new CSRF/fetch chain (notably in WebKit).
+  })
+  useEffect(() => {
+    const unload = (event: BeforeUnloadEvent) => protectUnload(event)
+    const background = () => protectBackground()
+    window.addEventListener('beforeunload', unload)
+    window.addEventListener('pagehide', background)
+    document.addEventListener('visibilitychange', background)
+    return () => {
+      window.removeEventListener('beforeunload', unload)
+      window.removeEventListener('pagehide', background)
+      document.removeEventListener('visibilitychange', background)
+    }
+  }, [])
+
+  const exportDocument = async () => {
+    if (busy.current) throw new Error('Дождитесь завершения текущего действия.')
+    if (imageUploading) {
+      setImageError('Дождитесь завершения загрузки изображения перед экспортом.')
+      throw new Error('Изображение ещё загружается.')
+    }
+    busy.current = true
+    setProcessing('export')
+    try {
+      if (!(await editor.saveNow())) throw new Error('Не удалось сохранить изменения перед экспортом.')
+      await onExport?.()
+    } finally {
+      busy.current = false
+      setProcessing(null)
+    }
+  }
+
+  const leaveEditor = async () => {
+    if (busy.current) return
+    if (imageUploading) { setImageError('Дождитесь завершения загрузки изображения перед выходом.'); return }
+    busy.current = true
+    setProcessing('leave')
+    try {
+      if (!editor.hasUnsavedChanges() || await editor.saveNow()) window.location.assign('/studio')
+    } finally {
+      busy.current = false
+      setProcessing(null)
+    }
+  }
+
+  const reloadServer = async () => {
+    if (busy.current) return
+    busy.current = true
+    setProcessing('reload')
+    try {
+      if (editor.hasUnsavedChanges()) {
+        recovery.backup(editor.getDeck())
+        // Join an in-flight save before fetching server metadata. A failed save is still recoverable.
+        await editor.saveNow()
+      }
+      await onReloadServer?.()
+    } finally {
+      busy.current = false
+      setProcessing(null)
+    }
+  }
 
   const slideIndex = Math.max(
     0,
@@ -168,6 +250,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   const removeElement = () => image ? removeImage() : removeBlock()
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || busy.current) return
     const mod = event.metaKey || event.ctrlKey
     const key = event.key.toLowerCase()
 
@@ -217,6 +300,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   })
 
   const onCopy = useEffectEvent((event: ClipboardEvent) => {
+    if (busy.current) return
     if ((!block && !image) || isEditableTarget(event.target) || !event.clipboardData) return
     event.preventDefault()
     event.clipboardData.setData(
@@ -227,6 +311,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   })
 
   const onPaste = useEffectEvent((event: ClipboardEvent) => {
+    if (busy.current) return
     if (isEditableTarget(event.target) || !event.clipboardData) return
     const pastedImage = [...event.clipboardData.items]
       .find((item) => item.kind === 'file' && ['image/png', 'image/jpeg'].includes(item.type))
@@ -279,36 +364,56 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <EditorToolbar
-        title={deck.title}
-        slideCount={deck.slides.length}
-        hiddenCount={hiddenCount}
-        saveStatus={editor.saveStatus}
-        canUndo={editor.canUndo}
-        canRedo={editor.canRedo}
-        panelToggleVisible={!isWide}
-        panelOpen={panelOpen}
-        onRename={editor.renameDeck}
-        onCommitTitle={editor.sealHistory}
-        onUndo={editor.undo}
-        onRedo={editor.redo}
-        onSave={() => void editor.saveNow()}
-        onAddText={() => insertTextBlock()}
-        onAddImage={onUploadImage ? (file) => void uploadAndInsertImage(file) : undefined}
-        imageUploading={imageUploading}
-        onExport={
-          onExport
-            ? async () => {
-                if (!(await editor.saveNow())) throw new Error('Не удалось сохранить изменения перед экспортом.')
-                await onExport()
-              }
-            : undefined
-        }
-        onTogglePanel={() => setPanelOpen((open) => !open)}
-        titleEditable={!contentOnly}
+      <div inert={processing !== null}>
+        <EditorToolbar
+          title={deck.title}
+          slideCount={deck.slides.length}
+          hiddenCount={hiddenCount}
+          saveStatus={editor.saveStatus}
+          canUndo={editor.canUndo}
+          canRedo={editor.canRedo}
+          panelToggleVisible={!isWide}
+          panelOpen={panelOpen}
+          onRename={editor.renameDeck}
+          onCommitTitle={editor.sealHistory}
+          onUndo={editor.undo}
+          onRedo={editor.redo}
+          onSave={() => void editor.saveNow()}
+          onAddText={() => insertTextBlock()}
+          onAddImage={onUploadImage ? (file) => void uploadAndInsertImage(file) : undefined}
+          imageUploading={imageUploading}
+          onExport={onExport ? exportDocument : undefined}
+          onBack={() => void leaveEditor()}
+          onTogglePanel={() => setPanelOpen((open) => !open)}
+          titleEditable={!contentOnly}
+        />
+      </div>
+      <EditorSafety
+        error={operationError}
+        candidate={recovery.candidate}
+        canRestore={Boolean(recovery.candidate && restoreRecovery(recovery.candidate.copy,
+          { ...initialDeck, baseVersion: getVersion?.().base ?? initialDeck.baseVersion }))}
+        storageError={recovery.storageError}
+        busy={processing !== null}
+        onRetry={() => {
+          if (operationError?.operation === 'export') void exportDocument().catch(() => {})
+          else void editor.saveNow()
+        }}
+        onDownload={() => recovery.download(editor.getDeck())}
+        onReload={onReloadServer ? reloadServer : undefined}
+        onRestore={() => {
+          if (!recovery.candidate) return
+          const restored = restoreRecovery(recovery.candidate.copy,
+            { ...initialDeck, baseVersion: getVersion?.().base ?? initialDeck.baseVersion })
+          if (restored) { recovery.accept(); editor.restoreDeck(restored) }
+        }}
+        onDiscard={recovery.discard}
       />
+      {processing && <p role="status" className="shrink-0 border-b border-border px-4 py-2 text-sm text-muted-foreground">
+        {processing === 'leave' ? 'Сохраняем изменения перед выходом…' : processing === 'reload' ? 'Загружаем серверную версию…' : 'Подготавливаем PowerPoint…'}
+      </p>}
 
-      <div className="flex min-h-0 flex-1 flex-col-reverse md:flex-row">
+      <div inert={processing !== null} className="flex min-h-0 flex-1 flex-col-reverse md:flex-row">
         <SlideRail
           slides={deck.slides}
           selectedSlideId={slide.id}

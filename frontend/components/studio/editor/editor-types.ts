@@ -5,6 +5,12 @@ export type BlockWeight = 400 | 500 | 700
 export type SlideTheme = 'paper' | 'navy'
 export type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error'
 
+export interface EditorOperationError {
+  operation: 'save' | 'export' | 'reload'
+  message: string
+  conflict: boolean
+}
+
 export interface TextParagraphStyle {
   /** Order inside the owning PowerPoint text shape. */
   index: number

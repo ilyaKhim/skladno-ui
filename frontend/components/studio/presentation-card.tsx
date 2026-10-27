@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { ArrowDownToLine, LoaderCircle, Pencil } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { AiCallHistory } from '@/components/studio/ai-call-history'
@@ -101,13 +100,14 @@ export function PresentationCard({
         </span>
         {job.status === 'succeeded' && job.download_url && (
           <div className="flex flex-wrap justify-end gap-2">
-            <Link
+            {/* A document navigation lets native beforeunload protect browser Back from the editor. */}
+            <a
               href={`/studio/editor/?presentation=${encodeURIComponent(job.id)}`}
               className={buttonVariants({ size: 'sm' })}
             >
               <Pencil className="mr-2 size-4" />
               Редактировать
-            </Link>
+            </a>
             <Button
               size="sm"
               variant="outline"
