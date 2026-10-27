@@ -23,6 +23,7 @@ public record EditorDeckView(
             int sourceSlideNumber,
             String name,
             String theme,
+            String backgroundUrl,
             boolean hidden,
             List<TextBlock> blocks,
             List<ImageBlock> images) {}
@@ -42,7 +43,28 @@ public record EditorDeckView(
             int fontSize,
             int weight,
             String align,
-            String color) {}
+            String color,
+            String fontColor,
+            ParagraphStyle paragraph) {}
+
+    /**
+     * Browser-safe subset of the PowerPoint paragraph model.
+     *
+     * <p>PowerPoint can place several semantic fields in separate paragraphs of one text shape.
+     * The shape owns geometry, while this record preserves the paragraph order, bullet and vertical
+     * rhythm needed to render those fields inside one browser container. Spacing and margins are
+     * expressed as CSS pixels at the editor's canonical 960 px slide width.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record ParagraphStyle(
+            int index,
+            String bullet,
+            String bulletColor,
+            Double lineHeight,
+            double spaceBefore,
+            double spaceAfter,
+            double leftMargin,
+            double indent) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ImageBlock(

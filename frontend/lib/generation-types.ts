@@ -60,6 +60,17 @@ export type EditorTextBlock = {
   weight: 400 | 500 | 700
   align: 'left' | 'center' | 'right'
   color: 'ink' | 'muted' | 'brand'
+  font_color: string | null
+  paragraph: {
+    index: number
+    bullet: string | null
+    bullet_color: string | null
+    line_height: number | null
+    space_before: number
+    space_after: number
+    left_margin: number
+    indent: number
+  } | null
 }
 
 export type EditorSlide = {
@@ -67,6 +78,7 @@ export type EditorSlide = {
   source_slide_number: number
   name: string
   theme: 'paper' | 'navy'
+  background_url: string
   hidden: boolean
   blocks: EditorTextBlock[]
   images: EditorImageBlock[]

@@ -1320,7 +1320,7 @@ class PresentationGenerationIntegrationTest {
                             x ->
                                     Math.abs(
                                                     x
-                                                            - show.getPageSize().getWidth()
+                                                            - show.getCTPresentation().getSldSz().getCx() / 12_700.0
                                                                     * 0.20)
                                             < 0.1);
             String cover =
@@ -1339,6 +1339,149 @@ class PresentationGenerationIntegrationTest {
                         .value("Добавленный текст"))
                 .andExpect(jsonPath("$.slides[0].images[?(@.id == 'image-editor-test')].alt")
                         .value("Тестовая точка"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void editorApiKeepsMultiParagraphTextShapeOrderedThroughCommit() throws Exception {
+        Map<String, String> fields = new LinkedHashMap<>();
+        templates.fields("opal").keySet().forEach(field -> fields.put(field, "Текст " + field));
+        for (int number = 1; number <= 5; number++)
+            fields.put("LIST_" + number, "Пункт " + number);
+        var decisions =
+                java.util.stream.IntStream.rangeClosed(1, 13)
+                        .mapToObj(
+                                number ->
+                                        new PresentationContent.Slide(
+                                                number, number == 9, "Multi-paragraph editor test"))
+                        .toList();
+        UUID id = service.create(USER, "opal", "Список", "manual", null, null).id();
+        service.submitManual(USER, id, new PresentationContent(fields, decisions));
+        worker.processOne();
+
+        String editorJson =
+                mvc.perform(get("/api/generation/v1/presentations/{id}/editor", id))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.slides.length()").value(1))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        var editor = json.readTree(editorJson);
+        List<Map<String, Object>> loadedBlocks =
+                json.convertValue(
+                        editor.path("slides").get(0).path("blocks"),
+                        new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+        var listBlocks =
+                loadedBlocks.stream()
+                        .filter(block -> ((String) block.get("field_key")).matches("LIST_\\d+"))
+                        .toList();
+
+        assertThat(listBlocks).hasSize(5);
+        assertThat(editor.path("slides").get(0).path("background_url").asText())
+                .startsWith("/api/generation/v1/templates/opal/slides/9/background.png?v=");
+        mvc.perform(get(editor.path("slides").get(0).path("background_url").asText()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_PNG))
+                .andExpect(header().string("Cache-Control", "max-age=3600, private"));
+        assertThat(listBlocks)
+                .extracting(block -> block.get("layout_id"))
+                .containsOnly(listBlocks.getFirst().get("layout_id"));
+        assertThat(listBlocks)
+                .extracting(block -> ((Map<String, Object>) block.get("paragraph")).get("index"))
+                .containsExactly(0, 1, 2, 3, 4);
+        assertThat(listBlocks)
+                .allSatisfy(
+                        block ->
+                                assertThat(
+                                                ((Map<String, Object>) block.get("paragraph"))
+                                                        .get("bullet"))
+                                        .isEqualTo("—"));
+
+        List<Map<String, Object>> draftBlocks = new ArrayList<>();
+        List<Map<String, Object>> layouts = new ArrayList<>();
+        var layoutIds = new java.util.LinkedHashSet<String>();
+        for (var block : loadedBlocks) {
+            String field = (String) block.get("field_key");
+            draftBlocks.add(
+                    Map.of(
+                            "field_key",
+                            field,
+                            "text",
+                            "LIST_3".equals(field) ? "Обновлённый третий пункт" : block.get("text")));
+            String layoutId = (String) block.get("layout_id");
+            if (layoutIds.add(layoutId))
+                layouts.add(
+                        Map.of(
+                                "id", layoutId,
+                                "x", block.get("x"),
+                                "y", block.get("y"),
+                                "width", block.get("width"),
+                                "height", block.get("height")));
+        }
+        Map<String, Object> loadedSlide =
+                json.convertValue(
+                        editor.path("slides").get(0),
+                        new tools.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        String draft =
+                json.writeValueAsString(
+                        Map.of(
+                                "base_version",
+                                1,
+                                "draft_revision",
+                                0,
+                                "title",
+                                "Список",
+                                "slides",
+                                List.of(
+                                        Map.of(
+                                                "source_slide_number",
+                                                9,
+                                                "name",
+                                                loadedSlide.get("name"),
+                                                "hidden",
+                                                false,
+                                                "blocks",
+                                                draftBlocks,
+                                                "layouts",
+                                                layouts,
+                                                "custom_blocks",
+                                                List.of(),
+                                                "images",
+                                                List.of()))));
+        mvc.perform(
+                        put("/api/generation/v1/presentations/{id}/editor/draft", id)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(draft))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.draft_revision").value(1));
+        mvc.perform(
+                        post("/api/generation/v1/presentations/{id}/editor/commit", id)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"base_version\":1,\"draft_revision\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(2));
+
+        try (var show =
+                new XMLSlideShow(
+                        new ByteArrayInputStream(Files.readAllBytes(service.download(USER, id))))) {
+            var listShape =
+                    show.getSlides().getFirst().getShapes().stream()
+                            .filter(org.apache.poi.xslf.usermodel.XSLFTextShape.class::isInstance)
+                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast)
+                            .filter(shape -> shape.getText().contains("Обновлённый третий пункт"))
+                            .findFirst()
+                            .orElseThrow();
+            assertThat(listShape.getTextParagraphs())
+                    .extracting(org.apache.poi.xslf.usermodel.XSLFTextParagraph::getText)
+                    .containsExactly(
+                            "Пункт 1",
+                            "Пункт 2",
+                            "Обновлённый третий пункт",
+                            "Пункт 4",
+                            "Пункт 5");
+        }
     }
 
     private UUID readyManual() throws Exception {

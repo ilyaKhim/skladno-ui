@@ -7,8 +7,11 @@ frontend/       Next.js: сайт, шаблоны, авторизация и к�
 backend/        Java 26 + Spring Boot 4.1.1: API авторизации и генерации PPTX
 scripts/        Запуск и проверки, мост v0 → GitLab
 docs/           Документация
+e2e/            Playwright: четыре критических сценария редактора в Chromium и WebKit
 compose.yaml    Локальные PostgreSQL и Mailpit
 ```
+
+Полная проверка MVP: `pnpm verify`. Подготовка окружения, пошаговая отладка браузера/Java и разбор trace описаны в [проверке редактора](docs/editor-verification.md); перед выпуском используйте [короткий checklist](docs/release-checklist.md).
 
 ## Локальный запуск
 

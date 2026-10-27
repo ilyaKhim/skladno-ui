@@ -15,11 +15,22 @@
     "test:auth": "python3 scripts/auth-smoke.py",
     "backend:test:unit": "bash scripts/backend-dev.sh test '-Dtest=*Test,!*IntegrationTest,!DevelopmentAuthBypassTest'",
     "backend:test:integration": "bash scripts/backend-dev.sh test '-Dtest=*IntegrationTest,DevelopmentAuthBypassTest'",
-    "test:frontend": "node --experimental-strip-types --test frontend/lib/*.test.mjs"
+    "test:frontend": "node --experimental-strip-types --test frontend/lib/*.test.mjs",
+    "test:e2e": "node scripts/e2e.mjs",
+    "test:e2e:debug": "node scripts/e2e.mjs --debug",
+    "test:e2e:types": "pnpm --filter @godeck/frontend exec tsc --noEmit -p ../e2e/tsconfig.json",
+    "test:e2e:report": "playwright show-report",
+    "verify": "pnpm test:frontend && pnpm typecheck && pnpm test:e2e:types && pnpm backend:test && pnpm test:e2e"
   },
   "pnpm": {
     "overrides": {
       "hono": "4.12.25"
     }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "24.10.4",
+    "fflate": "^0.8.3",
+    "pg": "^8.23.1"
   }
 }

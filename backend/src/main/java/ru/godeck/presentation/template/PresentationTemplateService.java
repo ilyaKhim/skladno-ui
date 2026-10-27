@@ -7,6 +7,7 @@ import org.apache.poi.xslf.usermodel.XSLFSlide;
 import org.apache.poi.xslf.usermodel.XSLFTextParagraph;
 import org.apache.poi.xslf.usermodel.XSLFTextRun;
 import org.apache.poi.xslf.usermodel.XSLFTextShape;
+import org.apache.poi.sl.usermodel.PaintStyle;
 import org.apache.poi.sl.usermodel.PictureData;
 import org.apache.poi.sl.usermodel.TextParagraph.TextAlign;
 import org.apache.poi.sl.usermodel.VerticalAlignment;
@@ -31,6 +32,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HexFormat;
+import java.security.MessageDigest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.function.Function;
@@ -98,6 +101,7 @@ public class PresentationTemplateService {
                         id,
                         new Template(
                                 source,
+                                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(source)),
                                 java.util.Collections.unmodifiableMap(fields),
                                 show.getSlides().size(),
                                 description,
@@ -139,6 +143,7 @@ public class PresentationTemplateService {
 
     private record Template(
             byte[] source,
+            String version,
             Map<String, Integer> fields,
             int slideCount,
             JsonNode description,
@@ -191,7 +196,18 @@ public class PresentationTemplateService {
 
     /** Returns a defensive copy of the default binary template. */
     public byte[] source() {
-        return get(TEMPLATE_ID).source().clone();
+        return source(TEMPLATE_ID);
+    }
+
+    /** Returns immutable template input for rendering, without exposing the registry's byte array. */
+    public byte[] source(String id) {
+        return get(id).source().clone();
+    }
+
+    /** Versions browser artwork URLs by source bytes so template updates invalidate old previews. */
+    public String backgroundUrl(String id, int slideNumber) {
+        return "/api/generation/v1/templates/" + id + "/slides/" + slideNumber
+                + "/background.png?v=" + get(id).version();
     }
 
     /** Returns the source-slide/field manifest for the default template. */
@@ -325,8 +341,8 @@ public class PresentationTemplateService {
                         slide,
                         decision.slide(),
                         decision.textLayoutsOrEmpty(),
-                        show.getPageSize().getWidth(),
-                        show.getPageSize().getHeight());
+                        pageBounds(show).getWidth(),
+                        pageBounds(show).getHeight());
                 for (XSLFShape shape : allShapes(slide.getShapes())) {
                     if (shape instanceof XSLFTextShape textShape) {
                         for (XSLFTextParagraph paragraph : textShape.getTextParagraphs()) {
@@ -335,7 +351,7 @@ public class PresentationTemplateService {
                     }
                 }
             }
-            var page = show.getPageSize();
+            var page = pageBounds(show);
             for (var decision : plan.slides()) {
                 if (!Boolean.TRUE.equals(decision.include())) continue;
                 XSLFSlide slide = bySourceNumber.get(decision.slide());
@@ -377,7 +393,7 @@ public class PresentationTemplateService {
             throws Exception {
         PresentationContent plan = normalize(templateId, content);
         try (XMLSlideShow show = open(templateId)) {
-            var page = show.getPageSize();
+            var page = pageBounds(show);
             List<EditorDeckView.Slide> slides = new ArrayList<>();
             for (var decision : plan.slides()) {
                 if (!Boolean.TRUE.equals(decision.include())) continue;
@@ -394,8 +410,11 @@ public class PresentationTemplateService {
                 int layoutIndex = 0;
                 for (XSLFShape shape : allShapes(slide.getShapes())) {
                     if (!(shape instanceof XSLFTextShape textShape)) continue;
-                    Matcher matcher = TOKEN.matcher(textShape.getText());
-                    if (!matcher.find()) continue;
+                    List<XSLFTextParagraph> editableParagraphs =
+                            textShape.getTextParagraphs().stream()
+                                    .filter(paragraph -> TOKEN.matcher(paragraph.getText()).find())
+                                    .toList();
+                    if (editableParagraphs.isEmpty()) continue;
                     String layoutId = textLayoutId(source, ++layoutIndex);
                     PresentationContent.TextLayout override = layoutOverrides.get(layoutId);
                     Rectangle2D anchor = textShape.getAnchor();
@@ -421,32 +440,43 @@ public class PresentationTemplateService {
                                     : anchor == null
                                             ? 7
                                             : percent(anchor.getHeight(), page.getHeight());
-                    do {
-                        String field = matcher.group(1);
-                        int occurrence = occurrences.merge(field, 1, Integer::sum);
-                        XSLFTextRun run = firstRun(textShape);
-                        XSLFTextParagraph paragraph =
-                                textShape.getTextParagraphs().isEmpty()
-                                        ? null
-                                        : textShape.getTextParagraphs().getFirst();
-                        String role = role(field);
-                        blocks.add(
-                                new EditorDeckView.TextBlock(
-                                        "slide-" + source + "-field-" + field + "-" + occurrence,
-                                        field,
-                                        layoutId,
-                                        get(templateId).fields().get(field),
-                                        role,
-                                        plan.fields().get(field),
-                                        x,
-                                        y,
-                                        width,
-                                        height,
-                                        fontSize(run),
-                                        run != null && run.isBold() ? 700 : 400,
-                                        alignment(paragraph),
-                                        color(role)));
-                    } while (matcher.find());
+                    int paragraphIndex = 0;
+                    for (XSLFTextParagraph paragraph : editableParagraphs) {
+                        Matcher matcher = TOKEN.matcher(paragraph.getText());
+                        XSLFTextRun run = firstRun(paragraph);
+                        double pixelsPerPoint = 960.0 / page.getWidth();
+                        int renderedFontSize = fontSize(run, pixelsPerPoint);
+                        var paragraphStyle =
+                                paragraphStyle(paragraph, paragraphIndex++, renderedFontSize, pixelsPerPoint);
+                        while (matcher.find()) {
+                            String field = matcher.group(1);
+                            int occurrence = occurrences.merge(field, 1, Integer::sum);
+                            String role = role(field);
+                            blocks.add(
+                                    new EditorDeckView.TextBlock(
+                                            "slide-"
+                                                    + source
+                                                    + "-field-"
+                                                    + field
+                                                    + "-"
+                                                    + occurrence,
+                                            field,
+                                            layoutId,
+                                            get(templateId).fields().get(field),
+                                            role,
+                                            plan.fields().get(field),
+                                            x,
+                                            y,
+                                            width,
+                                            height,
+                                            renderedFontSize,
+                                            run != null && run.isBold() ? 700 : 400,
+                                            alignment(paragraph),
+                                            color(role),
+                                            run == null ? null : paintColor(run.getFontColor()),
+                                            paragraphStyle));
+                        }
+                    }
                 }
                 for (var block : decision.textBlocksOrEmpty()) {
                     blocks.add(
@@ -464,7 +494,9 @@ public class PresentationTemplateService {
                                     block.fontSize(),
                                     block.weight(),
                                     block.align(),
-                                    block.color()));
+                                    block.color(),
+                                    null,
+                                    null));
                 }
                 List<EditorDeckView.ImageBlock> images =
                         decision.imageBlocksOrEmpty().stream()
@@ -489,6 +521,7 @@ public class PresentationTemplateService {
                                 source,
                                 slideNames.getOrDefault(source, "Слайд " + source),
                                 "monolith".equals(templateId) ? "navy" : "paper",
+                                backgroundUrl(templateId, source),
                                 decision.hiddenOrFalse(),
                                 List.copyOf(blocks),
                                 images));
@@ -505,6 +538,12 @@ public class PresentationTemplateService {
 
     private XMLSlideShow open(String id) throws Exception {
         return new XMLSlideShow(new ByteArrayInputStream(get(id).source()));
+    }
+
+    /** POI's Dimension truncates fractional points; raw EMU dimensions preserve export geometry. */
+    static Rectangle2D pageBounds(XMLSlideShow show) {
+        var size = show.getCTPresentation().getSldSz();
+        return new Rectangle2D.Double(0, 0, size.getCx() / 12_700.0, size.getCy() / 12_700.0);
     }
 
     /** Applies percentage-based overrides to template-owned marker shapes before text replacement. */
@@ -560,7 +599,7 @@ public class PresentationTemplateService {
         box.setWordWrap(true);
         box.setVerticalAlignment(VerticalAlignment.TOP);
         XSLFTextRun run = box.setText(block.text());
-        run.setFontSize(block.fontSize() * 0.75);
+        run.setFontSize(block.fontSize() * pageWidth / 960.0);
         run.setBold(block.weight() >= 700);
         run.setFontFamily("Arial");
         run.setFontColor(textColor(templateId, block.color()));
@@ -661,16 +700,57 @@ public class PresentationTemplateService {
                 estimate, TemplateTextPolicy.MIN_FIELD_LENGTH, TemplateTextPolicy.MAX_FIELD_LENGTH);
     }
 
-    private static XSLFTextRun firstRun(XSLFTextShape shape) {
-        return shape.getTextParagraphs().stream()
-                .flatMap(paragraph -> paragraph.getTextRuns().stream())
-                .findFirst()
-                .orElse(null);
+    private static XSLFTextRun firstRun(XSLFTextParagraph paragraph) {
+        return paragraph.getTextRuns().stream().findFirst().orElse(null);
     }
 
-    private static int fontSize(XSLFTextRun run) {
+    private static int fontSize(XSLFTextRun run, double pixelsPerPoint) {
         double points = run == null || run.getFontSize() == null ? 14 : run.getFontSize();
-        return Math.clamp((int) Math.round(points * 4 / 3), 8, 96);
+        return Math.clamp((int) Math.round(points * pixelsPerPoint), 8, 96);
+    }
+
+    /**
+     * Converts the paragraph metrics that affect browser flow without leaking POI types into the
+     * public editor contract. PowerPoint reports percentage line spacing as positive values and
+     * absolute point spacing as negative values; the browser receives a unitless line-height plus
+     * canonical-slide pixels.
+     */
+    private static EditorDeckView.ParagraphStyle paragraphStyle(
+            XSLFTextParagraph paragraph, int index, int fontSize, double pixelsPerPoint) {
+        return new EditorDeckView.ParagraphStyle(
+                index,
+                paragraph.isBullet() ? paragraph.getBulletCharacter() : null,
+                paintColor(paragraph.getBulletFontColor()),
+                lineHeight(paragraph.getLineSpacing(), fontSize, pixelsPerPoint),
+                spacingPixels(paragraph.getSpaceBefore(), fontSize, pixelsPerPoint),
+                spacingPixels(paragraph.getSpaceAfter(), fontSize, pixelsPerPoint),
+                pointsPixels(paragraph.getLeftMargin(), pixelsPerPoint),
+                pointsPixels(paragraph.getIndent(), pixelsPerPoint));
+    }
+
+    private static Double lineHeight(Double spacing, int fontSize, double pixelsPerPoint) {
+        if (spacing == null) return null;
+        double value = spacing >= 0 ? spacing / 100 : (-spacing * pixelsPerPoint) / fontSize;
+        return Math.round(Math.max(0.5, value) * 100.0) / 100.0;
+    }
+
+    private static double spacingPixels(Double spacing, int fontSize, double pixelsPerPoint) {
+        if (spacing == null) return 0;
+        double value = spacing >= 0 ? fontSize * spacing / 100 : -spacing * pixelsPerPoint;
+        return Math.round(value * 100.0) / 100.0;
+    }
+
+    private static double pointsPixels(Double points, double pixelsPerPoint) {
+        if (points == null) return 0;
+        return Math.round(points * pixelsPerPoint * 100.0) / 100.0;
+    }
+
+    private static String paintColor(PaintStyle paint) {
+        if (!(paint instanceof PaintStyle.SolidPaint solid)
+                || solid.getSolidColor() == null
+                || solid.getSolidColor().getColor() == null) return null;
+        Color color = solid.getSolidColor().getColor();
+        return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
     }
 
     private static double percent(double value, double total) {

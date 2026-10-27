@@ -15,6 +15,8 @@ import {
   type EditableImageFields,
   type ImageBlock,
 } from './editor-types'
+import { groupTextBlocks, type TextShapeGroup } from './text-shape-groups'
+import { SlideBackground } from './slide-background'
 
 const THEME_BACKGROUND: Record<SlideTheme, string> = {
   paper: '#ffffff',
@@ -37,19 +39,87 @@ const LINE_HEIGHT: Record<TextBlock['role'], number> = {
 
 type GeometryPatch = Partial<Pick<ImageBlock, 'x' | 'y' | 'width' | 'height'>>
 
-function blockStyle(block: TextBlock, theme: SlideTheme): CSSProperties {
+function shapeStyle(block: TextBlock): CSSProperties {
   return {
     left: `${block.x}%`,
     top: `${block.y}%`,
     width: `${block.width}%`,
     height: `${block.height}%`,
+  }
+}
+
+function canonicalPixels(value: number): string {
+  return `${(value / SLIDE_BASE_WIDTH) * 100}cqw`
+}
+
+function paragraphStyle(block: TextBlock, theme: SlideTheme): CSSProperties {
+  const paragraph = block.paragraph
+  const bulletMargin = paragraph?.bullet && !paragraph.leftMargin ? block.fontSize * 1.5 : 0
+
+  return {
+    position: 'relative',
+    display: 'block',
     fontSize: `${(block.fontSize / SLIDE_BASE_WIDTH) * 100}cqw`,
     fontWeight: block.weight,
-    lineHeight: LINE_HEIGHT[block.role],
+    lineHeight: paragraph?.lineHeight ?? LINE_HEIGHT[block.role],
     textAlign: block.align,
-    color: TEXT_COLORS[theme][block.color],
+    color: block.fontColor ?? TEXT_COLORS[theme][block.color],
     letterSpacing: block.role === 'eyebrow' ? '0.06em' : undefined,
+    marginTop: paragraph?.spaceBefore ? canonicalPixels(paragraph.spaceBefore) : undefined,
+    marginBottom: paragraph?.spaceAfter ? canonicalPixels(paragraph.spaceAfter) : undefined,
+    paddingInlineStart: paragraph?.leftMargin
+      ? canonicalPixels(paragraph.leftMargin)
+      : bulletMargin
+        ? canonicalPixels(bulletMargin)
+        : undefined,
+    overflowWrap: 'break-word',
   }
+}
+
+function textShapeContent(shape: TextShapeGroup, theme: SlideTheme) {
+  return shape.paragraphs.map((paragraph) => {
+    const block = paragraph.blocks[0]
+    const metadata = block.paragraph
+    const bulletMargin = metadata?.bullet && !metadata.leftMargin ? block.fontSize * 1.5 : 0
+    const bulletLeft = (metadata?.leftMargin ?? bulletMargin) + (metadata?.indent ?? -bulletMargin)
+    const fontClass = block.weight === 700 ? 'font-display' : 'font-sans'
+
+    return (
+      <span
+        key={`${shape.id}:paragraph:${paragraph.index}`}
+        data-paragraph-index={paragraph.index}
+        data-text-block-id={block.id}
+        className={fontClass}
+        style={paragraphStyle(block, theme)}
+      >
+        {metadata?.bullet && (
+          <span
+            aria-hidden
+            className="absolute"
+            style={{
+              insetBlockStart: 0,
+              insetInlineStart: canonicalPixels(bulletLeft),
+              color: metadata.bulletColor ?? undefined,
+            }}
+          >
+            {metadata.bullet}
+          </span>
+        )}
+        {paragraph.blocks.map((field) => (
+          <span key={field.id} data-text-block-id={field.id}>
+            {field.text}
+          </span>
+        ))}
+      </span>
+    )
+  })
+}
+
+function eventBlockId(event: { target: EventTarget | null }, fallback: string): string {
+  return (
+    (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-text-block-id]')?.dataset.textBlockId ??
+    fallback
+  )
 }
 
 interface SlideSurfaceProps {
@@ -75,6 +145,7 @@ export function SlideSurface({
   onCommitElement,
 }: SlideSurfaceProps) {
   const interactive = Boolean(onSelectElement)
+  const textShapes = groupTextBlocks(slide.blocks)
 
   const startGesture = (
     event: ReactPointerEvent,
@@ -132,48 +203,69 @@ export function SlideSurface({
       style={{ containerType: 'inline-size', backgroundColor: THEME_BACKGROUND[slide.theme] }}
       onClick={interactive ? () => onSelectElement?.(null) : undefined}
     >
-      {slide.theme === 'paper' && (
+      {slide.backgroundUrl && (
+        <SlideBackground key={slide.backgroundUrl} url={slide.backgroundUrl} interactive={interactive} />
+      )}
+      {!slide.backgroundUrl && slide.theme === 'paper' && (
         <span aria-hidden className="absolute top-[9.5%] right-[6%] h-[1.2%] w-[3%] rounded-full bg-accent" />
       )}
-      {slide.blocks.map((block) => {
-        const fontClass = block.weight === 700 ? 'font-display' : 'font-sans'
-        const style = blockStyle(block, slide.theme)
+      {textShapes.map((shape) => {
+        const anchor = shape.blocks[0]
+        const selectedBlock = shape.blocks.find((block) => block.id === selectedElementId)
+        const style = shapeStyle(anchor)
+        const content = textShapeContent(shape, slide.theme)
 
         if (!interactive) {
           return (
-            <div key={block.id} className={cn('absolute whitespace-pre-line', fontClass)} style={style}>
-              {block.text}
+            <div
+              key={shape.id}
+              data-text-shape-id={shape.id}
+              className="absolute whitespace-pre-line"
+              style={style}
+            >
+              <span className="block h-full overflow-hidden">{content}</span>
             </div>
           )
         }
 
-        const selected = block.id === selectedElementId
+        const selected = Boolean(selectedBlock)
         const handleClick = (event: MouseEvent) => {
           event.stopPropagation()
-          onSelectElement?.(block.id)
+          onSelectElement?.(eventBlockId(event, anchor.id))
         }
         const handleKeyDown = (event: KeyboardEvent) => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
             event.preventDefault()
-            onActivateBlock?.(block.id)
+            onActivateBlock?.(selectedBlock?.id ?? anchor.id)
           }
         }
 
         return (
           <button
-            key={block.id}
+            key={shape.id}
+            data-text-shape-id={shape.id}
             type="button"
             aria-pressed={selected}
-            aria-label={`${block.fieldKey ? BLOCK_ROLE_LABELS[block.role] : 'Свободный текст'}: ${block.text.slice(0, 60)}`}
+            aria-label={shape.blocks
+              .map(
+                (block) =>
+                  `${block.fieldKey ? BLOCK_ROLE_LABELS[block.role] : 'Свободный текст'}: ${block.text}`,
+              )
+              .join('. ')
+              .slice(0, 180)}
             onClick={handleClick}
-            onDoubleClick={() => onActivateBlock?.(block.id)}
+            onDoubleClick={(event) =>
+              onActivateBlock?.(eventBlockId(event, selectedBlock?.id ?? anchor.id))
+            }
             onKeyDown={handleKeyDown}
             onPointerDown={(event) => {
-              if (onUpdateBlock) startGesture(event, block, 'move', onUpdateBlock)
+              if (!onUpdateBlock) return
+              const blockId = eventBlockId(event, selectedBlock?.id ?? anchor.id)
+              const block = shape.blocks.find((candidate) => candidate.id === blockId) ?? anchor
+              startGesture(event, block, 'move', onUpdateBlock)
             }}
             className={cn(
-              'absolute cursor-move rounded-[2px] whitespace-pre-line outline-offset-[3px] focus-visible:outline-2 focus-visible:outline-primary touch-none',
-              fontClass,
+              'absolute cursor-move rounded-[2px] text-start whitespace-pre-line outline-offset-[3px] focus-visible:outline-2 focus-visible:outline-primary touch-none',
               selected
                 ? 'outline-2 outline-primary outline-solid'
                 : 'hover:outline-1 hover:outline-primary/60 hover:outline-dashed',
@@ -183,14 +275,17 @@ export function SlideSurface({
           >
             {selected && (
               <span className="pointer-events-none absolute bottom-full left-0 mb-1.5 rounded-sm bg-primary px-1.5 py-0.5 font-sans text-[11px] leading-none font-medium tracking-normal whitespace-nowrap text-primary-foreground">
-                {block.fieldKey ? BLOCK_ROLE_LABELS[block.role] : 'Свободный текст'}
+                {selectedBlock?.fieldKey ? BLOCK_ROLE_LABELS[selectedBlock.role] : 'Свободный текст'}
               </span>
             )}
-            <span className="block h-full overflow-hidden">{block.text}</span>
+            <span className="block h-full overflow-hidden">{content}</span>
             {selected && (
               <span
                 aria-hidden
-                onPointerDown={(event) => onUpdateBlock && startGesture(event, block, 'resize', onUpdateBlock)}
+                data-resize-handle
+                onPointerDown={(event) =>
+                  onUpdateBlock && startGesture(event, selectedBlock ?? anchor, 'resize', onUpdateBlock)
+                }
                 className="absolute right-0 bottom-0 size-2.5 translate-x-1/2 translate-y-1/2 cursor-nwse-resize rounded-[2px] border-2 border-background bg-primary shadow-sm touch-none"
               />
             )}
@@ -234,6 +329,7 @@ export function SlideSurface({
                 </span>
                 <span
                   aria-hidden
+                  data-resize-handle
                   onPointerDown={(event) => onUpdateImage && startGesture(event, image, 'resize', onUpdateImage)}
                   className="absolute right-0 bottom-0 size-2.5 translate-x-1/2 translate-y-1/2 cursor-nwse-resize rounded-[2px] border-2 border-background bg-primary shadow-sm touch-none"
                 />

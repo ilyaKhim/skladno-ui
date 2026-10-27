@@ -5,6 +5,19 @@ export type BlockWeight = 400 | 500 | 700
 export type SlideTheme = 'paper' | 'navy'
 export type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error'
 
+export interface TextParagraphStyle {
+  /** Order inside the owning PowerPoint text shape. */
+  index: number
+  bullet?: string
+  bulletColor?: string
+  lineHeight?: number
+  /** Spacing and margins in px at the canonical 960 px slide width. */
+  spaceBefore: number
+  spaceAfter: number
+  leftMargin: number
+  indent: number
+}
+
 export interface TextBlock {
   id: string
   /** Semantic template field. Repeated occurrences are edited together. */
@@ -24,6 +37,10 @@ export interface TextBlock {
   weight: BlockWeight
   align: BlockAlign
   color: BlockColor
+  /** Resolved PowerPoint font color; custom text continues using semantic color tokens. */
+  fontColor?: string
+  /** Present for template fields; geometry remains owned by layoutKey. */
+  paragraph?: TextParagraphStyle
 }
 
 export interface ImageBlock {
@@ -42,6 +59,7 @@ export interface Slide {
   sourceSlideNumber?: number
   name: string
   theme: SlideTheme
+  backgroundUrl?: string
   hidden: boolean
   blocks: TextBlock[]
   images: ImageBlock[]
