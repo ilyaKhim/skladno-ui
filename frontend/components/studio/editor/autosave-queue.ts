@@ -11,6 +11,7 @@ export interface AutosaveQueue<T> {
   update: (value: T) => void
   saveNow: () => Promise<boolean>
   dispose: () => void
+  hasUnsavedChanges: () => boolean
 }
 
 /**
@@ -25,6 +26,8 @@ export function createAutosaveQueue<T>({
 }: AutosaveOptions<T>): AutosaveQueue<T> {
   let latestValue = initialValue
   let changeNumber = 0
+  let savedChange = 0
+  let failed = false
   let pending: Promise<boolean> | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
@@ -53,10 +56,12 @@ export function createAutosaveQueue<T>({
           await save(latestValue)
         } while (!disposed && savingChange !== changeNumber)
         succeeded = !disposed
+        if (succeeded) savedChange = changeNumber
       } catch {
         // Stop on an error. A user retry or a later edit can start another attempt.
       }
       pending = null
+      failed = !succeeded
       if (!disposed) onStatusChange(succeeded ? 'saved' : 'error')
       return succeeded
     })
@@ -75,6 +80,7 @@ export function createAutosaveQueue<T>({
     },
     // An explicit save also creates an initial server draft before exporting an untouched deck.
     saveNow,
+    hasUnsavedChanges: () => pending !== null || failed || changeNumber !== savedChange,
     dispose() {
       disposed = true
       clearTimer()

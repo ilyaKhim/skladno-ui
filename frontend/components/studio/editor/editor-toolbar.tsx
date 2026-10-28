@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
 import { ArrowLeft, Check, CircleDot, Download, ImagePlus, LoaderCircle, PanelRight, Redo2, Type, Undo2 } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -28,6 +27,7 @@ interface EditorToolbarProps {
   onExport?: () => Promise<void>
   onTogglePanel: () => void
   titleEditable?: boolean
+  onBack?: () => void
 }
 
 export function EditorToolbar({
@@ -50,18 +50,24 @@ export function EditorToolbar({
   onExport,
   onTogglePanel,
   titleEditable = true,
+  onBack,
 }: EditorToolbarProps) {
   const imageInput = useRef<HTMLInputElement>(null)
   return (
     <header className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border bg-card px-2 sm:px-3">
-      <Link
+      <a
         href="/studio"
+        onClick={(event) => {
+          if (!onBack || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+          event.preventDefault()
+          onBack()
+        }}
         className={buttonVariants({ variant: 'ghost', size: 'icon-sm' })}
         aria-label="Назад в студию"
         title="Назад в студию"
       >
         <ArrowLeft />
-      </Link>
+      </a>
       <span aria-hidden className="mx-1 h-5 w-px bg-border" />
 
       <label htmlFor="deck-title" className="sr-only">

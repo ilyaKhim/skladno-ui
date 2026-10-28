@@ -37,13 +37,18 @@ export const test = base.extend<{ plan: Plan; deckId: string; createdDecks: stri
       }
     }
   },
-  browserErrors: [async ({ page }, use) => {
+  browserErrors: [async ({ page, context }, use) => {
     const errors: string[] = []
-    page.on('pageerror', (error) => errors.push(error.message))
-    page.on('request', (request) => {
-      if (/fonts\.(googleapis|gstatic)\.com/.test(request.url())) errors.push(`External font: ${request.url()}`)
-    })
+    const observe = (tab: Page) => {
+      tab.on('pageerror', (error) => errors.push(error.message))
+      tab.on('request', (request) => {
+        if (/fonts\.(googleapis|gstatic)\.com/.test(request.url())) errors.push(`External font: ${request.url()}`)
+      })
+    }
+    observe(page)
+    context.on('page', observe)
     await use()
+    context.off('page', observe)
     expect(errors, 'Browser runtime errors or external Google Fonts requests').toEqual([])
   }, { auto: true }],
   plan: async ({ request }, use) => {

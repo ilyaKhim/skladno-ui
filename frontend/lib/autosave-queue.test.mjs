@@ -199,3 +199,25 @@ test('disposing before the save microtask starts prevents the request', async (t
   assert.equal(await completion, false)
   assert.deepEqual(values, [])
 })
+
+test('unsaved guard changes synchronously and clears only after the final acknowledgment', async (t) => {
+  const gate = deferred()
+  const started = deferred()
+  const { queue } = setup(t, async () => { started.resolve(); await gate.promise })
+  assert.equal(queue.hasUnsavedChanges(), false)
+  queue.update('A')
+  assert.equal(queue.hasUnsavedChanges(), true)
+  const completion = queue.saveNow()
+  await started.promise
+  assert.equal(queue.hasUnsavedChanges(), true)
+  gate.resolve()
+  assert.equal(await completion, true)
+  assert.equal(queue.hasUnsavedChanges(), false)
+})
+
+test('a failed save keeps the navigation guard active', async (t) => {
+  const { queue } = setup(t, async () => { throw new Error('Network failure') })
+  queue.update('A')
+  assert.equal(await queue.saveNow(), false)
+  assert.equal(queue.hasUnsavedChanges(), true)
+})
