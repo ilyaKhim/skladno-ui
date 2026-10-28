@@ -9,7 +9,7 @@ export type TemplateCategoryKey =
   | 'marketing'
   | 'training'
 
-export type TemplateStatus = 'published' | 'draft'
+type TemplateStatus = 'published' | 'draft'
 
 export interface TemplateRecord {
   id: string
@@ -26,7 +26,7 @@ export interface TemplateRecord {
   useCases: string[]
 }
 
-export interface TemplateCategoryDef {
+interface TemplateCategoryDef {
   key: TemplateCategoryKey
   label: string
 }
@@ -44,8 +44,6 @@ export const TEMPLATE_CATEGORIES: TemplateCategoryDef[] = [
   { key: 'training', label: 'Обучение и инструкции' },
 ]
 
-export const ALL_TEMPLATES_CATEGORY_KEY = 'all' as const
-
 function slidePath(slug: string, slideNumber: number): string {
   return `/template-previews/${slug}/slide-${String(slideNumber).padStart(2, '0')}.webp`
 }
@@ -58,7 +56,7 @@ function makeSlides(slug: string, slideCount: number): string[] {
  * Local template records. Each published template points to its complete
  * ordered WebP slide set under /public/template-previews/<slug>/.
  */
-export const TEMPLATES: TemplateRecord[] = [
+const TEMPLATES: TemplateRecord[] = [
   {
     id: 'reports-1',
     slug: 'reports-marketing-campaign-analysis',

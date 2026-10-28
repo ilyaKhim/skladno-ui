@@ -77,6 +77,7 @@ export function EditorPageClient() {
     [presentationId, reportError],
   )
 
+  /** Export renders a new PPTX through /commit; ordinary edits use /draft in save() above. */
   const exportPptx = useCallback(async () => {
     if (!presentationId) throw new Error('Не указана презентация.')
     try {

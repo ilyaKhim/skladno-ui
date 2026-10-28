@@ -45,7 +45,7 @@ export type AiCall = {
   duration_ms: number | null
 }
 
-export type EditorTextBlock = {
+type EditorTextBlock = {
   id: string
   field_key: string | null
   layout_id: string | null
@@ -73,7 +73,7 @@ export type EditorTextBlock = {
   } | null
 }
 
-export type EditorSlide = {
+type EditorSlide = {
   id: string
   source_slide_number: number
   name: string
@@ -84,7 +84,7 @@ export type EditorSlide = {
   images: EditorImageBlock[]
 }
 
-export type EditorImageBlock = {
+type EditorImageBlock = {
   id: string
   asset_id: string
   url: string

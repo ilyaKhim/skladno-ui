@@ -3,12 +3,12 @@ import { readFile } from 'node:fs/promises'
 import { unzipSync, strFromU8 } from 'fflate'
 import pg from 'pg'
 
-export type Plan = {
+type Plan = {
   fields: Record<string, string>
   slides: { slide: number; include: boolean; reason: string }[]
 }
 
-export async function mutation(request: APIRequestContext, method: 'post' | 'put', url: string, data: unknown) {
+async function mutation(request: APIRequestContext, method: 'post' | 'put', url: string, data: unknown) {
   const csrfResponse = await request.get('/api/auth/csrf')
   expect(csrfResponse.ok()).toBeTruthy()
   const { data: csrf } = await csrfResponse.json()

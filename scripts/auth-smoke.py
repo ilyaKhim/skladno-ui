@@ -48,8 +48,9 @@ def message(subject):
 email = 'smoke-' + secrets.token_hex(5) + '@example.test'
 password = secrets.token_urlsafe(20)
 status, page, _ = fetch(BASE + '/auth')
-assert status == 200 and 'Продолжить в GoDeck' in page, (status, page[:200])
-print('PASS frontend auth page renders')
+# The form hydrates inside Suspense; a plain HTTP client sees the server-rendered shell.
+assert status == 200 and 'id="auth-heading"' in page and 'Вход и регистрация' in page, (status, page[:200])
+print('PASS frontend auth page serves its server-rendered shell')
 assert auth('me')[0] == 401
 assert auth('identify', {'email':email}, csrf=False)[0] == 403
 assert auth('identify', {'email':email})[1]['data']['step'] == 'create-password'

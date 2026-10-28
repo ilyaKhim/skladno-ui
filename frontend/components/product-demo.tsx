@@ -14,7 +14,6 @@ import { cn } from '@/lib/utils'
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion'
 
 const STAGE_DURATION = 4000
-const TOTAL_DURATION = STAGE_DURATION * 3
 const HOLD_DURATION = 10000
 const TICK_MS = 80
 
@@ -126,7 +125,7 @@ function flagsForStage(stageIndex: number, localElapsed: number): Partial<Flags>
   return out
 }
 
-export type StageStatus = 'active' | 'done' | 'upcoming'
+type StageStatus = 'active' | 'done' | 'upcoming'
 
 /**
  * Product demo: three vertical micro-screens (Materials → Structure →

@@ -239,10 +239,6 @@ public class Presentation {
         return contentJson;
     }
 
-    public String getIdempotencyKey() {
-        return idempotencyKey;
-    }
-
     public String getRequestHash() {
         return requestHash;
     }
@@ -281,9 +277,5 @@ public class Presentation {
 
     public long getEditorRevision() {
         return editorRevision;
-    }
-
-    public Instant getEditorUpdatedAt() {
-        return editorUpdatedAt;
     }
 }
