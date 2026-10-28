@@ -1,6 +1,6 @@
 import type { TextBlock } from './editor-types'
 
-export interface TextParagraphGroup {
+interface TextParagraphGroup {
   index: number
   blocks: TextBlock[]
 }

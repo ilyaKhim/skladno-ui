@@ -10,7 +10,7 @@ export const SITE_TITLE = 'GoDeck — рабочая презентация из
 export const SITE_DESCRIPTION =
   'Загрузите документ, таблицу или черновик — GoDeck соберёт структуру, оформит слайды в вашем фирменном стиле и подготовит редактируемый PowerPoint.'
 
-export interface SocialImage {
+interface SocialImage {
   url: string
   width: number
   height: number

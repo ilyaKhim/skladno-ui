@@ -1,8 +1,7 @@
-export const DEFAULT_CODE_LENGTH = 6
 export const DEFAULT_RESEND_SECONDS = 60
 export const MIN_PASSWORD_LENGTH = 8
 
-export type AuthErrorCode =
+type AuthErrorCode =
   | 'unavailable'
   | 'network'
   | 'invalid-credentials'
@@ -24,7 +23,7 @@ export interface CodeChallenge {
 }
 
 /** The server, not the browser, decides which step comes after the email. */
-export type IdentifyOutcome =
+type IdentifyOutcome =
   | { step: 'password' }
   | { step: 'create-password' }
   | { step: 'verify'; challenge: CodeChallenge }

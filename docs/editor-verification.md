@@ -44,6 +44,31 @@ pnpm verify
 
 ## Посмотреть процесс по шагам
 
+### Как найти вызов `/commit` во frontend
+
+`/draft` и `/commit` решают разные задачи. Автосохранение записывает JSON черновика в БД; оно не
+пересобирает PowerPoint. Экспорт сначала дожидается черновика, затем публикует его через `/commit`
+как новую PPTX revision. Скачивание читает уже опубликованный файл.
+
+| Действие | Цепочка вызовов | Запрос |
+| --- | --- | --- |
+| Изменить текст или расположение | `useEditorState.dispatch` → `autosave.update` → `save` в `EditorPageClient` → `generationApi.saveEditorDraft` | `PUT /editor/draft` |
+| Нажать «Сохранить» или выйти в студию с правками | `editor.saveNow` → та же очередь → `save` | `PUT /editor/draft` |
+| Нажать «Экспортировать» | `ExportMenu.startExport` → `EditorShell.exportDocument` → `editor.saveNow` → `EditorPageClient.exportPptx` → `generationApi.commitEditor` | Сначала `/draft`, затем `POST /editor/commit` и скачивание |
+
+В React функцию передают дочернему компоненту через prop: `onExport={exportPptx}`. Это аналог передачи
+ссылки на метод в Java, например `this::exportPptx`. Дочерний компонент позже вызывает `onExport()`.
+Поэтому HTTP-запрос находится в `EditorPageClient`, хотя кнопку рисует `EditorToolbar`.
+
+Файлы для чтения: `editor-toolbar.tsx` → `editor-shell.tsx` → `editor-page-client.tsx` →
+`frontend/lib/generation-client.ts` → backend `PresentationEditorController.commit` →
+`PresentationEditorService.commit`. Наличие этой цепочки проверяют E2E, которые скачивают и разбирают PPTX.
+
+Демо-страница `/studio/editor-demo` — отдельная точка входа Next.js. У неё нет настоящего export callback,
+поэтому она показывает прототип экспорта. Она не заменяет рабочий редактор `/studio/editor?presentation=...`.
+
+### Запуск отладки
+
 ```sh
 pnpm test:e2e:debug --project=chromium
 ```

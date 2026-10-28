@@ -1,4 +1,4 @@
-export type BlockRole = 'eyebrow' | 'title' | 'subtitle' | 'body' | 'metric' | 'caption'
+type BlockRole = 'eyebrow' | 'title' | 'subtitle' | 'body' | 'metric' | 'caption'
 export type BlockColor = 'ink' | 'muted' | 'brand'
 export type BlockAlign = 'left' | 'center' | 'right'
 export type BlockWeight = 400 | 500 | 700
@@ -11,7 +11,7 @@ export interface EditorOperationError {
   conflict: boolean
 }
 
-export interface TextParagraphStyle {
+interface TextParagraphStyle {
   /** Order inside the owning PowerPoint text shape. */
   index: number
   bullet?: string

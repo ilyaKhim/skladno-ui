@@ -14,7 +14,7 @@ import type {
 
 const HISTORY_LIMIT = 100
 
-export type DeckAction =
+type DeckAction =
   | { type: 'renameDeck'; title: string }
   | { type: 'updateSlide'; slideId: string; patch: Partial<Pick<Slide, 'name' | 'hidden'>> }
   | { type: 'updateBlock'; slideId: string; blockId: string; patch: EditableBlockFields }
@@ -330,5 +330,3 @@ export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promi
     moveSlide,
   }
 }
-
-export type EditorState = ReturnType<typeof useEditorState>

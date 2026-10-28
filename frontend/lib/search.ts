@@ -1,6 +1,6 @@
 import type { TemplateRecord } from '@/lib/templates'
 
-export function normalizeSearchText(value: string) {
+function normalizeSearchText(value: string) {
   return value
     .normalize('NFKC')
     .toLowerCase()

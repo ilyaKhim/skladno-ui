@@ -5,10 +5,10 @@ const TEMPLATE_GIT_REF = process.env.NEXT_PUBLIC_TEMPLATE_GIT_REF
  * access to the source repository. A deployment revision refreshes browser caches.
  * An optional base URL can point to a separate public asset host.
  */
-export const TEMPLATE_ASSETS_BASE_URL =
+const TEMPLATE_ASSETS_BASE_URL =
   (process.env.NEXT_PUBLIC_TEMPLATE_ASSETS_BASE_URL || '').replace(/\/+$/, '')
 
-export interface TemplateSlidesManifest {
+interface TemplateSlidesManifest {
   slug: string
   slideCount: number
   slides: string[]

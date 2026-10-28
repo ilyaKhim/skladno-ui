@@ -18,9 +18,9 @@ export type DemoQualification = {
 
 export type DemoQuestionStep = Extract<DemoModalStep, 'role' | 'use-case' | 'pain' | 'frequency' | 'team'>
 
-export type DemoOption = { value: string; label: string }
+type DemoOption = { value: string; label: string }
 
-export type DemoQuestion = {
+type DemoQuestion = {
   step: DemoQuestionStep
   title: string
   hint?: string
@@ -201,19 +201,19 @@ export function saveDemoQualification(data: DemoQualification): void {
   }
 }
 
-export const PLANERKA_DEMO_URL =
+const PLANERKA_DEMO_URL =
   process.env.NEXT_PUBLIC_PLANERKA_DEMO_URL ?? 'https://planerka.app/ilya-himchenko-flk6ha/30min'
 
 const PLANERKA_QUALIFICATION_PARAM = 'qualification'
 const SUMMARY_SOURCE = 'Источник: GoDeck landing'
 
-export const SKIPPED_QUALIFICATION_SUMMARY = `Анкета пропущена | ${SUMMARY_SOURCE}`
+const SKIPPED_QUALIFICATION_SUMMARY = `Анкета пропущена | ${SUMMARY_SOURCE}`
 
 function labelFor(step: DemoQuestionStep, value: string | undefined): string {
   return DEMO_QUESTIONS[step].options.find((option) => option.value === value)?.label ?? ''
 }
 
-export function buildQualificationSummary(data: DemoQualification): string {
+function buildQualificationSummary(data: DemoQualification): string {
   const useCases = data.useCases.map((value) => labelFor('use-case', value)).filter(Boolean)
 
   return [
@@ -227,7 +227,7 @@ export function buildQualificationSummary(data: DemoQualification): string {
 }
 
 /** The only place that turns a qualification summary into a Planerka booking URL. */
-export function buildPlanerkaBookingUrl(summary: string): string {
+function buildPlanerkaBookingUrl(summary: string): string {
   const url = new URL(PLANERKA_DEMO_URL)
   url.searchParams.set(PLANERKA_QUALIFICATION_PARAM, summary)
   return url.toString()

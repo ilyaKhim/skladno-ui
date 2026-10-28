@@ -149,11 +149,13 @@ export const generationApi = {
       30_000,
     )
   },
+  /** Persist editor JSON only; autosave never renders a PowerPoint file. */
   saveEditorDraft: (id: string, draft: SaveEditorDraft) =>
     request<EditorDraftSaved>(`${presentationPath(id)}/editor/draft`, {
       method: 'PUT',
       body: JSON.stringify(draft),
     }),
+  /** Publish the saved draft as a new PPTX revision when the editor exports. */
   commitEditor: (id: string, baseVersion: number, draftRevision: number) =>
     request<PresentationJob>(
       `${presentationPath(id)}/editor/commit`,

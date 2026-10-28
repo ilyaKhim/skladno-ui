@@ -194,11 +194,6 @@ public class PresentationTemplateService {
         return get(id).fields();
     }
 
-    /** Returns a defensive copy of the default binary template. */
-    public byte[] source() {
-        return source(TEMPLATE_ID);
-    }
-
     /** Returns immutable template input for rendering, without exposing the registry's byte array. */
     public byte[] source(String id) {
         return get(id).source().clone();

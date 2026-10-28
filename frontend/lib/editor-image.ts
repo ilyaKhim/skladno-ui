@@ -1,8 +1,8 @@
 import type { EditorAsset } from './generation-types'
 import type { ImageBlock } from '../components/studio/editor/editor-types'
 
-export const EDITOR_IMAGE_MAX_BYTES = 10 * 1024 * 1024
-export const EDITOR_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg'])
+const EDITOR_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+const EDITOR_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg'])
 
 type Geometry = Pick<ImageBlock, 'x' | 'y' | 'width' | 'height'>
 type ArrowKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'

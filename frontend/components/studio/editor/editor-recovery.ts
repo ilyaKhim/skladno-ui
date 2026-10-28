@@ -2,7 +2,7 @@ import type { Deck, Slide, TextBlock, ImageBlock } from './editor-types'
 import { serialize } from './editor-document.ts'
 
 export interface EditorVersion { base: number; draft: number }
-export interface RecoveryCopy {
+interface RecoveryCopy {
   schema: 1
   ownerId: string
   savedAt: number

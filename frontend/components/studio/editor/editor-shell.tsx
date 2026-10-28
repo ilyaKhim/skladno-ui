@@ -100,6 +100,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     }
   }, [])
 
+  /** Flush the latest draft, then invoke the page's publish/download callback. */
   const exportDocument = async () => {
     if (busy.current) throw new Error('Дождитесь завершения текущего действия.')
     if (imageUploading) {
