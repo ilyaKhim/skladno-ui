@@ -121,7 +121,7 @@ const REPHRASE_PREFIXES = ['Иначе говоря', 'Проще говоря',
 
 function transform(action: string, params: Record<string, string>, text: string, index: number) {
   const instruction = Object.values(params).join(' ').trim()
-  if (action === 'shorten' || /корот|сократ/i.test(instruction)) return index === 0 ? shorten(text) : shorten(shorten(text))
+  if (action === 'shorten' || /корот|короч|сократ/i.test(instruction)) return index === 0 ? shorten(text) : shorten(shorten(text))
   if (action === 'rephrase') return `${REPHRASE_PREFIXES[index % REPHRASE_PREFIXES.length]}: ${lowerFirst(text)}`
   if (/формал/i.test(instruction)) return `${['Сообщаем', 'Отметим', 'Подчеркнём'][index % 3]}: ${lowerFirst(text)}`
   if (/энтузиазм|энерги|ярче/i.test(instruction)) return `${text.replace(/[.!?…]*$/, '')}${'!'.repeat(index + 1)}`

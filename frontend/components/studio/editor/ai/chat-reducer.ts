@@ -185,10 +185,14 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   }
 }
 
-/** Without a proposal the block text is the source; with one, the request refines the proposal. */
-export function sourceFor(state: Pick<ChatState, 'pending'>, key: string, blockText: string): SourceSnapshot {
+/**
+ * Without a proposal the block text is the source; with one, the request refines the proposal.
+ * A proposal longer than the input limit (e.g. `exceeds_hard_limit`) cannot be sent back, so the
+ * request starts again from the block text.
+ */
+export function sourceFor(state: Pick<ChatState, 'pending'>, key: string, blockText: string, inputLimit = Infinity): SourceSnapshot {
   const pending = state.pending.get(key)
-  return pending
+  return pending && pending.text.length <= inputLimit
     ? { text: pending.text, refinesEditId: pending.editId, baseText: pending.baseText }
     : { text: blockText, refinesEditId: null, baseText: blockText }
 }

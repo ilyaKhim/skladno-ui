@@ -4,7 +4,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import type { AiActionCatalog, TextEditTarget } from '@/lib/generation-types'
 import type { Deck, EditableBlockFields } from '../editor-types'
 import type { AiEditPort } from './ai-edit-port'
-import { chipLabel, disabledReason, findTargetBlock, targetKey } from './ai-target'
+import { chipLabel, disabledReason, findTargetBlock, inputLimit, targetKey } from './ai-target'
 import {
   anotherVariantPlan,
   buildTextEditRequest,
@@ -137,9 +137,10 @@ export function useAiChat({ config, editor, ensureSaved, active, confirm = (mess
   /** Sends an action for the selected block; with a pending proposal the request refines it. */
   const sendAction = useCallback((target: TextEditTarget, request: ActionRequest) => {
     const found = findTargetBlock(bridge.current.getDeck(), target)
-    const source: SourceSnapshot = sourceFor(current.current, targetKey(target), found?.block.text ?? '')
+    const limit = found && catalog ? inputLimit(found.block, catalog) : undefined
+    const source: SourceSnapshot = sourceFor(current.current, targetKey(target), found?.block.text ?? '', limit)
     void run({ target, request, source }, 'new', request.label)
-  }, [run])
+  }, [run, catalog])
 
   const retry = useCallback((plan: RetryPlan) => void run(plan, 'new', plan.request.label), [run])
 

@@ -144,6 +144,14 @@ test('a refinement sends the proposal text and its edit id, and its card shows t
   assert.equal(state.pending.get(key).baseText, original)
 })
 
+test('a proposal too long to send back is not refined; the request starts from the block text', () => {
+  const key = targetKey(fieldTarget)
+  const state = received(initialChatState(), { requestId: 'r1', source: sourceFor(initialChatState(), key, 'Блок'),
+    response: okResponse('edit-1', 'x'.repeat(200)) })
+  assert.deepEqual(sourceFor(state, key, 'Блок', 146), { text: 'Блок', refinesEditId: null, baseText: 'Блок' })
+  assert.equal(sourceFor(state, key, 'Блок', 400).refinesEditId, 'edit-1')
+})
+
 test('another variant repeats the same action from the same source as a new request', () => {
   const key = targetKey(fieldTarget)
   const source = sourceFor(initialChatState(), key, 'Исходный текст блока')
