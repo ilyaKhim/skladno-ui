@@ -179,7 +179,7 @@ export function AiCallHistory({ presentationId, refreshKey, live, loadCalls }: P
               <li key={call.id} className="min-w-0 py-3">
                 <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
                   <p className="font-semibold">
-                    {call.operation === 'generation' ? 'Генерация' : 'Правка в чате'} · {call.model}
+                    {call.operation === 'generation' ? 'Генерация' : call.operation === 'text_edit' ? 'Правка текста' : 'Правка в чате'} · {call.model}
                   </p>
                   <time
                     className="text-muted-foreground"

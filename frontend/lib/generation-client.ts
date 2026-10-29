@@ -1,4 +1,5 @@
 import type {
+  AiActionCatalog,
   AiCall,
   CreatePresentationInput,
   EditorDeck,
@@ -13,6 +14,8 @@ import type {
   SaveEditorDraft,
   Template,
   TemplateContext,
+  TextEditRequest,
+  TextEditResponse,
 } from './generation-types'
 import type { LlmContent } from './llm-response'
 import { isExtractedMaterial } from './generation-material.ts'
@@ -21,6 +24,7 @@ const API_ROOT = '/api/generation'
 const REQUEST_TIMEOUT_MS = 15_000
 const CSRF_TIMEOUT_MS = 10_000
 const CHAT_TIMEOUT_MS = 150_000
+const TEXT_EDIT_TIMEOUT_MS = 45_000
 const SESSION_EXPIRED = 'Войдите в GoDeck, чтобы открыть студию.'
 
 export class GenerationApiError extends Error {
@@ -237,6 +241,13 @@ export const generationApi = {
       CHAT_TIMEOUT_MS,
     ),
   versions: (id: string) => request<{ items: Revision[] }>(`${presentationPath(id)}/versions`),
+  aiActions: (signal?: AbortSignal) => request<AiActionCatalog>('/v1/editor/ai/actions', { signal }),
+  textEdit: (id: string, body: TextEditRequest, signal?: AbortSignal) =>
+    request<TextEditResponse>(
+      `${presentationPath(id)}/editor/ai/text-edits`,
+      { ...post(body), signal },
+      TEXT_EDIT_TIMEOUT_MS,
+    ),
 }
 
 export async function loadAiCalls(id: string, signal: AbortSignal): Promise<AiCall[]> {
