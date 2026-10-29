@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
+import ru.godeck.presentation.aiedit.controller.AiEditController;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 
@@ -19,7 +20,8 @@ import java.util.Map;
         assignableTypes = {
             GenerationController.class,
             PresentationEditorController.class,
-            MaterialController.class
+            MaterialController.class,
+            AiEditController.class
         })
 public class GenerationExceptionHandler {
     @ExceptionHandler(GenerationException.class)
