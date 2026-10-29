@@ -34,6 +34,7 @@ public record EditorDeckView(
             String fieldKey,
             String layoutId,
             int maxChars,
+            int hardMaxChars,
             String role,
             String text,
             double x,

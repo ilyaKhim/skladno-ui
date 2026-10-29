@@ -24,7 +24,9 @@ import ru.godeck.presentation.model.PresentationEditorDraft;
 import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.repository.PresentationRepository;
 import ru.godeck.presentation.storage.PresentationFiles;
+import ru.godeck.presentation.template.EditorTextLimits;
 import ru.godeck.presentation.template.PresentationTemplateService;
+import ru.godeck.presentation.template.TextLengthMode;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -223,8 +225,15 @@ public class PresentationEditorService {
         Path output = null;
         try {
             PresentationEditorDraft draft = editorCodec.decode(edit.editorJson());
-            PresentationContent content = templates.normalize(edit.templateId(), draft.content());
-            output = files.write(id, edit.baseVersion() + 1, edit.templateId(), content);
+            PresentationContent content =
+                    templates.normalizeEditor(edit.templateId(), draft.content());
+            output =
+                    files.write(
+                            id,
+                            edit.baseVersion() + 1,
+                            edit.templateId(),
+                            content,
+                            TextLengthMode.ALLOW_OVERFLOW);
             return transactions.completeEditorCommit(
                     edit, contentCodec.encode(content), output.toString(), content.slideCount());
         } catch (Exception error) {
@@ -330,10 +339,10 @@ public class PresentationEditorService {
                     || field.getValue().contains("{{")
                     || field.getValue().contains("}}")
                     || limit == null
-                    || field.getValue().length() > limit) invalid();
+                    || field.getValue().length() > EditorTextLimits.hard(limit)) invalid();
         }
         PresentationContent updated =
-                templates.normalize(
+                templates.normalizeEditor(
                         presentation.getTemplateId(),
                         new PresentationContent(Map.copyOf(fields), List.copyOf(reordered)));
         return new PresentationEditorDraft(input.title().strip(), Map.copyOf(names), updated);
@@ -353,7 +362,7 @@ public class PresentationEditorService {
         if (presentation.getContentJson() == null)
             throw new GenerationException(GenerationError.CONTENT_UNAVAILABLE);
         PresentationContent content =
-                templates.normalize(
+                templates.normalizeEditor(
                         presentation.getTemplateId(),
                         contentCodec.decode(presentation.getContentJson()));
         return new PresentationEditorDraft(
