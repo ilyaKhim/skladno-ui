@@ -8,6 +8,12 @@ public class GenerationException extends RuntimeException {
         this.error = error;
     }
 
+    /** Uses a message with request-specific details, for example when a quota resets. */
+    public GenerationException(GenerationError error, String message) {
+        super(message);
+        this.error = error;
+    }
+
     public int status() {
         return error.status().value();
     }

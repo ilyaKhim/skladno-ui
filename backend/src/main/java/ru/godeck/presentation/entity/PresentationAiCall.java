@@ -51,6 +51,18 @@ public class PresentationAiCall {
     @Column(name = "duration_ms")
     private Long durationMs;
 
+    @Column(name = "input_tokens")
+    private Integer inputTokens;
+
+    @Column(name = "cached_input_tokens")
+    private Integer cachedInputTokens;
+
+    @Column(name = "output_tokens")
+    private Integer outputTokens;
+
+    @Column(name = "reasoning_tokens")
+    private Integer reasoningTokens;
+
     protected PresentationAiCall() {}
 
     public PresentationAiCall(
@@ -70,6 +82,34 @@ public class PresentationAiCall {
         this.errorCode = errorCode;
         this.completedAt = completedAt;
         this.durationMs = Math.max(0, Duration.between(startedAt, completedAt).toMillis());
+    }
+
+    /** Stores provider token usage; {@code null} values mean the provider did not report them. */
+    public void recordUsage(
+            Integer inputTokens,
+            Integer cachedInputTokens,
+            Integer outputTokens,
+            Integer reasoningTokens) {
+        this.inputTokens = inputTokens;
+        this.cachedInputTokens = cachedInputTokens;
+        this.outputTokens = outputTokens;
+        this.reasoningTokens = reasoningTokens;
+    }
+
+    public Integer getInputTokens() {
+        return inputTokens;
+    }
+
+    public Integer getCachedInputTokens() {
+        return cachedInputTokens;
+    }
+
+    public Integer getOutputTokens() {
+        return outputTokens;
+    }
+
+    public Integer getReasoningTokens() {
+        return reasoningTokens;
     }
 
     public UUID getId() {

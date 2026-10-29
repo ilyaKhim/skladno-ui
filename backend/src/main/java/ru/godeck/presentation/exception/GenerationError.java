@@ -3,6 +3,7 @@ package ru.godeck.presentation.exception;
 import org.springframework.http.HttpStatus;
 
 import ru.godeck.common.text.BackendMessages;
+import ru.godeck.presentation.aiedit.policy.AiEditPolicy;
 import ru.godeck.presentation.policy.PresentationPolicy;
 
 public enum GenerationError {
@@ -32,6 +33,11 @@ public enum GenerationError {
     SOURCE_BUSY(HttpStatus.TOO_MANY_REQUESTS, "source_busy", "presentation.error.source-busy"),
     SOURCE_TIMEOUT(
             HttpStatus.UNPROCESSABLE_ENTITY, "source_timeout", "presentation.error.source-timeout"),
+    AI_EDIT_FAILED(HttpStatus.BAD_GATEWAY, "ai_edit_failed", "presentation.error.ai-edit-failed"),
+    AI_EDIT_IN_PROGRESS(
+            HttpStatus.CONFLICT, "ai_edit_in_progress", "presentation.error.ai-edit-in-progress"),
+    AI_EDIT_LIMIT(
+            HttpStatus.TOO_MANY_REQUESTS, "ai_edit_limit", "presentation.error.ai-edit-limit"),
     PRESENTATION_BUSY(
             HttpStatus.CONFLICT, "presentation_busy", "presentation.error.presentation-busy"),
     CANNOT_CANCEL(HttpStatus.CONFLICT, "cannot_cancel", "presentation.error.cannot-cancel"),
@@ -80,6 +86,12 @@ public enum GenerationError {
             "presentation.error.invalid-message"),
     INVALID_MODE(
             HttpStatus.UNPROCESSABLE_ENTITY, "invalid_mode", "presentation.error.invalid-mode"),
+    INVALID_PARAMS(
+            HttpStatus.UNPROCESSABLE_ENTITY, "invalid_params", "presentation.error.invalid-params"),
+    INVALID_TARGET(
+            HttpStatus.UNPROCESSABLE_ENTITY, "invalid_target", "presentation.error.invalid-target"),
+    INVALID_TEXT(
+            HttpStatus.UNPROCESSABLE_ENTITY, "invalid_text", "presentation.error.invalid-text"),
     INVALID_TOPIC(
             HttpStatus.UNPROCESSABLE_ENTITY, "invalid_topic", "presentation.error.invalid-topic"),
     MANUAL_CONTENT_CLOSED(
@@ -100,6 +112,12 @@ public enum GenerationError {
             "presentation.error.presentation-not-ready"),
     TEMPLATE_NOT_FOUND(
             HttpStatus.NOT_FOUND, "template_not_found", "presentation.error.template-not-found"),
+    TEXT_TOO_LONG(
+            HttpStatus.UNPROCESSABLE_ENTITY, "text_too_long", "presentation.error.text-too-long"),
+    UNSUPPORTED_ACTION(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "unsupported_action",
+            "presentation.error.unsupported-action"),
     UNSUPPORTED_MODEL(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "unsupported_model",
@@ -132,6 +150,8 @@ public enum GenerationError {
                     BackendMessages.text(messageKey, PresentationPolicy.MAX_TOPIC_LENGTH);
             case INVALID_MESSAGE ->
                     BackendMessages.text(messageKey, PresentationPolicy.MAX_EDIT_MESSAGE_LENGTH);
+            case AI_EDIT_LIMIT ->
+                    BackendMessages.text(messageKey, AiEditPolicy.MAX_TEXT_EDITS_PER_DAY);
             default -> BackendMessages.text(messageKey);
         };
     }
