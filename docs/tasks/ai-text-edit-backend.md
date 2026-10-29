@@ -144,8 +144,8 @@ Backend должен:
   "max_chars": 46,
   "hard_max_chars": 146,
   "variants": [
-    { "text": "Мы готовим презентации оперативно и без лишних затрат усилий", "length": 59,
-      "over_by": 13, "warnings": ["over_limit"] }
+    { "text": "Мы готовим презентации оперативно и без лишних затрат усилий", "length": 60,
+      "over_by": 14, "warnings": ["over_limit"] }
   ],
   "model": "gpt-5.4-mini",
   "usage": { "input_tokens": 512, "cached_input_tokens": 0, "output_tokens": 41, "reasoning_tokens": 0 },
@@ -490,7 +490,7 @@ Integration (PostgreSQL, MockMvc с настоящим Spring Security):
 5. **Уточнение без истории.** Дано: правка E1 вернула вариант V. Когда: `action: custom`,
    `instruction: "ещё короче"`, `text: V`, `refines_edit_id: E1`. Тогда: 200; в `request_body` есть
    только V и просьба, без текста E1 и прошлых сообщений; в журнале сохранён `refines_edit_id`.
-6. **Длинный результат без обрезки.** Дано: модель вернула текст на 13 символов длиннее
+6. **Длинный результат без обрезки.** Дано: модель вернула текст на 14 символов длиннее
    `max_chars`. Тогда: вариант возвращён целиком, `over_by: 13`, `warnings: ["over_limit"]`, вызов
    модели был один.
 7. **Длинный текст в редакторе.** Дано: черновик с полем длиной `max_chars + 13`. Когда: autosave →

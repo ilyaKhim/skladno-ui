@@ -500,8 +500,8 @@ Prompt cache почти ни на что не влияет: статичный �
   "max_chars": 46,
   "hard_max_chars": 146,
   "variants": [
-    { "text": "Мы готовим презентации оперативно и без лишних затрат усилий", "length": 59,
-      "over_by": 13, "warnings": ["over_limit"] }
+    { "text": "Мы готовим презентации оперативно и без лишних затрат усилий", "length": 60,
+      "over_by": 14, "warnings": ["over_limit"] }
   ],
   "model": "gpt-5.4-mini",
   "usage": { "input_tokens": 512, "cached_input_tokens": 0, "output_tokens": 41, "reasoning_tokens": 0 },
