@@ -6,6 +6,28 @@ export type Template = {
   preview_url: string
 }
 export type ModelOption = { id: string; name: string }
+export type MaterialSource = {
+  format: 'pdf' | 'docx' | 'txt'
+  name: string
+  text: string
+}
+export type ExtractedMaterial = MaterialSource & {
+  characters: number
+  pages: number | null
+  warnings: { code: string; message: string; pages?: number[] }[]
+}
+export type GenerationContext = {
+  goal?: string
+  audience?: string
+  source?: MaterialSource
+}
+export type CreatePresentationInput = GenerationContext & {
+  template_id: string
+  topic: string
+  mode: 'openai' | 'manual'
+  model?: string
+  review_before_render?: boolean
+}
 export type Revision = {
   version: number
   message: string
@@ -18,7 +40,7 @@ export type PresentationJob = {
   template_id: string
   topic: string
   mode: 'manual' | 'openai'
-  status: 'awaiting_content' | 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+  status: 'awaiting_content' | 'awaiting_review' | 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
   error_code: string | null
   slide_count: number | null
   download_url: string | null
@@ -26,6 +48,26 @@ export type PresentationJob = {
   created_at: number
   version: number
   model: string | null
+}
+export type OutlineSlide = {
+  source_slide_number: number
+  include: boolean
+  title: string
+  title_field_key: string | null
+  title_max_chars: number | null
+  description: string
+  summary: string
+}
+export type PresentationOutline = {
+  id: string
+  template_id: string
+  status: 'awaiting_review'
+  revision: number
+  slides: OutlineSlide[]
+}
+export type SavePresentationOutline = {
+  revision: number
+  slides: { source_slide_number: number; include: boolean; title: string | null }[]
 }
 export type TemplateContext = {
   fields: Record<string, number>

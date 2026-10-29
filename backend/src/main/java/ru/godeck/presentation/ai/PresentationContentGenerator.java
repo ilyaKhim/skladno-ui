@@ -8,9 +8,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import ru.godeck.common.security.Hashing;
 import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.model.AiCallContext;
+import ru.godeck.presentation.model.GenerationInput;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.service.PresentationAiCallHistory;
 
@@ -23,10 +25,10 @@ import java.util.UUID;
 /**
  * Audited boundary around the OpenAI Responses API for presentation content generation.
  *
- * <p>The service uses the same request factory for preview and execution, records a redacted request
- * before making a paid call, converts provider output into the semantic document model, and records
- * the response/error best-effort afterward. Template validation remains outside this class because
- * provider parsing and template business rules are separate concerns.
+ * <p>The service uses the same request factory for preview and execution, records a redacted
+ * request before making a paid call, converts provider output into the semantic document model, and
+ * records the response/error best-effort afterward. Template validation remains outside this class
+ * because provider parsing and template business rules are separate concerns.
  */
 @Service
 public class PresentationContentGenerator {
@@ -42,6 +44,9 @@ public class PresentationContentGenerator {
     private final PresentationAiCallHistory history;
     private final String apiKey;
     private final boolean enabled;
+
+    @Value("${godeck.generation.responses-url:https://api.openai.com/v1/responses}")
+    private String responsesUrl = RESPONSES_URL;
 
     public PresentationContentGenerator(
             RestClient openAiClient,
@@ -65,7 +70,9 @@ public class PresentationContentGenerator {
         return enabled && !apiKey.isBlank();
     }
 
-    /** Returns the exact provider payload that {@link #generate} would send, without network I/O. */
+    /**
+     * Returns the exact provider payload that {@link #generate} would send, without network I/O.
+     */
     public Map<String, Object> preview(
             String topic,
             Map<String, Integer> fields,
@@ -74,12 +81,23 @@ public class PresentationContentGenerator {
         return requests.create(topic, fields, slides, model);
     }
 
+    /** Makes source-aware prompt inspection identical to execution, without a provider request. */
+    public Map<String, Object> preview(
+            String topic,
+            Map<String, Integer> fields,
+            List<Map<String, Object>> slides,
+            String model,
+            GenerationInput input) {
+        return requests.create(topic, fields, slides, model, input);
+    }
+
     /**
      * Performs one tracked structured-output request and returns decoded semantic content.
      *
-     * <p>History creation is deliberately before the HTTP request: if auditing cannot be established,
-     * the application does not make an untracked paid call. Completing history is best-effort so a
-     * diagnostics outage cannot discard valid provider output or hide the original provider failure.
+     * <p>History creation is deliberately before the HTTP request: if auditing cannot be
+     * established, the application does not make an untracked paid call. Completing history is
+     * best-effort so a diagnostics outage cannot discard valid provider output or hide the original
+     * provider failure.
      */
     public PresentationContent generate(
             AiCallContext context,
@@ -87,17 +105,45 @@ public class PresentationContentGenerator {
             Map<String, Integer> fields,
             List<Map<String, Object>> slides,
             String model) {
+        return generate(context, topic, fields, slides, model, null);
+    }
+
+    /** Source-backed calls retain operational metadata, not a second copy of confidential input. */
+    public PresentationContent generate(
+            AiCallContext context,
+            String topic,
+            Map<String, Integer> fields,
+            List<Map<String, Object>> slides,
+            String model,
+            GenerationInput input) {
         if (!enabled()) throw new AiGenerationException(GenerationError.OPENAI_DISABLED);
-        String request = json.writeValueAsString(requests.create(topic, fields, slides, model));
+        String request =
+                json.writeValueAsString(requests.create(topic, fields, slides, model, input));
         // Persist before a paid call. If the DB is unavailable, do not send an untracked request.
-        UUID callId = history.start(context, model, redactKey(request));
+        boolean privateInput = input != null;
+        String auditRequest =
+                privateInput
+                        ? json.writeValueAsString(
+                                Map.of(
+                                        "redacted",
+                                        true,
+                                        "request_sha256",
+                                        Hashing.sha256(request),
+                                        "source_present",
+                                        input.source() != null,
+                                        "source_characters",
+                                        input.source() == null
+                                                ? 0
+                                                : input.source().text().length()))
+                        : redactKey(request);
+        UUID callId = history.start(context, model, auditRequest);
         String responseBody = null;
         Integer httpStatus = null;
         GenerationError error = GenerationError.GENERATION_FAILED;
         try {
             var response =
                     client.post()
-                            .uri(RESPONSES_URL)
+                            .uri(responsesUrl)
                             .contentType(MediaType.APPLICATION_JSON)
                             .header("Authorization", "Bearer " + apiKey)
                             .body(request)
@@ -118,7 +164,18 @@ public class PresentationContentGenerator {
         } catch (Exception failure) {
             throw new AiGenerationException(error, failure);
         } finally {
-            recordResponse(callId, responseBody, httpStatus, error);
+            recordResponse(
+                    callId,
+                    privateInput
+                            ? json.writeValueAsString(
+                                    Map.of(
+                                            "redacted",
+                                            true,
+                                            "response_received",
+                                            responseBody != null))
+                            : responseBody,
+                    httpStatus,
+                    error);
         }
     }
 

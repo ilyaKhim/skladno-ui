@@ -152,3 +152,143 @@ test('editor image upload uses multipart data without overriding its content typ
   assert.equal(calls[0].init.headers.has('Content-Type'), false)
   assert.equal(calls[0].init.headers.get('X-CSRF-TOKEN'), 'csrf')
 })
+
+test('material extraction uses the protected multipart endpoint and returns its preview without AI creation', async () => {
+  const calls = []
+  const material = { format: 'txt', name: 'Отчёт.txt', text: 'Выручка: 42 млн', characters: 14, pages: null, warnings: [] }
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    calls.push({ url, init }); return json(material)
+  }
+  const controller = new AbortController()
+  assert.deepEqual(await generationApi.extractMaterial(new File(['Выручка: 42 млн'], 'Отчёт.txt', { type: 'text/plain' }), controller.signal), material)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, '/api/generation/v1/materials/extract')
+  assert.equal(calls[0].init.body.get('file').name, 'Отчёт.txt')
+  assert.equal(calls[0].init.headers.has('Content-Type'), false)
+  assert.equal(calls[0].init.headers.get('X-CSRF-TOKEN'), 'csrf')
+  assert.equal(calls[0].init.credentials, 'same-origin')
+  assert.equal(calls[0].init.cache, 'no-store')
+})
+
+test('source/context are included in create and preview; retries keep the supplied idempotency key', async () => {
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    calls.push({ url, init }); return json({ id: 'created' })
+  }
+  const context = { goal: 'Согласовать бюджет', audience: 'Совет директоров', source: { format: 'docx', name: 'Отчёт.docx', text: 'Исправленные материалы' } }
+  const input = { template_id: 'opal', topic: 'Сделай обзор', mode: 'openai', model: 'chosen', ...context }
+  await generationApi.create(input, 'unchanged-request-key')
+  await generationApi.create(input, 'unchanged-request-key')
+  await generationApi.preview(input.template_id, input.topic, input.model, context)
+  assert.equal(calls[0].init.headers.get('Idempotency-Key'), 'unchanged-request-key')
+  assert.equal(calls[1].init.headers.get('Idempotency-Key'), 'unchanged-request-key')
+  assert.deepEqual(JSON.parse(calls[0].init.body), input)
+  assert.deepEqual(JSON.parse(calls[2].init.body), { template_id: 'opal', topic: 'Сделай обзор', model: 'chosen', ...context })
+})
+
+test('material validation errors preserve their public code and malformed previews are rejected', async () => {
+  globalThis.fetch = async (url) => url === '/api/auth/csrf'
+    ? json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    : json({ error: { code: 'source_encoding', message: 'Сохраните TXT в UTF-8.' } }, 422)
+  const file = new File(['text'], 'notes.txt')
+  await assert.rejects(generationApi.extractMaterial(file), error => error.code === 'source_encoding' && error.status === 422)
+  globalThis.fetch = async (url) => url === '/api/auth/csrf'
+    ? json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    : json({ text: 'Incomplete preview' })
+  await assert.rejects(generationApi.extractMaterial(file), /Не удалось прочитать материалы/)
+})
+
+test('material timeout explains retrying the upload, not checking a nonexistent presentation', async () => {
+  globalThis.fetch = async (url) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    throw new DOMException('transport detail', 'TimeoutError')
+  }
+  await assert.rejects(generationApi.extractMaterial(new File(['text'], 'notes.txt')), error => {
+    assert.match(error.message, /Повторите загрузку/)
+    assert.doesNotMatch(error.message, /статус презентации|transport/)
+    return true
+  })
+})
+
+test('material cancellation reaches the transport and does not become a recoverable network error', async () => {
+  const controller = new AbortController()
+  let requestStarted
+  const started = new Promise(resolve => { requestStarted = resolve })
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    return new Promise((_resolve, reject) => {
+      init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true })
+      requestStarted()
+    })
+  }
+  const pending = generationApi.extractMaterial(new File(['text'], 'notes.txt'), controller.signal)
+  await started
+  controller.abort()
+  await assert.rejects(pending, error => error.name === 'AbortError')
+})
+
+test('outline read/save/confirm/cancel use protected endpoints and independent outline revisions', async () => {
+  const calls = []
+  let csrfReads = 0
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: `csrf-${++csrfReads}`, headerName: 'X-CSRF-TOKEN' } })
+    calls.push({ url, init })
+    return json({ id: 'deck/id', revision: 7, slides: [] })
+  }
+  const plan = { revision: 7, slides: [{ source_slide_number: 9, include: true, title: 'Выводы' }, { source_slide_number: 1, include: false, title: null }] }
+  await generationApi.outline('deck/id')
+  await generationApi.saveOutline('deck/id', plan)
+  await generationApi.confirmOutline('deck/id', 8)
+  await generationApi.cancel('deck/id')
+  assert.equal(csrfReads, 3)
+  assert.equal(calls[0].url, '/api/generation/v1/presentations/deck%2Fid/outline')
+  assert.equal(calls[0].init.method, 'GET')
+  assert.equal(calls[0].init.cache, 'no-store')
+  assert.equal(calls[1].init.method, 'PUT')
+  assert.deepEqual(JSON.parse(calls[1].init.body), plan)
+  assert.equal(calls[2].url, '/api/generation/v1/presentations/deck%2Fid/outline/confirm')
+  assert.deepEqual(JSON.parse(calls[2].init.body), { revision: 8 })
+  assert.equal(calls[2].init.headers.get('X-CSRF-TOKEN'), 'csrf-2')
+  assert.equal(calls[3].url, '/api/generation/v1/presentations/deck%2Fid/cancel')
+})
+
+test('outline revision conflicts remain typed errors and review mode is an explicit create option', async () => {
+  const mutations = []
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    mutations.push({ url, init })
+    if (init.method === 'PUT') return json({ error: { code: 'outline_conflict', message: 'Структура уже изменена.' } }, 409)
+    return json({ id: 'created', status: 'queued' })
+  }
+  await assert.rejects(generationApi.saveOutline('id', { revision: 4, slides: [] }), error => error.status === 409 && error.code === 'outline_conflict')
+  await generationApi.create({ template_id: 'opal', topic: 'Результаты', mode: 'openai', review_before_render: true }, 'review-key')
+  await generationApi.create({ template_id: 'opal', topic: 'Вставленный ответ', mode: 'manual' }, 'manual-key')
+  assert.equal(JSON.parse(mutations[1].init.body).review_before_render, true)
+  assert.equal(Object.hasOwn(JSON.parse(mutations[2].init.body), 'review_before_render'), false)
+})
+
+test('an unreadable accepted confirmation preserves its 202 status for safe same-revision retry', async () => {
+  globalThis.fetch = async (url) => url === '/api/auth/csrf'
+    ? json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    : new Response('{incomplete accepted response', { status: 202, headers: { 'Content-Type': 'application/json' } })
+  await assert.rejects(generationApi.confirmOutline('id', 7), error => {
+    assert.ok(error instanceof GenerationApiError)
+    assert.equal(error.status, 202)
+    assert.match(error.message, /Не удалось прочитать ответ/)
+    return true
+  })
+})
+
+test('a retained presentation status is fetched privately without creating a new backend route', async () => {
+  const calls = []
+  globalThis.fetch = async (url, init) => { calls.push({ url, init }); return json({ id: 'deck/id', status: 'succeeded' }) }
+  const result = await generationApi.presentation('deck/id')
+  assert.equal(result.status, 'succeeded')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, '/api/generation/v1/presentations/deck%2Fid')
+  assert.equal(calls[0].init.method, 'GET')
+  assert.equal(calls[0].init.credentials, 'same-origin')
+  assert.equal(calls[0].init.cache, 'no-store')
+})

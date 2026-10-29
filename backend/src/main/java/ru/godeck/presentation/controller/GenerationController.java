@@ -84,7 +84,13 @@ public class GenerationController {
     /** Builds the exact structured AI request for inspection without invoking a provider. */
     @PostMapping("/v1/prompts/preview")
     public Map<String, Object> preview(@Valid @RequestBody PreviewPromptRequest input) {
-        return service.previewPrompt(input.templateId(), input.topic(), input.model());
+        return service.previewPrompt(
+                input.templateId(),
+                input.topic(),
+                input.model(),
+                input.goal(),
+                input.audience(),
+                input.source());
     }
 
     /** Lists a bounded page of presentations owned by the current session user. */
@@ -110,7 +116,11 @@ public class GenerationController {
                                 input.topic(),
                                 input.mode() == null ? GenerationMode.OPENAI.value() : input.mode(),
                                 key,
-                                input.model()));
+                                input.model(),
+                                input.goal(),
+                                input.audience(),
+                                input.source(),
+                                Boolean.TRUE.equals(input.reviewBeforeRender())));
     }
 
     /** Returns one current presentation aggregate for status polling and navigation. */

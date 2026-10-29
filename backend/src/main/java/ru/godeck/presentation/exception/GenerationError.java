@@ -6,6 +6,37 @@ import ru.godeck.common.text.BackendMessages;
 import ru.godeck.presentation.policy.PresentationPolicy;
 
 public enum GenerationError {
+    INVALID_OUTLINE(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "invalid_outline",
+            "presentation.error.invalid-outline"),
+    OUTLINE_CONFLICT(
+            HttpStatus.CONFLICT, "outline_conflict", "presentation.error.outline-conflict"),
+    OUTLINE_CLOSED(HttpStatus.CONFLICT, "outline_closed", "presentation.error.outline-closed"),
+    SOURCE_LIMIT(HttpStatus.PAYLOAD_TOO_LARGE, "source_limit", "presentation.error.source-limit"),
+    UNSUPPORTED_SOURCE(
+            HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_source",
+            "presentation.error.unsupported-source"),
+    SOURCE_INVALID(
+            HttpStatus.UNPROCESSABLE_ENTITY, "source_invalid", "presentation.error.source-invalid"),
+    SOURCE_ENCRYPTED(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "source_encrypted",
+            "presentation.error.source-encrypted"),
+    SOURCE_EMPTY(
+            HttpStatus.UNPROCESSABLE_ENTITY, "source_empty", "presentation.error.source-empty"),
+    SOURCE_ENCODING(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "source_encoding",
+            "presentation.error.source-encoding"),
+    SOURCE_TOO_LONG(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "source_too_long",
+            "presentation.error.source-too-long"),
+    SOURCE_BUSY(HttpStatus.TOO_MANY_REQUESTS, "source_busy", "presentation.error.source-busy"),
+    SOURCE_TIMEOUT(
+            HttpStatus.UNPROCESSABLE_ENTITY, "source_timeout", "presentation.error.source-timeout"),
     PRESENTATION_BUSY(
             HttpStatus.CONFLICT, "presentation_busy", "presentation.error.presentation-busy"),
     CANNOT_CANCEL(HttpStatus.CONFLICT, "cannot_cancel", "presentation.error.cannot-cancel"),
@@ -34,16 +65,10 @@ public enum GenerationError {
             "presentation.error.generation-limit"),
     IDEMPOTENCY_CONFLICT(
             HttpStatus.CONFLICT, "idempotency_conflict", "presentation.error.idempotency-conflict"),
-    IMAGE_LIMIT(
-            HttpStatus.PAYLOAD_TOO_LARGE,
-            "image_limit",
-            "presentation.error.image-limit"),
-    IMAGE_NOT_FOUND(
-            HttpStatus.NOT_FOUND, "image_not_found", "presentation.error.image-not-found"),
+    IMAGE_LIMIT(HttpStatus.PAYLOAD_TOO_LARGE, "image_limit", "presentation.error.image-limit"),
+    IMAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "image_not_found", "presentation.error.image-not-found"),
     INVALID_IMAGE(
-            HttpStatus.UNPROCESSABLE_ENTITY,
-            "invalid_image",
-            "presentation.error.invalid-image"),
+            HttpStatus.UNPROCESSABLE_ENTITY, "invalid_image", "presentation.error.invalid-image"),
     INVALID_CONTENT(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "invalid_content",

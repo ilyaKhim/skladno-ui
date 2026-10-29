@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import pg from 'pg'
+import { startAiFixture } from './e2e-ai.mjs'
 
 // One schema and one directory per run keep quotas, uploads and drafts independent of real projects.
 const schema = `editor_e2e_${randomBytes(6).toString('hex')}`
@@ -37,7 +38,10 @@ function run(args) {
 
 let connected = false
 let schemaCreated = false
+let aiFixture
 try {
+  aiFixture = await startAiFixture()
+  env.E2E_AI_URL = aiFixture.url
   await database.connect()
   connected = true
   await database.query(`CREATE SCHEMA ${schema}`)
@@ -56,6 +60,7 @@ try {
     }
   } finally {
     if (connected) await database.end()
+    if (aiFixture) await aiFixture.close()
     await rm(dataDir, { recursive: true, force: true })
   }
 }

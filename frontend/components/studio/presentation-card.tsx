@@ -4,11 +4,13 @@ import { useState } from 'react'
 import { ArrowDownToLine, LoaderCircle, Pencil } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { AiCallHistory } from '@/components/studio/ai-call-history'
+import { PresentationOutlinePanel } from '@/components/studio/presentation-outline'
 import { generationApi, loadAiCalls } from '@/lib/generation-client'
 import type { ModelOption, PresentationJob, Revision } from '@/lib/generation-types'
 
 const STATUS: Record<PresentationJob['status'], string> = {
   awaiting_content: 'Ожидает материалов',
+  awaiting_review: 'Проверьте структуру',
   queued: 'В очереди',
   running: 'Создаётся',
   succeeded: 'Готова',
@@ -24,6 +26,7 @@ type Props = {
   openaiEnabled: boolean
   onResume: (job: PresentationJob) => void
   onChanged: () => Promise<void>
+  onOutlineOpenChange: (id: string, open: boolean) => void
   onError: (message: string) => void
 }
 
@@ -35,6 +38,7 @@ export function PresentationCard({
   openaiEnabled,
   onResume,
   onChanged,
+  onOutlineOpenChange,
   onError,
 }: Props) {
   const [chatModel, setChatModel] = useState<string | undefined>()
@@ -43,6 +47,12 @@ export function PresentationCard({
   const [busy, setBusy] = useState(false)
   const [versions, setVersions] = useState<Revision[] | null>(null)
   const [historyRefresh, setHistoryRefresh] = useState(0)
+  const [outlineOpen, setOutlineOpen] = useState(false)
+
+  function changeOutlineOpen(open: boolean) {
+    onOutlineOpenChange(job.id, open)
+    setOutlineOpen(open)
+  }
   const preferredModel = chatModel ?? job.model ?? defaultModel
   const selectedChatModel = models.some((model) => model.id === preferredModel)
     ? preferredModel
@@ -76,7 +86,7 @@ export function PresentationCard({
   }
 
   return (
-    <li className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <li data-presentation-id={job.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="font-semibold">{templateName}</p>
@@ -126,6 +136,14 @@ export function PresentationCard({
         <Button size="sm" className="mt-3" onClick={() => onResume(job)}>
           Вставить ответ LLM
         </Button>
+      )}
+      {job.status === 'awaiting_review' && !outlineOpen && (
+        <Button type="button" className="mt-3 min-h-11" onClick={() => changeOutlineOpen(true)}>
+          Проверить структуру
+        </Button>
+      )}
+      {outlineOpen && (
+        <PresentationOutlinePanel presentationId={job.id} status={job.status} onChanged={onChanged} onClose={() => changeOutlineOpen(false)} />
       )}
       {job.status === 'succeeded' && (
         <div className="mt-4 border-t border-border pt-4">

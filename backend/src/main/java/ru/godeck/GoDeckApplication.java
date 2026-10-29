@@ -9,7 +9,13 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class GoDeckApplication {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        if (args.length > 0
+                && ru.godeck.presentation.material.MaterialExtractionProcess.ARGUMENT.equals(
+                        args[0])) {
+            ru.godeck.presentation.material.MaterialExtractionProcess.run(args);
+            return;
+        }
         SpringApplication.run(GoDeckApplication.class, args);
     }
 }

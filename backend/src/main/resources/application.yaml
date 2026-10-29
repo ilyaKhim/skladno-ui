@@ -50,5 +50,6 @@ godeck:
   generation:
     enabled: ${GODECK_OPENAI_ENABLED:false}
     api-key: ${OPENAI_API_KEY:}
+    responses-url: ${GODECK_OPENAI_RESPONSES_URL:https://api.openai.com/v1/responses}
     model: ${OPENAI_MODEL:gpt-6.1-sol}
     data-dir: ${GODECK_DATA_DIR:./data/presentations}

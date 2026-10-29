@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import ru.godeck.common.security.Hashing;
+import ru.godeck.presentation.material.MaterialPolicy;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.model.PresentationStatus;
 import ru.godeck.presentation.policy.PresentationPolicy;
@@ -44,6 +45,21 @@ public class Presentation {
 
     @Column(nullable = false, columnDefinition = "text")
     private String topic;
+
+    @Column(name = "generation_input_json", columnDefinition = "text")
+    private String generationInputJson;
+
+    @Column(name = "review_before_render", nullable = false)
+    private boolean reviewBeforeRender;
+
+    @Column(name = "outline_revision", nullable = false)
+    private long outlineRevision;
+
+    @Column(name = "outline_confirmed_revision")
+    private Long outlineConfirmedRevision;
+
+    @Column(name = "generation_input_expires_at")
+    private Instant generationInputExpiresAt;
 
     @Column(nullable = false, length = PresentationPolicy.STATUS_MAX_LENGTH)
     private PresentationStatus status;
@@ -101,6 +117,53 @@ public class Presentation {
 
     protected Presentation() {}
 
+    /** Immutable additional input captured before the asynchronous job is queued. */
+    public String getGenerationInputJson() {
+        return generationInputJson;
+    }
+
+    /**
+     * Review is an explicit generation option; semantic content alone never identifies the phase.
+     */
+    public boolean isReviewBeforeRender() {
+        return reviewBeforeRender;
+    }
+
+    public long getOutlineRevision() {
+        return outlineRevision;
+    }
+
+    public Long getOutlineConfirmedRevision() {
+        return outlineConfirmedRevision;
+    }
+
+    /**
+     * Persists normalized AI content without publishing a file, version, or source-retention
+     * deadline.
+     */
+    public void awaitReview(String json, Instant now) {
+        contentJson = json;
+        outlineRevision = 1;
+        status = PresentationStatus.AWAITING_REVIEW;
+        updatedAt = now;
+    }
+
+    /** Replaces only a validated review snapshot and advances its optimistic concurrency token. */
+    public void saveOutline(String json, Instant now) {
+        contentJson = json;
+        outlineRevision++;
+        updatedAt = now;
+    }
+
+    /**
+     * Freezes the accepted revision and queues render-only work, preserving the original AI mode.
+     */
+    public void confirmOutline(Instant now) {
+        outlineConfirmedRevision = outlineRevision;
+        status = PresentationStatus.QUEUED;
+        updatedAt = now;
+    }
+
     /**
      * Moves a manual presentation from content collection to the worker queue.
      *
@@ -121,6 +184,7 @@ public class Presentation {
 
     /** Records a terminal generation error while retaining diagnostic content already stored. */
     public void fail(String code, Instant now) {
+        expireInputAfterTerminalState(now);
         status = PresentationStatus.FAILED;
         errorCode = code;
         updatedAt = now;
@@ -128,6 +192,7 @@ public class Presentation {
 
     /** Cancels a presentation that has not started rendering yet. */
     public void cancel(Instant now) {
+        expireInputAfterTerminalState(now);
         status = PresentationStatus.CANCELLED;
         updatedAt = now;
     }
@@ -145,6 +210,7 @@ public class Presentation {
             String model,
             int version,
             Instant now) {
+        expireInputAfterTerminalState(now);
         this.contentJson = contentJson;
         outputPath = path;
         this.slideCount = slideCount;
@@ -156,7 +222,15 @@ public class Presentation {
         clearEditorDraft();
     }
 
-    /** Installs a random lease token that identifies the only expensive edit allowed to complete. */
+    /** Later editor saves or commits must not postpone deletion of the original source copy. */
+    private void expireInputAfterTerminalState(Instant now) {
+        if (generationInputJson != null && generationInputExpiresAt == null)
+            generationInputExpiresAt = now.plus(MaterialPolicy.RETENTION);
+    }
+
+    /**
+     * Installs a random lease token that identifies the only expensive edit allowed to complete.
+     */
     public void beginEdit(UUID token, Instant now) {
         editId = token;
         editStartedAt = now;

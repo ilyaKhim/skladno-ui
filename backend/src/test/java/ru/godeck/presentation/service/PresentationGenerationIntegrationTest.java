@@ -1,6 +1,7 @@
 package ru.godeck.presentation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -23,12 +24,12 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
@@ -39,8 +40,10 @@ import ru.godeck.presentation.ai.PresentationRequestFactory;
 import ru.godeck.presentation.dto.PresentationView;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
+import ru.godeck.presentation.material.MaterialRetention;
 import ru.godeck.presentation.model.AiCallContext;
 import ru.godeck.presentation.model.AiOperation;
+import ru.godeck.presentation.model.GenerationInput;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.model.PresentationStatus;
 import ru.godeck.presentation.template.PresentationTemplateService;
@@ -84,6 +87,7 @@ class PresentationGenerationIntegrationTest {
     @Autowired PresentationTransactions transactions;
     @Autowired PresentationAiCallHistory aiHistory;
     @Autowired PlatformTransactionManager transactionManager;
+    @Autowired MaterialRetention materialRetention;
     @MockitoBean PresentationContentGenerator generator;
 
     @DynamicPropertySource
@@ -112,6 +116,287 @@ class PresentationGenerationIntegrationTest {
                 for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList())
                     Files.deleteIfExists(file);
             }
+    }
+
+    @Test
+    void extractsSourceThroughAuthenticatedCsrfEndpointWithoutCallingAi() throws Exception {
+        var file =
+                new MockMultipartFile(
+                        "file", "../../Отчёт.txt", "text/plain", "Выручка: 42 млн".getBytes(UTF_8));
+        mvc.perform(multipart("/api/generation/v1/materials/extract").file(file).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.format").value("txt"))
+                .andExpect(jsonPath("$.name").value("Отчёт.txt"))
+                .andExpect(jsonPath("$.text").value("Выручка: 42 млн"))
+                .andExpect(jsonPath("$.warnings").isEmpty());
+        mvc.perform(multipart("/api/generation/v1/materials/extract").file(file))
+                .andExpect(status().isForbidden());
+        assertThat(db.queryForObject("SELECT count(*) FROM generated_presentations", Long.class))
+                .isZero();
+        verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
+        verify(generator, never())
+                .generate(any(), anyString(), anyMap(), anyList(), anyString(), any());
+    }
+
+    @Test
+    void invalidUploadReturnsDocumentSpecificErrorBeforeGeneration() throws Exception {
+        mvc.perform(
+                        multipart("/api/generation/v1/materials/extract")
+                                .file(
+                                        new MockMultipartFile(
+                                                "file",
+                                                "first.txt",
+                                                "text/plain",
+                                                "first".getBytes(UTF_8)))
+                                .file(
+                                        new MockMultipartFile(
+                                                "file",
+                                                "second.txt",
+                                                "text/plain",
+                                                "second".getBytes(UTF_8)))
+                                .with(csrf()))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.error.code").value("source_invalid"));
+        mvc.perform(
+                        multipart("/api/generation/v1/materials/extract")
+                                .file(
+                                        new MockMultipartFile(
+                                                "file",
+                                                "report.xlsx",
+                                                "application/octet-stream",
+                                                "data".getBytes(UTF_8)))
+                                .with(csrf()))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.error.code").value("unsupported_source"));
+        mvc.perform(
+                        multipart("/api/generation/v1/materials/extract")
+                                .file(
+                                        new MockMultipartFile(
+                                                "file",
+                                                "report.txt",
+                                                "text/plain",
+                                                new byte[5 * 1024 * 1024 + 1]))
+                                .with(csrf()))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.error.code").value("source_limit"));
+        verify(generator, never())
+                .generate(any(), anyString(), anyMap(), anyList(), anyString(), any());
+    }
+
+    @Test
+    void reviewedSourceSnapshotSurvivesQueueAndFlowsToWorkerWithoutLeakingInPublicViews()
+            throws Exception {
+        var request =
+                Map.of(
+                        "template_id",
+                        "aurora",
+                        "topic",
+                        "Summarize report",
+                        "mode",
+                        "openai",
+                        "goal",
+                        "Explain results",
+                        "audience",
+                        "Board",
+                        "source",
+                        Map.of(
+                                "format",
+                                "txt",
+                                "name",
+                                "report.txt",
+                                "text",
+                                "User-reviewed private revenue: 42"));
+        var response =
+                mvc.perform(
+                                post("/api/generation/v1/presentations")
+                                        .with(csrf())
+                                        .contentType("application/json")
+                                        .content(json.writeValueAsString(request)))
+                        .andExpect(status().isAccepted())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        UUID id = UUID.fromString(json.readTree(response).path("id").asText());
+        String snapshot =
+                db.queryForObject(
+                        "SELECT generation_input_json FROM generated_presentations WHERE id=?",
+                        String.class,
+                        id);
+        assertThat(snapshot).contains("User-reviewed private revenue: 42", "Board");
+        assertThat(response).doesNotContain("User-reviewed", "generation_input_json", "source");
+        assertThat(json.writeValueAsString(service.list(USER, 20, 0)))
+                .doesNotContain("User-reviewed");
+        when(generator.generate(
+                        any(),
+                        anyString(),
+                        anyMap(),
+                        anyList(),
+                        anyString(),
+                        any(GenerationInput.class)))
+                .thenReturn(typedPlan("Report based on materials"));
+        worker.processOne();
+        var input = org.mockito.ArgumentCaptor.forClass(GenerationInput.class);
+        verify(generator)
+                .generate(any(), anyString(), anyMap(), anyList(), anyString(), input.capture());
+        assertThat(input.getValue().source().text()).isEqualTo("User-reviewed private revenue: 42");
+        assertThat(input.getValue().audience()).isEqualTo("Board");
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
+        assertThat(Files.readAllBytes(service.download(USER, id))).isNotEmpty();
+        assertThat(
+                        assertThrows(
+                                        GenerationException.class,
+                                        () -> service.get(UUID.randomUUID(), id))
+                                .status())
+                .isEqualTo(404);
+    }
+
+    @Test
+    void sourceIdempotencyIncludesEditedTextWhileLegacyHashRemainsUnchanged() throws Exception {
+        var source =
+                new ru.godeck.presentation.model.SourceMaterial(
+                        "txt", "report.txt", " Revenue 42\r\n ");
+        var first =
+                service.create(
+                        USER,
+                        "aurora",
+                        "Report",
+                        "openai",
+                        "source-retry-key",
+                        null,
+                        null,
+                        null,
+                        source);
+        var repeated =
+                service.create(
+                        USER,
+                        "aurora",
+                        "Report",
+                        "openai",
+                        "source-retry-key",
+                        null,
+                        null,
+                        null,
+                        new ru.godeck.presentation.model.SourceMaterial(
+                                "txt", "report.txt", "Revenue 42"));
+        assertThat(repeated.id()).isEqualTo(first.id());
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        USER,
+                                        "aurora",
+                                        "Report",
+                                        "openai",
+                                        "source-retry-key",
+                                        null,
+                                        null,
+                                        null,
+                                        new ru.godeck.presentation.model.SourceMaterial(
+                                                "txt", "report.txt", "Revenue 43")))
+                .extracting(error -> ((GenerationException) error).code())
+                .isEqualTo("idempotency_conflict");
+        var legacy = service.create(USER, "aurora", "Legacy", "manual", "legacy-retry-key", null);
+        String model =
+                db.queryForObject(
+                        "SELECT model FROM generated_presentations WHERE id=?",
+                        String.class,
+                        legacy.id());
+        assertThat(
+                        db.queryForObject(
+                                "SELECT request_hash FROM generated_presentations WHERE id=?",
+                                String.class,
+                                legacy.id()))
+                .isEqualTo(
+                        ru.godeck.common.security.Hashing.sha256(
+                                "aurora\nLegacy\nmanual\n" + model));
+        assertThat(
+                        service.create(
+                                        USER,
+                                        "aurora",
+                                        "Legacy",
+                                        "manual",
+                                        "legacy-retry-key",
+                                        null,
+                                        " ",
+                                        null,
+                                        null)
+                                .id())
+                .isEqualTo(legacy.id());
+    }
+
+    @Test
+    void manualModeAndOversizedEditedPreviewCannotBypassValidation() throws Exception {
+        for (var request :
+                List.of(
+                        Map.of(
+                                "template_id",
+                                "aurora",
+                                "topic",
+                                "Report",
+                                "mode",
+                                "manual",
+                                "source",
+                                Map.of("format", "txt", "name", "x.txt", "text", "data")),
+                        Map.of(
+                                "template_id",
+                                "aurora",
+                                "topic",
+                                "Report",
+                                "mode",
+                                "openai",
+                                "source",
+                                Map.of(
+                                        "format",
+                                        "txt",
+                                        "name",
+                                        "x.txt",
+                                        "text",
+                                        "x".repeat(30_001))))) {
+            mvc.perform(
+                            post("/api/generation/v1/presentations")
+                                    .with(csrf())
+                                    .contentType("application/json")
+                                    .content(json.writeValueAsString(request)))
+                    .andExpect(status().isUnprocessableContent());
+        }
+        assertThat(db.queryForObject("SELECT count(*) FROM generated_presentations", Long.class))
+                .isZero();
+    }
+
+    @Test
+    void retentionClearsOnlyOldTerminalInputSnapshots() {
+        var source =
+                new ru.godeck.presentation.model.SourceMaterial("txt", "x.txt", "Private input");
+        var completed =
+                service.create(
+                        USER, "aurora", "Finished", "openai", null, null, null, null, source);
+        var queued =
+                service.create(USER, "aurora", "Queued", "openai", null, null, null, null, source);
+        var before = java.time.Instant.now().minus(java.time.Duration.ofDays(31));
+        db.update(
+                "UPDATE generated_presentations SET"
+                        + " status='succeeded',generation_input_expires_at=? WHERE id=?",
+                java.sql.Timestamp.from(before),
+                completed.id());
+        db.update(
+                "UPDATE generated_presentations SET generation_input_expires_at=? WHERE id=?",
+                java.sql.Timestamp.from(before),
+                queued.id());
+        assertThat(materialRetention.clearExpired()).isEqualTo(1);
+        assertThat(
+                        db.queryForObject(
+                                "SELECT generation_input_json FROM generated_presentations WHERE"
+                                        + " id=?",
+                                String.class,
+                                completed.id()))
+                .isNull();
+        assertThat(
+                        db.queryForObject(
+                                "SELECT generation_input_json FROM generated_presentations WHERE"
+                                        + " id=?",
+                                String.class,
+                                queued.id()))
+                .contains("Private input");
     }
 
     @Test
@@ -1119,9 +1404,7 @@ class PresentationGenerationIntegrationTest {
                         .mapToObj(
                                 number ->
                                         new PresentationContent.Slide(
-                                                number,
-                                                number == 1 || number == 13,
-                                                "Editor test"))
+                                                number, number == 1 || number == 13, "Editor test"))
                         .toList();
         UUID id = service.create(USER, "atlas", "Редактор", "manual", null, null).id();
         service.submitManual(USER, id, new PresentationContent(fields, decisions));
@@ -1129,9 +1412,7 @@ class PresentationGenerationIntegrationTest {
         byte[] original = Files.readAllBytes(service.download(USER, id));
 
         mvc.perform(
-                        multipart(
-                                        "/api/generation/v1/presentations/{id}/editor/assets",
-                                        id)
+                        multipart("/api/generation/v1/presentations/{id}/editor/assets", id)
                                 .file(
                                         new MockMultipartFile(
                                                 "file",
@@ -1152,9 +1433,7 @@ class PresentationGenerationIntegrationTest {
         byte[] pixel = png();
         String uploadedJson =
                 mvc.perform(
-                                multipart(
-                                                "/api/generation/v1/presentations/{id}/editor/assets",
-                                                id)
+                                multipart("/api/generation/v1/presentations/{id}/editor/assets", id)
                                         .file(
                                                 new MockMultipartFile(
                                                         "file", "pixel.png", "image/png", pixel))
@@ -1212,11 +1491,16 @@ class PresentationGenerationIntegrationTest {
                 if (layoutId != null && layoutIds.add(layoutId))
                     layouts.add(
                             Map.of(
-                                    "id", layoutId,
-                                    "x", source == 13 && layouts.isEmpty() ? 20 : block.get("x"),
-                                    "y", source == 13 && layouts.isEmpty() ? 25 : block.get("y"),
-                                    "width", block.get("width"),
-                                    "height", block.get("height")));
+                                    "id",
+                                    layoutId,
+                                    "x",
+                                    source == 13 && layouts.isEmpty() ? 20 : block.get("x"),
+                                    "y",
+                                    source == 13 && layouts.isEmpty() ? 25 : block.get("y"),
+                                    "width",
+                                    block.get("width"),
+                                    "height",
+                                    block.get("height")));
             }
             draftSlides.add(
                     Map.of(
@@ -1310,17 +1594,23 @@ class PresentationGenerationIntegrationTest {
             assertThat(closing).contains("Добавленный текст");
             assertThat(show.getSlides().getFirst().getShapes())
                     .anyMatch(org.apache.poi.xslf.usermodel.XSLFPictureShape.class::isInstance);
-            assertThat(show.getSlides().getFirst().getShapes().stream()
-                            .filter(org.apache.poi.xslf.usermodel.XSLFTextShape.class::isInstance)
-                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast)
-                            .map(org.apache.poi.xslf.usermodel.XSLFTextShape::getAnchor)
-                            .filter(java.util.Objects::nonNull)
-                            .mapToDouble(java.awt.geom.Rectangle2D::getX))
+            assertThat(
+                            show.getSlides().getFirst().getShapes().stream()
+                                    .filter(
+                                            org.apache.poi.xslf.usermodel.XSLFTextShape.class
+                                                    ::isInstance)
+                                    .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast)
+                                    .map(org.apache.poi.xslf.usermodel.XSLFTextShape::getAnchor)
+                                    .filter(java.util.Objects::nonNull)
+                                    .mapToDouble(java.awt.geom.Rectangle2D::getX))
                     .anyMatch(
                             x ->
                                     Math.abs(
                                                     x
-                                                            - show.getCTPresentation().getSldSz().getCx() / 12_700.0
+                                                            - show.getCTPresentation()
+                                                                            .getSldSz()
+                                                                            .getCx()
+                                                                    / 12_700.0
                                                                     * 0.20)
                                             < 0.1);
             String cover =
@@ -1335,10 +1625,12 @@ class PresentationGenerationIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.base_version").value(2))
                 .andExpect(jsonPath("$.draft_revision").value(2))
-                .andExpect(jsonPath("$.slides[0].blocks[?(@.id == 'text-editor-test')].text")
-                        .value("Добавленный текст"))
-                .andExpect(jsonPath("$.slides[0].images[?(@.id == 'image-editor-test')].alt")
-                        .value("Тестовая точка"));
+                .andExpect(
+                        jsonPath("$.slides[0].blocks[?(@.id == 'text-editor-test')].text")
+                                .value("Добавленный текст"))
+                .andExpect(
+                        jsonPath("$.slides[0].images[?(@.id == 'image-editor-test')].alt")
+                                .value("Тестовая точка"));
     }
 
     @Test
@@ -1346,8 +1638,7 @@ class PresentationGenerationIntegrationTest {
     void editorApiKeepsMultiParagraphTextShapeOrderedThroughCommit() throws Exception {
         Map<String, String> fields = new LinkedHashMap<>();
         templates.fields("opal").keySet().forEach(field -> fields.put(field, "Текст " + field));
-        for (int number = 1; number <= 5; number++)
-            fields.put("LIST_" + number, "Пункт " + number);
+        for (int number = 1; number <= 5; number++) fields.put("LIST_" + number, "Пункт " + number);
         var decisions =
                 java.util.stream.IntStream.rangeClosed(1, 13)
                         .mapToObj(
@@ -1407,7 +1698,9 @@ class PresentationGenerationIntegrationTest {
                             "field_key",
                             field,
                             "text",
-                            "LIST_3".equals(field) ? "Обновлённый третий пункт" : block.get("text")));
+                            "LIST_3".equals(field)
+                                    ? "Обновлённый третий пункт"
+                                    : block.get("text")));
             String layoutId = (String) block.get("layout_id");
             if (layoutIds.add(layoutId))
                 layouts.add(
@@ -1476,11 +1769,7 @@ class PresentationGenerationIntegrationTest {
             assertThat(listShape.getTextParagraphs())
                     .extracting(org.apache.poi.xslf.usermodel.XSLFTextParagraph::getText)
                     .containsExactly(
-                            "Пункт 1",
-                            "Пункт 2",
-                            "Обновлённый третий пункт",
-                            "Пункт 4",
-                            "Пункт 5");
+                            "Пункт 1", "Пункт 2", "Обновлённый третий пункт", "Пункт 4", "Пункт 5");
         }
     }
 
@@ -1493,7 +1782,8 @@ class PresentationGenerationIntegrationTest {
     }
 
     private static byte[] png() throws Exception {
-        var image = new java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var image =
+                new java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_RGB);
         image.setRGB(0, 0, 0x335cc5);
         var output = new java.io.ByteArrayOutputStream();
         javax.imageio.ImageIO.write(image, "png", output);

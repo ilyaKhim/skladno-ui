@@ -1,16 +1,22 @@
 import type {
   AiCall,
+  CreatePresentationInput,
   EditorDeck,
   EditorAsset,
   EditorDraftSaved,
+  ExtractedMaterial,
+  GenerationContext,
   ModelOption,
   PresentationJob,
+  PresentationOutline,
   Revision,
   SaveEditorDraft,
+  SavePresentationOutline,
   Template,
   TemplateContext,
 } from './generation-types'
 import type { LlmContent } from './llm-response'
+import { isExtractedMaterial } from './generation-material.ts'
 
 const API_ROOT = '/api/generation'
 const REQUEST_TIMEOUT_MS = 15_000
@@ -80,6 +86,7 @@ async function request<T>(
   path: string,
   init: RequestInit = {},
   timeout = REQUEST_TIMEOUT_MS,
+  timeoutMessage = 'Сервер не ответил вовремя. Проверьте статус презентации и повторите запрос.',
 ): Promise<T> {
   try {
     const method = init.method ?? 'GET'
@@ -118,9 +125,7 @@ async function request<T>(
   } catch (error) {
     if (error instanceof GenerationApiError || init.signal?.aborted) throw error
     if (error instanceof Error && error.name === 'TimeoutError')
-      throw new GenerationApiError(
-        'Сервер не ответил вовремя. Проверьте статус презентации и повторите запрос.',
-      )
+      throw new GenerationApiError(timeoutMessage)
     throw new GenerationApiError(
       'Не удалось связаться с сервером. Проверьте соединение и повторите попытку.',
     )
@@ -131,13 +136,37 @@ const segment = encodeURIComponent
 const presentationPath = (id: string) => `/v1/presentations/${segment(id)}`
 const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) })
 
-type CreateInput = { template_id: string; topic: string; mode: 'openai' | 'manual'; model?: string }
-
 export const generationApi = {
   health: () => request<{ openai_enabled: boolean }>('/health/ready'),
   templates: () => request<{ items: Template[] }>('/v1/templates'),
   models: () => request<{ items: ModelOption[]; default_model: string }>('/v1/models'),
   presentations: () => request<{ items: PresentationJob[] }>('/v1/presentations?limit=20&offset=0'),
+  presentation: (id: string) => request<PresentationJob>(presentationPath(id)),
+  outline: (id: string, signal?: AbortSignal) =>
+    request<PresentationOutline>(`${presentationPath(id)}/outline`, { signal }),
+  saveOutline: (id: string, outline: SavePresentationOutline, signal?: AbortSignal) =>
+    request<PresentationOutline>(`${presentationPath(id)}/outline`, {
+      method: 'PUT', body: JSON.stringify(outline), signal,
+    }),
+  confirmOutline: (id: string, revision: number, signal?: AbortSignal) =>
+    request<PresentationJob>(`${presentationPath(id)}/outline/confirm`, {
+      ...post({ revision }), signal,
+    }),
+  cancel: (id: string, signal?: AbortSignal) =>
+    request<PresentationJob>(`${presentationPath(id)}/cancel`, { ...post({}), signal }),
+  extractMaterial: async (file: File, signal?: AbortSignal) => {
+    const form = new FormData()
+    form.append('file', file)
+    const material = await request<ExtractedMaterial>(
+      '/v1/materials/extract',
+      { method: 'POST', body: form, signal },
+      30_000,
+      'Не удалось обработать документ вовремя. Повторите загрузку или выберите файл меньшего размера.',
+    )
+    if (!isExtractedMaterial(material))
+      throw new GenerationApiError('Не удалось прочитать материалы. Повторите загрузку документа.')
+    return material
+  },
   editor: (id: string, signal?: AbortSignal) =>
     request<EditorDeck>(`${presentationPath(id)}/editor`, { signal }),
   uploadEditorImage: (id: string, file: File) => {
@@ -162,20 +191,20 @@ export const generationApi = {
       post({ base_version: baseVersion, draft_revision: draftRevision }),
     ),
   context: (id: string) => request<TemplateContext>(`/v1/templates/${segment(id)}/context`),
-  create: (input: CreateInput) =>
+  create: (input: CreatePresentationInput, idempotencyKey = crypto.randomUUID()) =>
     request<PresentationJob>('/v1/presentations', {
       ...post(input),
-      headers: { 'Idempotency-Key': crypto.randomUUID() },
+      headers: { 'Idempotency-Key': idempotencyKey },
     }),
   submitContent: (id: string, content: LlmContent) =>
     request<PresentationJob>(`${presentationPath(id)}/content`, {
       method: 'PUT',
       body: JSON.stringify(content),
     }),
-  preview: (templateId: string, topic: string, model: string) =>
+  preview: (templateId: string, topic: string, model: string, context: GenerationContext = {}) =>
     request<Record<string, unknown>>(
       '/v1/prompts/preview',
-      post({ template_id: templateId, topic, model }),
+      post({ template_id: templateId, topic, model, ...context }),
     ),
   chat: (id: string, message: string, model: string) =>
     request<{ version: number; reply: string }>(

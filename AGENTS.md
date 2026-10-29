@@ -7,6 +7,13 @@
 - Changes to authentication require backend integration tests and the local HTTP smoke test. Local infrastructure: `pnpm infra:up`.
 - v0 edits should remain in `frontend/`. Merge product changes in GitLab; GitHub main is synchronized automatically.
 
+## Project sub-agents
+
+- Project-scoped roles are defined in `.codex/agents/`: `analyst`, `frontend_developer`, `backend_developer`, and `reviewer`. See `.codex/agents/README.md` for responsibilities and invocation examples.
+- When the user requests team delegation, use the analyst to establish scope and contracts, assign non-overlapping implementation work, then request an independent reviewer after implementation. The main agent coordinates integration and final verification; do not launch the whole team for a simple question.
+- Analyst and reviewer are instructed not to edit files; these instructions do not create separate filesystem permissions. All roles remain subject to the parent session's permissions and applicable instructions.
+- Assign one owner to shared files and serialize full builds/E2E runs. Preserve user and parallel-agent changes. Do not infer permission for commit/push/MR/deploy from a role assignment.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

@@ -19,6 +19,8 @@ import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
 import ru.godeck.presentation.model.AiCallContext;
 import ru.godeck.presentation.model.AiOperation;
+import ru.godeck.presentation.model.GenerationInput;
+import ru.godeck.presentation.model.SourceMaterial;
 import ru.godeck.presentation.service.PresentationAiCallHistory;
 
 import tools.jackson.databind.ObjectMapper;
@@ -76,6 +78,73 @@ class PresentationContentGeneratorTest {
         var content = generate();
         assertThat(content.fields()).containsEntry("TITLE", "Тема");
         assertThat(content.slideCount()).isEqualTo(1);
+    }
+
+    @Test
+    void sourceAndContextReachProviderButNeverBecomeAuditBodyCopies() {
+        var input =
+                GenerationInput.normalize(
+                        "Inform",
+                        "Board",
+                        new SourceMaterial("txt", "report.txt", "Confidential revenue 42"));
+        server.expect(requestTo(URL))
+                .andExpect(
+                        jsonPath("$.input[1].content")
+                                .value(
+                                        org.hamcrest.Matchers.containsString(
+                                                "Confidential revenue 42")))
+                .andExpect(
+                        jsonPath("$.input[1].content")
+                                .value(org.hamcrest.Matchers.containsString("Board")))
+                .andExpect(
+                        jsonPath("$.instructions")
+                                .value(
+                                        org.hamcrest.Matchers.not(
+                                                org.hamcrest.Matchers.containsString(
+                                                        "Confidential revenue 42"))))
+                .andRespond(
+                        withSuccess(
+                                completed(
+                                        "{\"fields\":{\"TITLE\":\"Confidential revenue"
+                                                + " 42\"},\"slides\":[]}"),
+                                MediaType.APPLICATION_JSON));
+        var content =
+                generator.generate(
+                        context,
+                        "Summarize",
+                        Map.of("TITLE", 80),
+                        List.of(Map.of("slide", 1)),
+                        "gpt-5.4",
+                        input);
+        assertThat(content.fields()).containsEntry("TITLE", "Confidential revenue 42");
+        var request = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(history).start(eq(context), eq("gpt-5.4"), request.capture());
+        assertThat(request.getValue())
+                .contains("request_sha256", "redacted")
+                .doesNotContain("Confidential", "Board", "report.txt");
+        var response = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(history).complete(eq(callId), response.capture(), eq(200), isNull());
+        assertThat(response.getValue()).contains("redacted").doesNotContain("Confidential");
+    }
+
+    @Test
+    void sourceProviderErrorIsAlsoRemovedFromAudit() {
+        var input =
+                GenerationInput.normalize(
+                        null, null, new SourceMaterial("txt", "x.txt", "Private source"));
+        server.expect(requestTo(URL))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST).body("Private source echoed"));
+        assertThatThrownBy(
+                        () ->
+                                generator.generate(
+                                        context, "Topic", Map.of(), List.of(), "gpt-5.4", input))
+                .hasMessage("generation_failed");
+        verify(history)
+                .complete(
+                        eq(callId),
+                        argThat(value -> !value.contains("Private")),
+                        eq(400),
+                        eq("generation_failed"));
     }
 
     @ParameterizedTest

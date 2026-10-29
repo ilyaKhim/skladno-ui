@@ -14,6 +14,7 @@ import ru.godeck.presentation.entity.Presentation;
 import ru.godeck.presentation.entity.PresentationRevision;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
+import ru.godeck.presentation.material.MaterialPolicy;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.repository.PresentationRepository;
@@ -21,6 +22,7 @@ import ru.godeck.presentation.repository.PresentationRevisionRepository;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,8 +32,8 @@ import java.util.UUID;
  * <p>AI calls, Apache POI rendering, and filesystem writes must not hold database locks. This
  * service therefore claims or reserves work in one transaction, lets an orchestrator perform slow
  * work outside the transaction, and verifies the captured token/version again in a final
- * transaction. The records returned by begin methods are immutable snapshots that carry exactly
- * the evidence required for safe completion.
+ * transaction. The records returned by begin methods are immutable snapshots that carry exactly the
+ * evidence required for safe completion.
  */
 @Service
 @Transactional
@@ -69,7 +71,8 @@ public class PresentationTransactions {
                 now,
                 RUNNING,
                 FAILED,
-                GenerationError.WORKER_INTERRUPTED.code());
+                GenerationError.WORKER_INTERRUPTED.code(),
+                now.plus(MaterialPolicy.RETENTION));
         return presentations
                 .findNextQueuedForUpdate()
                 .map(
@@ -81,7 +84,11 @@ public class PresentationTransactions {
                                     p.getTopic(),
                                     p.getMode(),
                                     p.getModel(),
-                                    p.getContentJson());
+                                    p.getContentJson(),
+                                    p.getGenerationInputJson(),
+                                    p.isReviewBeforeRender(),
+                                    p.getOutlineRevision(),
+                                    p.getOutlineConfirmedRevision());
                         });
     }
 
@@ -101,7 +108,7 @@ public class PresentationTransactions {
                 presentations
                         .findForCompletion(job.id())
                         .orElseThrow(PresentationTransactions::missing);
-        if (p.getStatus() != RUNNING)
+        if (!matchesClaim(p, job) || job.reviewBeforeRender() && !job.renderConfirmedOutline())
             throw new GenerationException(GenerationError.WORKER_INTERRUPTED);
         p.succeed(
                 json,
@@ -125,16 +132,40 @@ public class PresentationTransactions {
     }
 
     /**
-     * Marks a claimed job failed only while it is still running.
+     * Marks a claimed job failed only while the same phase and outline revision are still running.
      *
-     * <p>The state guard prevents a late worker error from overwriting a terminal state written by
-     * another recovery path.
+     * <p>A late AI-phase failure must not fail a subsequently confirmed render phase, even though
+     * both phases use the same presentation id and {@code RUNNING} status.
      */
-    public void fail(UUID id, String code) {
+    public void fail(Job job, String code) {
         presentations
-                .findForCompletion(id)
-                .filter(p -> p.getStatus() == RUNNING)
+                .findForCompletion(job.id())
+                .filter(p -> matchesClaim(p, job))
                 .ifPresent(p -> p.fail(code, clock.instant()));
+    }
+
+    /**
+     * Stops after one normalized AI result; phase/revision checks reject a late callback from an
+     * older claim.
+     */
+    public void awaitReview(Job job, String json) {
+        Presentation p =
+                presentations
+                        .findForCompletion(job.id())
+                        .orElseThrow(PresentationTransactions::missing);
+        if (!matchesClaim(p, job)
+                || !job.reviewBeforeRender()
+                || job.outlineConfirmedRevision() != null
+                || job.outlineRevision() != 0)
+            throw new GenerationException(GenerationError.WORKER_INTERRUPTED);
+        p.awaitReview(json, clock.instant());
+    }
+
+    private static boolean matchesClaim(Presentation p, Job job) {
+        return p.getStatus() == RUNNING
+                && p.isReviewBeforeRender() == job.reviewBeforeRender()
+                && p.getOutlineRevision() == job.outlineRevision()
+                && Objects.equals(p.getOutlineConfirmedRevision(), job.outlineConfirmedRevision());
     }
 
     /**
@@ -367,6 +398,10 @@ public class PresentationTransactions {
      * @param mode AI or manual content source
      * @param model selected AI model, retained for manual jobs for aggregate consistency
      * @param contentJson manual content snapshot, or {@code null} for AI generation
+     * @param generationInputJson private additional input retained for the initial AI call
+     * @param reviewBeforeRender explicit opt-in to the durable review stage
+     * @param outlineRevision semantic-review concurrency token captured by this claim
+     * @param outlineConfirmedRevision exact accepted revision, nonnull only for render-only work
      */
     public record Job(
             UUID id,
@@ -374,7 +409,22 @@ public class PresentationTransactions {
             String topic,
             GenerationMode mode,
             String model,
-            String contentJson) {}
+            String contentJson,
+            String generationInputJson,
+            boolean reviewBeforeRender,
+            long outlineRevision,
+            Long outlineConfirmedRevision) {
+        /**
+         * A confirmed revision explicitly identifies render-only work, never an inferred nonnull
+         * content field.
+         */
+        public boolean renderConfirmedOutline() {
+            return reviewBeforeRender
+                    && outlineConfirmedRevision != null
+                    && outlineConfirmedRevision == outlineRevision
+                    && outlineRevision > 0;
+        }
+    }
 
     /**
      * Immutable AI-edit reservation carrying the lease token and published source snapshot.
