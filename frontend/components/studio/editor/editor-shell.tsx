@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from 'react'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Sparkles } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import {
   createEditorImage,
   duplicateEditorImage,
@@ -10,9 +11,12 @@ import {
 } from '@/lib/editor-image'
 import type { EditorAsset } from '@/lib/generation-types'
 import { AiAssistantTrigger } from './ai-assistant-trigger'
+import { AiChatPanel, type AiChatLayout } from './ai/ai-chat-panel'
+import { targetFor } from './ai/ai-target'
+import { RightColumnTabs, type RightColumnTab } from './ai/right-column-tabs'
+import { useAiChat, type AiEditConfig } from './ai/use-ai-chat'
 import { EditorToolbar } from './editor-toolbar'
 import {
-  BLOCK_ROLE_LABELS,
   CUSTOM_TEXT_MAX_CHARS,
   type Deck,
   type EditorOperationError,
@@ -28,6 +32,9 @@ import { restoreRecovery, type EditorVersion } from './editor-recovery'
 import { EditorSafety } from './editor-safety'
 
 const WIDE_LAYOUT_QUERY = '(min-width: 1024px)'
+/** From this width the AI chat is a separate column next to the properties panel. */
+const CHAT_COLUMN_QUERY = '(min-width: 1440px)'
+const CHAT_PANEL_IDS = { properties: 'editor-properties-tabpanel', chat: 'editor-ai-chat' } as const
 const ELEMENT_CLIPBOARD_TYPE = 'application/x-godeck-element'
 
 function useMediaQuery(query: string) {
@@ -61,10 +68,12 @@ type EditorShellProps = {
   operationError?: EditorOperationError | null
   onReloadServer?: () => Promise<void>
   publicationPending?: boolean
+  /** Enables the AI chat panel. Without `onSave` (demo) requests do not save the draft first. */
+  aiEdit?: AiEditConfig
 }
 
 export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, contentOnly = false,
-  ownerId, getVersion, operationError, onReloadServer, publicationPending = false }: EditorShellProps) {
+  ownerId, getVersion, operationError, onReloadServer, aiEdit, publicationPending = false }: EditorShellProps) {
   const recovery = useEditorRecovery(initialDeck, ownerId, getVersion)
   const editor = useEditorState(initialDeck, onSave, { onChange: recovery.backup, onSaved: recovery.clear })
   const { deck } = editor
@@ -77,6 +86,26 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   const busy = useRef(false)
   const isWide = useMediaQuery(WIDE_LAYOUT_QUERY)
   const textFieldRef = useRef<HTMLTextAreaElement>(null)
+  const isChatColumn = useMediaQuery(CHAT_COLUMN_QUERY)
+  const chatLayout: AiChatLayout = isChatColumn ? 'column' : isWide ? 'tab' : 'sheet'
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatCollapsed, setChatCollapsed] = useState(false)
+  const [rightTab, setRightTab] = useState<RightColumnTab>('properties')
+  const chatInputRef = useRef<HTMLTextAreaElement>(null)
+  // Focus after the panel or its tab has rendered and after the opening button has handled its click.
+  const [chatFocusRequest, setChatFocusRequest] = useState(0)
+  useEffect(() => {
+    if (!chatFocusRequest) return
+    const frame = requestAnimationFrame(() => chatInputRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [chatFocusRequest])
+  const chat = useAiChat({
+    config: aiEdit,
+    editor,
+    // Custom blocks are validated against the saved document, so unsaved edits are saved first.
+    ensureSaved: onSave ? () => (editor.hasUnsavedChanges() ? editor.saveNow() : Promise.resolve(true)) : undefined,
+    active: chatOpen,
+  })
 
   const protectUnload = useEffectEvent((event: BeforeUnloadEvent) => {
     if (!editor.hasUnsavedChanges() && !imageUploading) return
@@ -162,8 +191,30 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     setSelectedElementId(null)
   }
 
+  const chatVisible = Boolean(aiEdit) && chatOpen && (
+    chatLayout === 'column' ? !chatCollapsed : chatLayout === 'tab' ? rightTab === 'chat' : !panelOpen)
+
+  const openChat = () => {
+    if (!aiEdit) return
+    setChatOpen(true)
+    setChatCollapsed(false)
+    setRightTab('chat')
+    // The sheet and the properties drawer share the bottom of a narrow screen.
+    if (chatLayout === 'sheet') setPanelOpen(false)
+    setChatFocusRequest((value) => value + 1)
+  }
+
+  const closeChat = () => {
+    setChatOpen(false)
+    setRightTab('properties')
+  }
+
+  const toggleChat = () => (chatVisible ? closeChat() : openChat())
+
   const activateBlock = (blockId: string) => {
     setSelectedElementId(blockId)
+    // Double click means manual editing: the tabbed column switches back to properties.
+    setRightTab('properties')
     setPanelOpen(true)
     requestAnimationFrame(() => textFieldRef.current?.focus())
   }
@@ -258,6 +309,11 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     if (mod && key === 's') {
       event.preventDefault()
       editor.saveNow()
+      return
+    }
+    if (mod && key === 'j' && aiEdit) {
+      event.preventDefault()
+      toggleChat()
       return
     }
     if (isEditableTarget(event.target)) return
@@ -363,6 +419,50 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     }
   }, [])
 
+  const propertiesPanel = (showHeader: boolean) => (
+    <PropertiesPanel
+      slide={slide}
+      slideIndex={slideIndex}
+      block={block}
+      image={image}
+      open={panelOpen}
+      isDrawer={!isWide}
+      textFieldRef={textFieldRef}
+      onClose={() => setPanelOpen(false)}
+      onSelectElement={setSelectedElementId}
+      onUpdateBlock={(patch, coalesceKey) => {
+        if (block) editor.updateBlock(slide.id, block.id, patch, coalesceKey)
+      }}
+      onUpdateImage={(patch, coalesceKey) => {
+        if (image) editor.updateImage(slide.id, image.id, patch, coalesceKey)
+      }}
+      onUpdateSlide={(patch, coalesceKey) => editor.updateSlide(slide.id, patch, coalesceKey)}
+      onCommitField={editor.sealHistory}
+      onDeleteElement={removeElement}
+      onDuplicateElement={duplicateElement}
+      contentOnly={contentOnly}
+      onAskAi={aiEdit ? openChat : undefined}
+      showHeader={showHeader}
+    />
+  )
+
+  const tabbedChat = Boolean(aiEdit) && chatOpen && chatLayout === 'tab'
+  const chatPanel = aiEdit && (
+    <AiChatPanel
+      id={CHAT_PANEL_IDS.chat}
+      chat={chat}
+      deck={deck}
+      target={block ? targetFor(slide, block) : null}
+      block={block}
+      layout={chatLayout}
+      showHeader={!tabbedChat}
+      inputRef={chatInputRef}
+      onClose={closeChat}
+      onDismiss={chatLayout === 'sheet' ? closeChat : chatLayout === 'tab' ? () => setRightTab('properties') : undefined}
+      onCollapse={chatLayout === 'column' ? () => setChatCollapsed(true) : undefined}
+    />
+  )
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <div inert={processing !== null || publicationPending}>
@@ -446,36 +546,42 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
             onUpdateImage={(imageId, patch, coalesceKey) => editor.updateImage(slide.id, imageId, patch, coalesceKey)}
             onCommitElement={editor.sealHistory}
           />
-          {!contentOnly && (
-            <AiAssistantTrigger
-              contextLabel={block ? `${BLOCK_ROLE_LABELS[block.role].toLowerCase()}, слайд ${slideIndex + 1}` : null}
-            />
-          )}
+          {aiEdit && <AiAssistantTrigger open={chatVisible} controls={CHAT_PANEL_IDS.chat} onToggle={toggleChat} />}
         </main>
 
-        <PropertiesPanel
-          slide={slide}
-          slideIndex={slideIndex}
-          block={block}
-          image={image}
-          open={panelOpen}
-          isDrawer={!isWide}
-          textFieldRef={textFieldRef}
-          onClose={() => setPanelOpen(false)}
-          onSelectElement={setSelectedElementId}
-          onUpdateBlock={(patch, coalesceKey) => {
-            if (block) editor.updateBlock(slide.id, block.id, patch, coalesceKey)
-          }}
-          onUpdateImage={(patch, coalesceKey) => {
-            if (image) editor.updateImage(slide.id, image.id, patch, coalesceKey)
-          }}
-          onUpdateSlide={(patch, coalesceKey) => editor.updateSlide(slide.id, patch, coalesceKey)}
-          onCommitField={editor.sealHistory}
-          onDeleteElement={removeElement}
-          onDuplicateElement={duplicateElement}
-          contentOnly={contentOnly}
-        />
+        {tabbedChat ? (
+          <div className="flex min-h-0 w-72 shrink-0 flex-col border-l border-border bg-card xl:w-80">
+            <RightColumnTabs value={rightTab} panelIds={CHAT_PANEL_IDS} onChange={setRightTab} onCloseChat={closeChat} />
+            <div
+              role="tabpanel"
+              id={CHAT_PANEL_IDS.properties}
+              aria-labelledby={`${CHAT_PANEL_IDS.properties}-tab`}
+              hidden={rightTab !== 'properties'}
+              className="flex min-h-0 flex-1 flex-col [&>aside]:min-h-0 [&>aside]:w-full [&>aside]:flex-1 [&>aside]:border-l-0"
+            >
+              {propertiesPanel(false)}
+            </div>
+            <div
+              role="tabpanel"
+              aria-labelledby={`${CHAT_PANEL_IDS.chat}-tab`}
+              hidden={rightTab !== 'chat'}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              {chatPanel}
+            </div>
+          </div>
+        ) : propertiesPanel(true)}
+
+        {aiEdit && chatOpen && chatLayout === 'column' && (chatCollapsed ? (
+          <div className="flex w-10 shrink-0 flex-col items-center border-l border-border bg-card py-2">
+            <Button variant="ghost" size="icon-sm" onClick={() => setChatCollapsed(false)} aria-label="Развернуть AI-чат" title="Развернуть AI-чат">
+              <Sparkles className="text-primary" />
+            </Button>
+          </div>
+        ) : chatPanel)}
       </div>
+      {aiEdit && chatOpen && chatLayout === 'sheet' && !panelOpen && <div inert={processing !== null} className="flex shrink-0 flex-col">{chatPanel}</div>}
     </div>
   )
 }
+
