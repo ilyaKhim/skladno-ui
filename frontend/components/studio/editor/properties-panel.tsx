@@ -17,6 +17,8 @@ import {
   type Slide,
   type TextBlock,
 } from './editor-types'
+import { hardLimit, softLimit } from './ai/ai-target'
+import { plural } from './ai/plural'
 
 const WEIGHT_OPTIONS: { value: BlockWeight; label: string }[] = [
   { value: 400, label: 'Обычный' },
@@ -110,9 +112,11 @@ export function PropertiesPanel({
                   onChange={(event) => onUpdateBlock({ text: event.target.value }, `${block.id}:text`)}
                   onBlur={onCommitField}
                   rows={4}
-                  maxLength={block.maxChars}
+                  maxLength={hardLimit(block)}
+                  aria-describedby={`${ids}-text-limit`}
                   className="max-h-48 min-h-20 bg-background text-sm leading-relaxed"
                 />
+                <TextLimit id={`${ids}-text-limit`} block={block} />
               </Field>
 
               {canStyleBlock && <>
@@ -318,6 +322,24 @@ function PanelSection({ title, aside, children }: { title: string; aside?: strin
       </div>
       {children}
     </section>
+  )
+}
+
+/**
+ * The template limit is a layout recommendation: text may exceed it up to the hard limit, so the
+ * person can trim an AI result by hand. Custom blocks show the counter only near their maximum.
+ */
+function TextLimit({ id, block }: { id: string; block: TextBlock }) {
+  const limit = softLimit(block)
+  if (limit === undefined) return <span id={id} hidden />
+  const length = block.text.length
+  const over = length - limit
+  if (!block.fieldKey && length < limit * 0.9) return <span id={id} hidden />
+  return (
+    <p id={id} className={cn('text-[11px] leading-snug tabular-nums', over > 0 ? 'font-medium text-destructive' : 'text-muted-foreground')}>
+      {length} / {limit}
+      {over > 0 && <> · Длиннее лимита поля на {over} {plural(over, 'символ', 'символа', 'символов')} — может не поместиться в блок</>}
+    </p>
   )
 }
 
