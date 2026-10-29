@@ -175,6 +175,7 @@ Backend должен:
 | 409 | `presentation_not_ready` | статус презентации не `succeeded` |
 | 409 | `idempotency_conflict` | тот же `request_id` с другим телом запроса |
 | 409 | `ai_edit_in_progress` | правка с этим `request_id` ещё выполняется |
+| 409 | `content_unavailable` | у презентации нет сохранённого содержимого (старые презентации); как в редакторе |
 | 422 | `invalid_input` | нарушена структура тела: нет обязательных полей, не UUID, `variants` вне диапазона, неверная комбинация полей `target`, неизвестный или чужой `refines_edit_id` |
 | 422 | `unsupported_action` | `action` нет в каталоге или действие недоступно для `target.kind` |
 | 422 | `invalid_params` | неизвестный или отсутствующий параметр, значение не из `options`, строка длиннее `max_length` |
