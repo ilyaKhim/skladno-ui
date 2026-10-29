@@ -508,6 +508,36 @@ AI-правка запрещена при наличии editor draft: инач�
 результатом AI, а свободные text/image blocks остаются пользовательскими и переносятся на тот же
 source slide.
 
+### 10а. AI-правка текста выбранного блока в редакторе
+
+```mermaid
+sequenceDiagram
+    participant Panel as AiChatPanel
+    participant API as AiEditController
+    participant Svc as AiTextEditService
+    participant Res as TargetResolver
+    participant Reg as TextEditActionRegistry
+    participant LLM as AiResponsesClient
+    participant DB as PostgreSQL
+    Panel->>API: GET /editor/ai/actions (один раз за сессию)
+    Panel->>Panel: цель = выбранный блок; source = текущее предложение или текст блока
+    Panel->>Panel: saveNow() — дождаться autosave
+    Panel->>API: POST /presentations/{id}/editor/ai/text-edits {request_id, action, params, target, text, refines_edit_id}
+    API->>Svc: edit(user, id, request)
+    Svc->>Res: владелец, статус, цель в сохранённом документе, лимиты, роль, заголовки
+    Svc->>Reg: действие и параметры → задача для модели
+    Svc->>DB: короткая транзакция: идемпотентность, квота, строка presentation_ai_edits = running
+    Svc->>LLM: один запрос Responses API (strict schema), аудит в presentation_ai_calls до HTTP
+    LLM-->>Svc: {status, message, variants[]} + usage
+    Svc->>Svc: очистка; превышение лимита → предупреждение, без обрезки и без повтора
+    Svc->>DB: короткая транзакция: результат, usage, статус
+    API-->>Panel: варианты, предупреждения, usage, квота
+    Panel->>Panel: карточка «было / стало» → Применить → updateBlock + sealHistory → autosave
+```
+
+В отличие от раздела 10, сервер не меняет документ и не берёт метку правки: черновик, ревизии и
+PPTX остаются прежними, autosave и экспорт работают параллельно.
+
 ## 11. Версии и скачивание
 
 ```mermaid
