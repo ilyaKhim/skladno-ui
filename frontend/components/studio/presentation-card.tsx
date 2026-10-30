@@ -9,6 +9,7 @@ import type { ModelOption, PresentationJob, Revision } from '@/lib/generation-ty
 
 const STATUS: Record<PresentationJob['status'], string> = {
   awaiting_content: 'Ожидает материалов',
+  draft: 'Черновик',
   queued: 'В очереди',
   running: 'Создаётся',
   succeeded: 'Готова',
@@ -75,8 +76,21 @@ export function PresentationCard({
     }
   }
 
+  async function cancelDraft() {
+    if (busy || !window.confirm('Отменить создание презентации? Черновик больше нельзя будет редактировать.')) return
+    setBusy(true)
+    try {
+      await generationApi.cancel(job.id)
+      await onChanged()
+    } catch (cause) {
+      onError(cause instanceof Error ? cause.message : 'Не удалось отменить создание.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <li className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <li data-presentation-id={job.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="font-semibold">{templateName}</p>
@@ -126,6 +140,17 @@ export function PresentationCard({
         <Button size="sm" className="mt-3" onClick={() => onResume(job)}>
           Вставить ответ LLM
         </Button>
+      )}
+      {job.status === 'draft' && (
+        <div className="mt-3">
+          <p className="mb-3 text-sm leading-6 text-muted-foreground">Презентация ещё не опубликована. Проверьте текст и порядок слайдов в редакторе, затем создайте первую версию.</p>
+          <div className="flex flex-wrap gap-2">
+            <a href={`/studio/editor/?presentation=${encodeURIComponent(job.id)}`} className={buttonVariants()}>
+              <Pencil aria-hidden="true" />Открыть редактор
+            </a>
+            <Button type="button" variant="ghost" disabled={busy} onClick={() => void cancelDraft()}>Отменить создание</Button>
+          </div>
+        </div>
       )}
       {job.status === 'succeeded' && (
         <div className="mt-4 border-t border-border pt-4">

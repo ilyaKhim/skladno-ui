@@ -20,11 +20,14 @@ import ru.godeck.presentation.dto.PresentationView;
 import ru.godeck.presentation.entity.Presentation;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
+import ru.godeck.presentation.mapper.GenerationInputCodec;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
 import ru.godeck.presentation.model.AiCallContext;
 import ru.godeck.presentation.model.AiOperation;
+import ru.godeck.presentation.model.GenerationInput;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.model.PresentationContent;
+import ru.godeck.presentation.model.SourceMaterial;
 import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.repository.OffsetPageRequest;
 import ru.godeck.presentation.repository.PresentationRepository;
@@ -63,6 +66,7 @@ public class PresentationService {
     private final PresentationFiles files;
     private final Clock clock;
     private final PresentationAiCallHistory aiHistory;
+    private final GenerationInputCodec inputs;
 
     public PresentationService(
             PresentationRepository presentations,
@@ -74,7 +78,8 @@ public class PresentationService {
             PresentationContentCodec codec,
             PresentationFiles files,
             Clock clock,
-            PresentationAiCallHistory aiHistory) {
+            PresentationAiCallHistory aiHistory,
+            GenerationInputCodec inputs) {
         this.presentations = presentations;
         this.revisions = revisions;
         this.transactions = transactions;
@@ -85,6 +90,7 @@ public class PresentationService {
         this.files = files;
         this.clock = clock;
         this.aiHistory = aiHistory;
+        this.inputs = inputs;
     }
 
     /** Exposes process readiness and whether paid OpenAI generation is actually configured. */
@@ -117,18 +123,29 @@ public class PresentationService {
                 templates.description(templateId));
     }
 
-    /**
-     * Builds, but does not send, the structured provider request. This makes prompt/schema changes
-     * inspectable and testable without spending tokens.
-     */
-    public Map<String, Object> previewPrompt(String templateId, String topic, String model) {
+    /** Uses the same reviewed source snapshot as generation without invoking the provider. */
+    public Map<String, Object> previewPrompt(
+            String templateId,
+            String topic,
+            String model,
+            String goal,
+            String audience,
+            SourceMaterial source) {
         checkTemplate(templateId);
         checkTopic(topic);
+        GenerationInput input = GenerationInput.normalize(goal, audience, source);
+        if (input == null)
+            return generator.preview(
+                    templates.withDescription(templateId, topic.strip()),
+                    templates.fields(templateId),
+                    templates.slideManifest(templateId),
+                    models.resolve(model));
         return generator.preview(
                 templates.withDescription(templateId, topic.strip()),
                 templates.fields(templateId),
                 templates.slideManifest(templateId),
-                models.resolve(model));
+                models.resolve(model),
+                input);
     }
 
     /**
@@ -141,7 +158,15 @@ public class PresentationService {
      */
     @Transactional
     public PresentationView create(
-            UUID userId, String templateId, String topic, String mode, String key, String model) {
+            UUID userId,
+            String templateId,
+            String topic,
+            String mode,
+            String key,
+            String model,
+            String goal,
+            String audience,
+            SourceMaterial source) {
         String selectedModel = models.resolve(model);
         GenerationMode selectedMode;
         try {
@@ -156,15 +181,21 @@ public class PresentationService {
         checkTemplate(templateId);
         checkTopic(topic);
         String normalizedTopic = topic.strip();
-        String hash =
-                Hashing.sha256(
-                        templateId
-                                + "\n"
-                                + normalizedTopic
-                                + "\n"
-                                + selectedMode.value()
-                                + "\n"
-                                + selectedModel);
+        GenerationInput input = GenerationInput.normalize(goal, audience, source);
+        if (selectedMode == GenerationMode.MANUAL && input != null)
+            throw new GenerationException(GenerationError.INVALID_INPUT);
+        String inputJson = inputs.encode(input);
+        String fingerprint =
+                templateId
+                        + "\n"
+                        + normalizedTopic
+                        + "\n"
+                        + selectedMode.value()
+                        + "\n"
+                        + selectedModel;
+        // Preserve existing idempotency keys byte-for-byte when the request has no new fields.
+        String canonicalInput = inputJson == null ? fingerprint : fingerprint + "\n" + inputJson;
+        String hash = Hashing.sha256(canonicalInput);
         if (key != null) {
             var previous = presentations.findByUserIdAndIdempotencyKey(userId, key);
             if (previous.isPresent()) return idempotent(previous.get(), hash);
@@ -173,7 +204,7 @@ public class PresentationService {
                                 userId, clock.instant().minus(PresentationPolicy.QUOTA_WINDOW))
                         >= PresentationPolicy.MAX_GENERATIONS_PER_DAY
                 || presentations.countByUserIdAndStatusIn(
-                                userId, List.of(AWAITING_CONTENT, QUEUED, RUNNING))
+                                userId, List.of(AWAITING_CONTENT, DRAFT, QUEUED, RUNNING))
                         >= PresentationPolicy.MAX_ACTIVE_PRESENTATIONS) {
             throw new GenerationException(GenerationError.GENERATION_LIMIT);
         }
@@ -189,7 +220,8 @@ public class PresentationService {
                 hash,
                 selectedModel,
                 clock.instant(),
-                PresentationPolicy.INITIAL_VERSION);
+                0,
+                inputJson);
         return key == null
                 ? PresentationView.from(owned(userId, id))
                 : idempotent(
@@ -258,8 +290,12 @@ public class PresentationService {
     public PresentationView cancel(UUID userId, UUID id) {
         Presentation p =
                 presentations.findForUpdate(id, userId).orElseThrow(PresentationService::missing);
-        if (p.getStatus() != QUEUED && p.getStatus() != AWAITING_CONTENT)
+        if (p.getStatus() != QUEUED && p.getStatus() != AWAITING_CONTENT && p.getStatus() != DRAFT)
             throw new GenerationException(GenerationError.CANNOT_CANCEL);
+        if (p.getEditId() != null
+                && p.getEditStartedAt()
+                        .isAfter(clock.instant().minus(PresentationPolicy.EDIT_LEASE_TIMEOUT)))
+            throw new GenerationException(GenerationError.EDIT_IN_PROGRESS);
         p.cancel(clock.instant());
         return PresentationView.from(p);
     }
@@ -279,7 +315,8 @@ public class PresentationService {
      * <p>The edit lease captures the current version and prevents concurrent commits. AI receives
      * the published semantic snapshot, while editor-created text and image blocks are copied onto
      * the newly generated field/slide plan. Rendering happens outside a transaction. Publication
-     * succeeds only if the lease and base version still match; otherwise the orphan file is removed.
+     * succeeds only if the lease and base version still match; otherwise the orphan file is
+     * removed.
      */
     public ChatReply chat(UUID userId, UUID id, String message, String model) {
         if (!generator.enabled()) throw new GenerationException(GenerationError.CHAT_DISABLED);
@@ -327,7 +364,7 @@ public class PresentationService {
         }
     }
 
-    /** Returns redacted provider-call diagnostics after presentation ownership is established. */
+    /** Returns private provider-call history after presentation ownership is established. */
     public List<PresentationAiCallView> aiCalls(UUID userId, UUID id) {
         owned(userId, id);
         return aiHistory.list(id);

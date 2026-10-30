@@ -1,5 +1,23 @@
 name: godeck-local
 services:
+  document-worker:
+    profiles: ['documents']
+    build:
+      context: .
+      dockerfile: document-worker/Dockerfile
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 1
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/godeck
+      DATABASE_USER: godeck
+      DATABASE_PASSWORD: godeck-local-only
+    depends_on:
+      postgres:
+        condition: service_healthy
   postgres:
     image: postgres:17-alpine
     environment:

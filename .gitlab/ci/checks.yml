@@ -37,12 +37,13 @@ backend_check:
   script:
     - cd backend
     - ./mvnw --batch-mode verify
+    - ./mvnw --batch-mode -f ../document-worker/pom.xml verify
   artifacts:
     when: always
     reports:
-      junit: backend/target/surefire-reports/TEST-*.xml
+      junit: [backend/target/surefire-reports/TEST-*.xml, document-worker/target/surefire-reports/TEST-*.xml]
   rules:
-    - changes: [backend/**/*, compose.yaml, scripts/backend-dev.sh, .gitlab/**/*, .gitlab-ci.yml]
+    - changes: [backend/**/*, document-worker/**/*, compose.yaml, scripts/backend-dev.sh, scripts/document-worker.sh, .gitlab/**/*, .gitlab-ci.yml]
 
 bridge_check:
   stage: test
@@ -80,6 +81,7 @@ editor_e2e:
     - pnpm exec playwright install chromium webkit
   script:
     - pnpm test:e2e:types
+    - pnpm test:migrations
     - pnpm test:e2e
   artifacts:
     when: always
@@ -88,4 +90,4 @@ editor_e2e:
     reports:
       junit: test-results/e2e.xml
   rules:
-    - changes: [frontend/**/*, backend/**/*, e2e/**/*, playwright.config.ts, scripts/e2e.mjs, scripts/backend-dev.sh, package.json, pnpm-lock.yaml, .gitlab/**/*, .gitlab-ci.yml]
+    - changes: [frontend/**/*, backend/**/*, document-worker/**/*, e2e/**/*, playwright.config.ts, scripts/e2e.mjs, scripts/backend-dev.sh, scripts/document-worker.sh, scripts/test-draft-migration.mjs, package.json, pnpm-lock.yaml, .gitlab/**/*, .gitlab-ci.yml]

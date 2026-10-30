@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Tabs } from '@base-ui/react/tabs'
 import { parseLlmResponse } from '@/lib/llm-response'
@@ -14,17 +14,33 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PresentationCard } from '@/components/studio/presentation-card'
+import { clearPendingMaterial, GenerationMaterialInput } from '@/components/studio/generation-material-input'
 import { generationApi, isAuthenticationError } from '@/lib/generation-client'
 import { getAuthApi, AUTH_ERROR_MESSAGES } from '@/lib/auth-client'
-import type { Template, ModelOption, PresentationJob } from '@/lib/generation-types'
+import type { Template, ModelOption, PresentationJob, CreatePresentationInput } from '@/lib/generation-types'
 import { StudioSoundtrack } from '@/components/studio/studio-soundtrack'
+import {
+  EMPTY_MATERIAL,
+  creationAttempt,
+  materialCanGenerate,
+  materialReducer,
+  materialSource,
+  type CreationAttempt,
+  type MaterialAction,
+} from '@/lib/generation-material'
 
 export function GenerationStudio() {
   const router = useRouter()
   const [templates, setTemplates] = useState<Template[]>([])
   const [jobs, setJobs] = useState<PresentationJob[]>([])
+  const refreshSequence = useRef(0)
   const [templateId, setTemplateId] = useState('')
   const [topic, setTopic] = useState('')
+  const [goal, setGoal] = useState('')
+  const [audience, setAudience] = useState('')
+  const [material, dispatchMaterial] = useReducer(materialReducer, EMPTY_MATERIAL)
+  const lastCreation = useRef<CreationAttempt | null>(null)
+  const submissionInFlight = useRef(false)
   const [mode, setMode] = useState<'openai' | 'response'>('openai')
   const [models, setModels] = useState<ModelOption[]>([])
   const [selectedModel, setSelectedModel] = useState('')
@@ -41,13 +57,44 @@ export function GenerationStudio() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const materialsReady = materialCanGenerate(material)
+
+  function changeMaterial(action: MaterialAction) {
+    if (action.type === 'clear') clearPendingMaterial()
+    dispatchMaterial(action)
+    setPromptPreview('')
+  }
+
+  function openAiInput(): CreatePresentationInput {
+    const source = materialSource(material)
+    return {
+      template_id: templateId,
+      topic: topic.trim(),
+      mode: 'openai',
+      model: selectedModel,
+      ...(goal.trim() ? { goal: goal.trim() } : {}),
+      ...(audience.trim() ? { audience: audience.trim() } : {}),
+      ...(source ? { source } : {}),
+    }
+  }
+
+  function createJob(input: CreatePresentationInput) {
+    lastCreation.current = creationAttempt(input, lastCreation.current)
+    return generationApi.create(input, lastCreation.current.key)
+  }
 
   const refresh = useCallback(async () => {
-    setJobs((await generationApi.presentations()).items)
+    const sequence = ++refreshSequence.current
+    const incoming = (await generationApi.presentations()).items
+    if (sequence !== refreshSequence.current) return
+    setJobs(incoming)
   }, [])
+
+  useEffect(() => () => { refreshSequence.current++ }, [])
 
   useEffect(() => {
     let active = true
+    const initialRefresh = refreshSequence.current
     Promise.all([
       getAuthApi()
         .then((api) => api.currentUser())
@@ -68,7 +115,9 @@ export function GenerationStudio() {
         setEmail(user)
         setTemplates(catalog.items)
         setTemplateId((current) => current || catalog.items[0]?.id || '')
-        setJobs(history.items)
+        if (refreshSequence.current === initialRefresh) {
+          setJobs(history.items)
+        }
         setOpenaiEnabled(health.openai_enabled)
         setModels(modelCatalog.items)
         setDefaultModel(modelCatalog.default_model)
@@ -117,7 +166,8 @@ export function GenerationStudio() {
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (submitting || !templateId) return
+    if (submissionInFlight.current || previewBusy || !templateId || (mode === 'openai' && !materialsReady)) return
+    submissionInFlight.current = true
     setSubmitting(true)
     setError('')
     setNotice('')
@@ -127,7 +177,7 @@ export function GenerationStudio() {
         const content = parseLlmResponse(responseText, form)
         let job = responseJob
         if (!job || job.template_id !== templateId) {
-          job = await generationApi.create({
+          job = await createJob({
             template_id: templateId,
             topic: content.fields.TITLE?.trim() || 'Проверка ответа LLM',
             mode: 'manual',
@@ -136,17 +186,17 @@ export function GenerationStudio() {
         }
         await generationApi.submitContent(job.id, content)
         setResponseJob(null)
-        setNotice('Ответ принят. Презентация собирается без обращения к OpenAI.')
+        lastCreation.current = null
+        setNotice('Ответ принят. Откройте черновик в редакторе и проверьте его перед первой публикацией.')
       } else {
-        await generationApi.create({
-          template_id: templateId,
-          topic: topic.trim(),
-          mode: 'openai',
-          model: selectedModel,
-        })
+        await createJob(openAiInput())
+        lastCreation.current = null
         setTopic('')
+        setGoal('')
+        setAudience('')
+        dispatchMaterial({ type: 'clear' })
         setPromptPreview('')
-        setNotice('Проект создан. Статус будет обновляться автоматически.')
+        setNotice('Проект создан. AI подготовит черновик — проверьте его в редакторе перед первой публикацией.')
       }
       setActiveTab('recent')
       await refresh()
@@ -154,6 +204,7 @@ export function GenerationStudio() {
       setError(cause instanceof Error ? cause.message : 'Не удалось собрать презентацию.')
       await refresh().catch(() => undefined)
     } finally {
+      submissionInFlight.current = false
       setSubmitting(false)
     }
   }
@@ -162,18 +213,20 @@ export function GenerationStudio() {
     setResponseJob(job)
     setTemplateId(job.template_id)
     setMode('response')
+    changeMaterial({ type: 'clear' })
     setActiveTab('create')
     setError('')
     setNotice(`Вставьте ответ LLM для проекта «${job.topic}».`)
   }
 
   async function showPromptPreview() {
-    if (!templateId || topic.trim().length < 5) return
+    if (!templateId || topic.trim().length < 5 || !materialsReady || submitting || previewBusy) return
     setPreviewBusy(true)
     setError('')
     setPromptPreview('')
     try {
-      const request = await generationApi.preview(templateId, topic.trim(), selectedModel)
+      const { goal, audience, source } = openAiInput()
+      const request = await generationApi.preview(templateId, topic.trim(), selectedModel, { goal, audience, source })
       setPromptPreview(JSON.stringify(request, null, 2))
       setCopiedPrompt(false)
     } catch (cause) {
@@ -224,7 +277,7 @@ export function GenerationStudio() {
             Создайте презентацию
           </h1>
           <p className="mt-4 text-lg leading-7 text-muted-foreground">
-            Опишите задачу, выберите визуальный стиль — GoDeck соберёт презентацию PowerPoint.
+            Опишите задачу, при необходимости добавьте документ и выберите визуальный стиль — GoDeck соберёт презентацию PowerPoint.
           </p>
         </section>
 
@@ -273,6 +326,7 @@ export function GenerationStudio() {
                   <button
                     type="button"
                     aria-pressed={mode === 'openai'}
+                    disabled={submitting || previewBusy}
                     onClick={() => setMode('openai')}
                     className={`min-h-11 rounded-xl border p-3 text-left text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${mode === 'openai' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}
                   >
@@ -284,7 +338,11 @@ export function GenerationStudio() {
                   <button
                     type="button"
                     aria-pressed={mode === 'response'}
-                    onClick={() => setMode('response')}
+                    disabled={submitting || previewBusy}
+                    onClick={() => {
+                      setMode('response')
+                      changeMaterial({ type: 'clear' })
+                    }}
                     className={`min-h-11 rounded-xl border p-3 text-left text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${mode === 'response' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}
                   >
                     <span className="block font-semibold">Вставить ответ LLM</span>
@@ -296,6 +354,12 @@ export function GenerationStudio() {
               </fieldset>
               {mode === 'openai' && (
                 <>
+                  <GenerationMaterialInput
+                    state={material}
+                    dispatch={changeMaterial}
+                    disabled={submitting || previewBusy}
+                    onAuthenticationError={() => router.replace('/auth/?returnTo=%2Fstudio%2F')}
+                  />
                   <label htmlFor="topic" className="block text-sm font-semibold">
                     О чём презентация?
                   </label>
@@ -304,6 +368,7 @@ export function GenerationStudio() {
                     required
                     minLength={5}
                     maxLength={12000}
+                    disabled={submitting || previewBusy}
                     value={topic}
                     onChange={(event) => {
                       setTopic(event.target.value)
@@ -312,6 +377,35 @@ export function GenerationStudio() {
                     placeholder="Например: стратегия выхода на рынок для нового сервиса доставки…"
                     className="mt-2 min-h-40 w-full resize-y rounded-xl border border-input bg-background p-4 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    Сначала подготовим черновик. Проверьте его в редакторе и создайте первую версию PowerPoint.
+                  </p>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="generation-goal" className="block text-sm font-semibold">Цель презентации <span className="font-normal text-muted-foreground">· необязательно</span></label>
+                      <input
+                        id="generation-goal"
+                        value={goal}
+                        maxLength={500}
+                        disabled={submitting || previewBusy}
+                        onChange={(event) => { setGoal(event.target.value); setPromptPreview('') }}
+                        placeholder="Например: согласовать бюджет"
+                        className="mt-2 min-h-11 w-full rounded-xl border border-input bg-background p-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="generation-audience" className="block text-sm font-semibold">Аудитория <span className="font-normal text-muted-foreground">· необязательно</span></label>
+                      <input
+                        id="generation-audience"
+                        value={audience}
+                        maxLength={500}
+                        disabled={submitting || previewBusy}
+                        onChange={(event) => { setAudience(event.target.value); setPromptPreview('') }}
+                        placeholder="Например: совет директоров"
+                        className="mt-2 min-h-11 w-full rounded-xl border border-input bg-background p-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      />
+                    </div>
+                  </div>
                 </>
               )}
               {mode === 'response' && (
@@ -327,6 +421,7 @@ export function GenerationStudio() {
                     id="llm-response"
                     required
                     value={responseText}
+                    disabled={submitting}
                     onChange={(event) => {
                       setResponseText(event.target.value)
                       setError('')
@@ -376,6 +471,7 @@ export function GenerationStudio() {
                         name="template"
                         value={template.id}
                         checked={templateId === template.id}
+                        disabled={submitting || previewBusy}
                         onChange={() => {
                           setTemplateId(template.id)
                           setPromptPreview('')
@@ -425,6 +521,8 @@ export function GenerationStudio() {
                     disabled={
                       loading ||
                       previewBusy ||
+                      submitting ||
+                      !materialsReady ||
                       !selectedModel ||
                       !templateId ||
                       topic.trim().length < 5
@@ -463,9 +561,10 @@ export function GenerationStudio() {
                 disabled={
                   loading ||
                   submitting ||
+                  previewBusy ||
                   !templateId ||
                   (mode === 'openai'
-                    ? !selectedModel || !openaiEnabled || topic.trim().length < 5
+                    ? !selectedModel || !openaiEnabled || topic.trim().length < 5 || !materialsReady
                     : !responseText.trim())
                 }
                 className="mt-6 w-full"
@@ -476,9 +575,9 @@ export function GenerationStudio() {
                   <Sparkles className="mr-2 size-4" />
                 )}
                 {submitting
-                  ? 'Отправляем на сборку…'
+                  ? 'Подготавливаем черновик…'
                   : mode === 'response'
-                    ? 'Собрать PPTX'
+                    ? 'Подготовить черновик'
                     : 'Создать презентацию'}
               </Button>
             </form>

@@ -1,5 +1,6 @@
 package ru.godeck.presentation.service;
 
+import static ru.godeck.presentation.model.PresentationStatus.DRAFT;
 import static ru.godeck.presentation.model.PresentationStatus.SUCCEEDED;
 
 import org.slf4j.Logger;
@@ -8,8 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import ru.godeck.presentation.dto.EditorDeckView;
 import ru.godeck.presentation.dto.EditorAssetView;
+import ru.godeck.presentation.dto.EditorDeckView;
 import ru.godeck.presentation.dto.EditorDraftSavedView;
 import ru.godeck.presentation.dto.PresentationView;
 import ru.godeck.presentation.dto.SaveEditorDraftRequest;
@@ -48,8 +49,8 @@ import java.util.UUID;
  *       database transaction, and atomically publishes a new immutable revision.
  * </ol>
  *
- * <p>This separation is why frequent autosaves do not create files or consume the daily edit
- * quota. It also gives commit a stable server-side snapshot and prevents a stale browser tab from
+ * <p>This separation is why frequent autosaves do not create files or consume the daily edit quota.
+ * It also gives commit a stable server-side snapshot and prevents a stale browser tab from
  * overwriting a newer draft.
  */
 @Service
@@ -129,10 +130,11 @@ public class PresentationEditorService {
      * @throws GenerationException on ownership, state, validation, lease, or version conflict
      */
     @Transactional
-    public EditorDraftSavedView save(
-            UUID userId, UUID id, SaveEditorDraftRequest input) {
+    public EditorDraftSavedView save(UUID userId, UUID id, SaveEditorDraftRequest input) {
         Presentation presentation =
-                presentations.findForUpdate(id, userId).orElseThrow(PresentationEditorService::missing);
+                presentations
+                        .findForUpdate(id, userId)
+                        .orElseThrow(PresentationEditorService::missing);
         ready(presentation);
         if (presentation.getEditId() != null
                 && presentation
@@ -165,8 +167,7 @@ public class PresentationEditorService {
      * @return opaque asset metadata suitable for insertion into an editor draft
      */
     @Transactional(readOnly = true)
-    public EditorAssetView uploadImage(
-            UUID userId, UUID id, MultipartFile upload) {
+    public EditorAssetView uploadImage(UUID userId, UUID id, MultipartFile upload) {
         Presentation presentation = owned(userId, id);
         ready(presentation);
         try {
@@ -204,9 +205,9 @@ public class PresentationEditorService {
      * Publishes the persisted editor draft as the next PowerPoint revision.
      *
      * <p>The method intentionally spans two short transactions implemented by {@link
-     * PresentationTransactions}. Rendering and filesystem I/O happen between them without holding
-     * a database lock. A random lease token plus base/draft revisions prove that the same snapshot
-     * is still current when publication completes. If rendering or the final commit fails, the new
+     * PresentationTransactions}. Rendering and filesystem I/O happen between them without holding a
+     * database lock. A random lease token plus base/draft revisions prove that the same snapshot is
+     * still current when publication completes. If rendering or the final commit fails, the new
      * file is discarded and the draft remains available for retry.
      *
      * @param userId presentation owner
@@ -215,8 +216,9 @@ public class PresentationEditorService {
      * @param draftRevision exact saved draft revision to publish
      * @return metadata for the newly published presentation version
      */
-    public PresentationView commit(
-            UUID userId, UUID id, int baseVersion, long draftRevision) {
+    public PresentationView commit(UUID userId, UUID id, int baseVersion, long draftRevision) {
+        var published = transactions.committedEditorDraft(userId, id, baseVersion, draftRevision);
+        if (published != null) return published;
         var edit = transactions.beginEditorCommit(userId, id, baseVersion, draftRevision);
         Path output = null;
         try {
@@ -275,7 +277,8 @@ public class PresentationEditorService {
             for (var block : inputSlide.blocks()) {
                 if (values.putIfAbsent(block.fieldKey(), block.text()) != null) invalid();
             }
-            if (!values.keySet().equals(new LinkedHashSet<>(manifest.getOrDefault(source, List.of()))))
+            if (!values.keySet()
+                    .equals(new LinkedHashSet<>(manifest.getOrDefault(source, List.of()))))
                 invalid();
             for (var value : values.entrySet()) {
                 String previous = changedValues.putIfAbsent(value.getKey(), value.getValue());
@@ -389,7 +392,9 @@ public class PresentationEditorService {
         return Map.copyOf(names);
     }
 
-    /** Converts the template manifest into a slide-to-field map used for exact request validation. */
+    /**
+     * Converts the template manifest into a slide-to-field map used for exact request validation.
+     */
     @SuppressWarnings("unchecked")
     private Map<Integer, List<String>> manifest(String templateId) {
         Map<Integer, List<String>> result = new LinkedHashMap<>();
@@ -405,9 +410,9 @@ public class PresentationEditorService {
                 .orElseThrow(PresentationEditorService::missing);
     }
 
-    /** Requires a published source version before editor operations may proceed. */
+    /** Both unpublished content and a published presentation use the same editor and autosave. */
     private static void ready(Presentation presentation) {
-        if (presentation.getStatus() != SUCCEEDED)
+        if (presentation.getStatus() != SUCCEEDED && presentation.getStatus() != DRAFT)
             throw new GenerationException(GenerationError.PRESENTATION_NOT_READY);
     }
 
@@ -422,10 +427,7 @@ public class PresentationEditorService {
 
     /** Builds an authenticated API URL; storage paths never leave the backend. */
     private static String imageUrl(UUID presentationId, UUID assetId) {
-        return "/api/generation/v1/presentations/"
-                + presentationId
-                + "/editor/assets/"
-                + assetId;
+        return "/api/generation/v1/presentations/" + presentationId + "/editor/assets/" + assetId;
     }
 
     /**

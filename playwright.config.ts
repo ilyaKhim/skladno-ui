@@ -3,6 +3,9 @@ import { defineConfig, devices } from '@playwright/test'
 if (!process.env.E2E_SCHEMA?.match(/^editor_e2e_[a-f0-9]{12}$/)) {
   throw new Error('Start E2E with pnpm test:e2e; the runner prepares an isolated database schema.')
 }
+if (!process.env.E2E_AI_URL?.match(/^http:\/\/127\.0\.0\.1:\d+\/v1\/responses$/)) {
+  throw new Error('E2E requires the runner\'s loopback AI fixture; real provider calls are forbidden.')
+}
 
 const database = new URL(process.env.E2E_DATABASE_URL ?? 'postgresql://godeck:godeck-local-only@127.0.0.1:5433/godeck')
 const backendUrl = 'http://127.0.0.1:18081'
@@ -35,6 +38,19 @@ export default defineConfig({
   ],
   webServer: [
     {
+      name: 'Documents',
+      command: 'bash scripts/document-worker.sh --no-build',
+      wait: { stdout: /Document worker ready/ },
+      reuseExistingServer: false,
+      timeout: 30_000,
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
+      env: {
+        DATABASE_URL: `jdbc:postgresql://${database.host}${database.pathname}?currentSchema=${process.env.E2E_SCHEMA}`,
+        DATABASE_USER: decodeURIComponent(database.username),
+        DATABASE_PASSWORD: decodeURIComponent(database.password),
+      },
+    },
+    {
       name: 'API',
       command: process.env.E2E_JAVA_DEBUG === '1'
         ? 'bash scripts/backend-dev.sh -Dspring-boot.run.jvmArguments=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:15005'
@@ -53,8 +69,9 @@ export default defineConfig({
         SPRING_FLYWAY_DEFAULT_SCHEMA: process.env.E2E_SCHEMA,
         SPRING_FLYWAY_SCHEMAS: process.env.E2E_SCHEMA,
         GODECK_DATA_DIR: process.env.E2E_DATA_DIR!,
-        GODECK_OPENAI_ENABLED: 'false',
-        OPENAI_API_KEY: '',
+        GODECK_OPENAI_ENABLED: 'true',
+        OPENAI_API_KEY: 'e2e-local-fixture-not-a-real-key',
+        GODECK_OPENAI_RESPONSES_URL: process.env.E2E_AI_URL,
         FRONTEND_URL: frontendUrl,
       },
     },

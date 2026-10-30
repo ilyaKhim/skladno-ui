@@ -2,13 +2,14 @@ import { test as base, expect, type APIRequestContext, type Page } from '@playwr
 import { readFile } from 'node:fs/promises'
 import { unzipSync, strFromU8 } from 'fflate'
 import pg from 'pg'
+import { toDeck, serialize } from '../frontend/components/studio/editor/editor-document'
 
 type Plan = {
   fields: Record<string, string>
   slides: { slide: number; include: boolean; reason: string }[]
 }
 
-async function mutation(request: APIRequestContext, method: 'post' | 'put', url: string, data: unknown) {
+export async function mutation(request: APIRequestContext, method: 'post' | 'put', url: string, data: unknown) {
   const csrfResponse = await request.get('/api/auth/csrf')
   expect(csrfResponse.ok()).toBeTruthy()
   const { data: csrf } = await csrfResponse.json()
@@ -86,7 +87,10 @@ export const test = base.extend<{ plan: Plan; deckId: string; createdDecks: stri
     await expect.poll(async () => {
       const response = await request.get(`/api/generation/v1/presentations/${job.id}`)
       return (await response.json()).status
-    }, { timeout: 30_000 }).toBe('succeeded')
+    }, { timeout: 30_000 }).toBe('draft')
+    const state = await (await request.get(editorApi(job.id))).json()
+    const draft = await mutation(request, 'put', `${editorApi(job.id)}/draft`, serialize(toDeck(state), state.base_version, state.draft_revision))
+    await mutation(request, 'post', `${editorApi(job.id)}/commit`, { base_version: 0, draft_revision: draft.draft_revision })
     await use(job.id)
   },
 })
@@ -120,7 +124,7 @@ export async function editorState(page: Page, id: string) {
 export async function downloadPptx(page: Page) {
   await page.getByRole('button', { name: 'Экспорт', exact: true }).click()
   const pending = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Экспортировать', exact: true }).click()
+  await page.getByRole('button', { name: /^(Экспортировать|Создать первую версию)$/, exact: true }).click()
   const download = await pending
   expect(await download.failure()).toBeNull()
   expect(download.suggestedFilename()).toMatch(/\.pptx$/)

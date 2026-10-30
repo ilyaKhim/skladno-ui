@@ -7,7 +7,7 @@ test('создать презентацию через студию и откр�
   await page.locator('label:has(input[name="template"][value="opal"])').click()
   await page.getByLabel('Ответ LLM', { exact: true }).fill(JSON.stringify(plan))
   const created = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/v1/presentations'))
-  await page.getByRole('button', { name: 'Собрать PPTX', exact: true }).click()
+  await page.getByRole('button', { name: 'Подготовить черновик', exact: true }).click()
   const { id } = await (await created).json()
   createdDecks.push(id)
   await page.locator(`a[href*="presentation=${id}"]`).click({ timeout: 30_000 })

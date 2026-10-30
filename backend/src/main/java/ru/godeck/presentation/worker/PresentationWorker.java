@@ -10,25 +10,23 @@ import ru.godeck.presentation.ai.PresentationModelCatalog;
 import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
+import ru.godeck.presentation.mapper.GenerationInputCodec;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
 import ru.godeck.presentation.model.AiCallContext;
 import ru.godeck.presentation.model.AiOperation;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.model.PresentationContent;
-import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.service.PresentationTransactions;
-import ru.godeck.presentation.storage.PresentationFiles;
 import ru.godeck.presentation.template.PresentationTemplateService;
 
-import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Single-process queue consumer that turns queued semantic jobs into published PPTX revisions.
+ * Queue consumer that prepares unpublished content for the existing editor.
  *
- * <p>The database supplies the durable queue and row locking; {@link #processOne()} merely polls for
- * one claim. An in-memory guard prevents overlapping scheduled invocations in this JVM, while the
- * transaction layer protects against claims by other application instances.
+ * <p>The database supplies the durable queue and row locking; {@link #processOne()} merely polls
+ * for one claim. An in-memory guard prevents overlapping scheduled invocations in this JVM, while
+ * the transaction layer protects against claims by other application instances.
  */
 @Component
 public class PresentationWorker {
@@ -43,8 +41,8 @@ public class PresentationWorker {
     private final PresentationTemplateService templates;
     private final PresentationContentGenerator generator;
     private final PresentationContentCodec codec;
-    private final PresentationFiles files;
     private final PresentationModelCatalog models;
+    private final GenerationInputCodec inputs;
     private final AtomicBoolean working = new AtomicBoolean();
 
     public PresentationWorker(
@@ -52,14 +50,14 @@ public class PresentationWorker {
             PresentationTemplateService templates,
             PresentationContentGenerator generator,
             PresentationContentCodec codec,
-            PresentationFiles files,
-            PresentationModelCatalog models) {
+            PresentationModelCatalog models,
+            GenerationInputCodec inputs) {
         this.transactions = transactions;
         this.templates = templates;
         this.generator = generator;
         this.codec = codec;
-        this.files = files;
         this.models = models;
+        this.inputs = inputs;
     }
 
     /**
@@ -80,12 +78,8 @@ public class PresentationWorker {
         }
     }
 
-    /**
-     * Generates or decodes content, validates it, renders the initial file, and publishes success.
-     * Any failure removes an unpublished file and records a stable terminal error code.
-     */
+    /** Generates or decodes once and saves a draft. Only an explicit editor commit renders PPTX. */
     private void process(PresentationTransactions.Job claimed) {
-        Path output = null;
         try {
             var job =
                     new PresentationTransactions.Job(
@@ -96,31 +90,34 @@ public class PresentationWorker {
                             claimed.mode() == GenerationMode.MANUAL
                                     ? claimed.model()
                                     : models.resolve(claimed.model()),
-                            claimed.contentJson());
+                            claimed.contentJson(),
+                            claimed.generationInputJson());
             PresentationContent content =
-                    job.mode() == GenerationMode.MANUAL
-                            ? codec.decode(job.contentJson())
-                            : generator.generate(
-                                    new AiCallContext(job.id(), AiOperation.GENERATION),
-                                    templates.withDescription(job.templateId(), job.topic()),
-                                    templates.fields(job.templateId()),
-                                    templates.slideManifest(job.templateId()),
-                                    job.model());
+                    job.contentJson() != null ? codec.decode(job.contentJson()) : generate(job);
             content = templates.normalize(job.templateId(), content);
-            output =
-                    files.write(
-                            job.id(),
-                            PresentationPolicy.INITIAL_VERSION,
-                            job.templateId(),
-                            content);
-            transactions.complete(
-                    job, codec.encode(content), output.toString(), content.slideCount());
+            transactions.prepareDraft(job, codec.encode(content));
         } catch (Exception error) {
-            files.discard(output);
             String code = failureCode(error);
-            transactions.fail(claimed.id(), code);
+            transactions.fail(claimed, code);
             log.warn(GENERATION_FAILURE_LOG, claimed.id(), error.getClass().getSimpleName());
         }
+    }
+
+    /** Routes legacy and source-backed jobs through the same provider/schema boundary. */
+    private PresentationContent generate(PresentationTransactions.Job job) {
+        var context = new AiCallContext(job.id(), AiOperation.GENERATION);
+        String topic = templates.withDescription(job.templateId(), job.topic());
+        var fields = templates.fields(job.templateId());
+        var slides = templates.slideManifest(job.templateId());
+        return job.generationInputJson() == null
+                ? generator.generate(context, topic, fields, slides, job.model())
+                : generator.generate(
+                        context,
+                        topic,
+                        fields,
+                        slides,
+                        job.model(),
+                        inputs.decode(job.generationInputJson()));
     }
 
     /** Maps internal/provider failures onto the deliberately small public generation error set. */

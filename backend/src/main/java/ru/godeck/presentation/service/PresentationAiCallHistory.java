@@ -19,7 +19,7 @@ import java.util.UUID;
  * Persists an audit trail for paid AI calls independently of presentation transactions.
  *
  * <p>Each boundary uses {@code REQUIRES_NEW}, so no database connection or row lock remains open
- * during provider I/O. Stored bodies are expected to be redacted by the caller; this service owns
+ * during provider I/O. The caller masks API keys in stored bodies; this service owns
  * timing, outcome recording, and retrieval order.
  */
 @Service

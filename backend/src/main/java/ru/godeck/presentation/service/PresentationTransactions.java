@@ -14,6 +14,7 @@ import ru.godeck.presentation.entity.Presentation;
 import ru.godeck.presentation.entity.PresentationRevision;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
+import ru.godeck.presentation.material.MaterialPolicy;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.repository.PresentationRepository;
@@ -30,8 +31,8 @@ import java.util.UUID;
  * <p>AI calls, Apache POI rendering, and filesystem writes must not hold database locks. This
  * service therefore claims or reserves work in one transaction, lets an orchestrator perform slow
  * work outside the transaction, and verifies the captured token/version again in a final
- * transaction. The records returned by begin methods are immutable snapshots that carry exactly
- * the evidence required for safe completion.
+ * transaction. The records returned by begin methods are immutable snapshots that carry exactly the
+ * evidence required for safe completion.
  */
 @Service
 @Transactional
@@ -69,7 +70,8 @@ public class PresentationTransactions {
                 now,
                 RUNNING,
                 FAILED,
-                GenerationError.WORKER_INTERRUPTED.code());
+                GenerationError.WORKER_INTERRUPTED.code(),
+                now.plus(MaterialPolicy.RETENTION));
         return presentations
                 .findNextQueuedForUpdate()
                 .map(
@@ -81,58 +83,26 @@ public class PresentationTransactions {
                                     p.getTopic(),
                                     p.getMode(),
                                     p.getModel(),
-                                    p.getContentJson());
+                                    p.getContentJson(),
+                                    p.getGenerationInputJson());
                         });
     }
 
-    /**
-     * Publishes the initial generated file and creates version one in the same transaction.
-     *
-     * <p>Coupling presentation state and revision insertion guarantees that a succeeded project
-     * always has a matching immutable revision record.
-     *
-     * @param job claimed work item
-     * @param json normalized semantic content that produced the file
-     * @param path safely written PPTX path
-     * @param slideCount number of included slides
-     */
-    public void complete(Job job, String json, String path, int slideCount) {
+    /** Saves the single generation result for review in the normal editor, without publication. */
+    public void prepareDraft(Job job, String json) {
         Presentation p =
                 presentations
                         .findForCompletion(job.id())
                         .orElseThrow(PresentationTransactions::missing);
         if (p.getStatus() != RUNNING)
             throw new GenerationException(GenerationError.WORKER_INTERRUPTED);
-        p.succeed(
-                json,
-                path,
-                slideCount,
-                job.model(),
-                PresentationPolicy.INITIAL_VERSION,
-                clock.instant());
-        revisions.save(
-                new PresentationRevision(
-                        p.getId(),
-                        p.getUserId(),
-                        PresentationPolicy.INITIAL_VERSION,
-                        BackendMessages.text("presentation.revision.initial-message"),
-                        BackendMessages.text("presentation.revision.initial-reply"),
-                        json,
-                        path,
-                        slideCount,
-                        job.mode() == GenerationMode.MANUAL ? null : job.model(),
-                        clock.instant()));
+        p.prepareDraft(json, clock.instant());
     }
 
-    /**
-     * Marks a claimed job failed only while it is still running.
-     *
-     * <p>The state guard prevents a late worker error from overwriting a terminal state written by
-     * another recovery path.
-     */
-    public void fail(UUID id, String code) {
+    /** A late generation failure cannot overwrite a draft or published presentation. */
+    public void fail(Job job, String code) {
         presentations
-                .findForCompletion(id)
+                .findForCompletion(job.id())
                 .filter(p -> p.getStatus() == RUNNING)
                 .ifPresent(p -> p.fail(code, clock.instant()));
     }
@@ -248,6 +218,24 @@ public class PresentationTransactions {
     }
 
     /**
+     * Returns the already published snapshot after a lost commit response, never publishing again.
+     */
+    @Transactional(readOnly = true)
+    public PresentationView committedEditorDraft(
+            UUID userId, UUID id, int baseVersion, long revision) {
+        Presentation p =
+                presentations
+                        .findByIdAndUserId(id, userId)
+                        .orElseThrow(PresentationTransactions::missing);
+        return p.getStatus() == SUCCEEDED
+                        && p.getCurrentVersion() == baseVersion + 1
+                        && p.getEditorRevision() == revision + 1
+                        && p.getEditorJson() == null
+                ? PresentationView.from(p)
+                : null;
+    }
+
+    /**
      * Reserves publication of one exact editor draft revision.
      *
      * <p>Published version, draft base version, and monotonic draft revision are checked together.
@@ -276,7 +264,7 @@ public class PresentationTransactions {
             throw e;
         }
         Instant now = clock.instant();
-        if (p.getStatus() != SUCCEEDED)
+        if (p.getStatus() != SUCCEEDED && p.getStatus() != DRAFT)
             throw new GenerationException(GenerationError.PRESENTATION_NOT_READY);
         if (p.getEditorJson() == null
                 || p.getEditorBaseVersion() == null
@@ -287,11 +275,12 @@ public class PresentationTransactions {
         if (p.getEditId() != null
                 && p.getEditStartedAt().isAfter(now.minus(PresentationPolicy.EDIT_LEASE_TIMEOUT)))
             throw editing();
-        if (revisions.countByUserIdAndVersionGreaterThanAndCreatedAtAfter(
-                        userId,
-                        PresentationPolicy.INITIAL_VERSION,
-                        now.minus(PresentationPolicy.QUOTA_WINDOW))
-                >= PresentationPolicy.MAX_EDITS_PER_DAY)
+        if (p.getCurrentVersion() > 0
+                && revisions.countByUserIdAndVersionGreaterThanAndCreatedAtAfter(
+                                userId,
+                                PresentationPolicy.INITIAL_VERSION,
+                                now.minus(PresentationPolicy.QUOTA_WINDOW))
+                        >= PresentationPolicy.MAX_EDITS_PER_DAY)
             throw new GenerationException(GenerationError.EDIT_LIMIT);
         UUID token = UUID.randomUUID();
         p.beginEdit(token, now);
@@ -320,6 +309,7 @@ public class PresentationTransactions {
                         .findForCompletion(edit.id())
                         .orElseThrow(PresentationTransactions::missing);
         if (!edit.token().equals(p.getEditId())
+                || (p.getStatus() != DRAFT && p.getStatus() != SUCCEEDED)
                 || p.getCurrentVersion() != edit.baseVersion()
                 || p.getEditorRevision() != edit.draftRevision())
             throw new GenerationException(GenerationError.EDIT_EXPIRED);
@@ -332,12 +322,18 @@ public class PresentationTransactions {
                         p.getId(),
                         p.getUserId(),
                         version,
-                        BackendMessages.text("presentation.revision.editor-message"),
-                        BackendMessages.text("presentation.revision.editor-reply"),
+                        BackendMessages.text(
+                                version == 1
+                                        ? "presentation.revision.initial-message"
+                                        : "presentation.revision.editor-message"),
+                        BackendMessages.text(
+                                version == 1
+                                        ? "presentation.revision.initial-reply"
+                                        : "presentation.revision.editor-reply"),
                         json,
                         path,
                         count,
-                        null,
+                        version == 1 && p.getMode() == GenerationMode.OPENAI ? edit.model() : null,
                         clock.instant()));
         return PresentationView.from(p);
     }
@@ -367,6 +363,7 @@ public class PresentationTransactions {
      * @param mode AI or manual content source
      * @param model selected AI model, retained for manual jobs for aggregate consistency
      * @param contentJson manual content snapshot, or {@code null} for AI generation
+     * @param generationInputJson private additional input retained for the initial AI call
      */
     public record Job(
             UUID id,
@@ -374,7 +371,8 @@ public class PresentationTransactions {
             String topic,
             GenerationMode mode,
             String model,
-            String contentJson) {}
+            String contentJson,
+            String generationInputJson) {}
 
     /**
      * Immutable AI-edit reservation carrying the lease token and published source snapshot.

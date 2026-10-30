@@ -14,6 +14,7 @@ for (const exportWhileSaving of [false, true]) {
     let active = 0
     let maxActive = 0
     let commits = 0
+    const initialRevision = (await editorState(page, deckId)).draft_revision
     page.on('request', (request) => {
       if (request.url().endsWith(`${editorApi(deckId)}/commit`)) commits += 1
     })
@@ -68,7 +69,7 @@ for (const exportWhileSaving of [false, true]) {
 
     await saved(page)
     expect(requests).toEqual([
-      { text: 'Первый сохраняемый вариант', revision: 0 },
+      { text: 'Первый сохраняемый вариант', revision: initialRevision },
       { text: finalText, revision: responses[0] },
     ])
     expect(responses).toHaveLength(2)

@@ -84,7 +84,13 @@ public class GenerationController {
     /** Builds the exact structured AI request for inspection without invoking a provider. */
     @PostMapping("/v1/prompts/preview")
     public Map<String, Object> preview(@Valid @RequestBody PreviewPromptRequest input) {
-        return service.previewPrompt(input.templateId(), input.topic(), input.model());
+        return service.previewPrompt(
+                input.templateId(),
+                input.topic(),
+                input.model(),
+                input.goal(),
+                input.audience(),
+                input.source());
     }
 
     /** Lists a bounded page of presentations owned by the current session user. */
@@ -110,7 +116,10 @@ public class GenerationController {
                                 input.topic(),
                                 input.mode() == null ? GenerationMode.OPENAI.value() : input.mode(),
                                 key,
-                                input.model()));
+                                input.model(),
+                                input.goal(),
+                                input.audience(),
+                                input.source()));
     }
 
     /** Returns one current presentation aggregate for status polling and navigation. */
@@ -143,7 +152,7 @@ public class GenerationController {
         return Map.of("items", service.versions(user(auth), id));
     }
 
-    /** Returns no-store, redacted AI call diagnostics for support and observability. */
+    /** Returns no-store AI call history visible only to the presentation owner. */
     @GetMapping("/v1/presentations/{id}/ai-calls")
     public ResponseEntity<Map<String, List<PresentationAiCallView>>> aiCalls(
             @PathVariable UUID id, Authentication auth) {

@@ -28,6 +28,16 @@ const edited = () => {
   return deck
 }
 
+test('an unpublished base-zero draft has recoverable edits but cannot restore over a published version', () => {
+  const draft = { ...edited(), baseVersion: 0 }
+  const raw = JSON.stringify({ schema: 1, ownerId: 'owner-1', savedAt: 1, version: { base: 0, draft: 2 }, deck: draft })
+  const copy = parseRecovery(raw, 'owner-1', server.id)
+  assert.ok(copy)
+  assert.equal(restoreRecovery(copy, { ...server, baseVersion: 0 }).slides[0].blocks[0].text, 'Local title')
+  assert.equal(restoreRecovery(copy, server), null)
+  assert.equal(parseRecovery(raw.replace('"base":0', '"base":-1'), 'owner-1', server.id), null)
+})
+
 test('recovery copies are isolated by owner and presentation', () => {
   const local = storage()
   const writer = createRecoveryStore(local, 'owner-1', server.id, 'tab-1')

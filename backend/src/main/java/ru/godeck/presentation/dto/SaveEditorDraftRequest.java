@@ -14,7 +14,7 @@ import java.util.List;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record SaveEditorDraftRequest(
-        @Min(1) int baseVersion,
+        @Min(0) int baseVersion,
         @Min(0) long draftRevision,
         @NotBlank @Size(max = 240) String title,
         @NotEmpty List<@Valid Slide> slides) {
@@ -41,8 +41,7 @@ public record SaveEditorDraftRequest(
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record TextBlock(
-            @NotBlank @Size(max = 120) String fieldKey, @NotNull String text) {}
+    public record TextBlock(@NotBlank @Size(max = 120) String fieldKey, @NotNull String text) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record CustomTextBlock(
