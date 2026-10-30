@@ -172,7 +172,7 @@ Backend должен:
 | --- | --- | --- |
 | 401 / 403 | (формат Spring Security) | нет сессии / нет CSRF |
 | 404 | `presentation_not_found` | презентации нет или она чужая (существование не раскрывается) |
-| 409 | `presentation_not_ready` | статус презентации не `succeeded` |
+| 409 | `presentation_not_ready` | статус презентации не `draft` и не `succeeded` |
 | 409 | `idempotency_conflict` | тот же `request_id` с другим телом запроса |
 | 409 | `ai_edit_in_progress` | правка с этим `request_id` ещё выполняется |
 | 409 | `content_unavailable` | у презентации нет сохранённого содержимого (старые презентации); как в редакторе |
@@ -217,7 +217,7 @@ Backend должен:
 - Не писать тексты слайдов и запросов в обычные логи.
 - Не менять `frontend/`.
 
-## 5. Данные: миграция `V9__presentation_ai_edits.sql`
+## 5. Данные: миграция `V14__presentation_ai_edits.sql`
 
 ```sql
 CREATE TABLE presentation_ai_edits (
@@ -307,7 +307,7 @@ CREATE INDEX presentation_ai_calls_retention_idx ON presentation_ai_calls(operat
    `AI_EDIT_FAILED` (502), `UNSUPPORTED_ACTION`, `INVALID_PARAMS`, `INVALID_TARGET`,
    `INVALID_TEXT`, `TEXT_TOO_LONG` (422) — с кодами из контракта и сообщениями в
    `messages.properties`. `AiOperation.TEXT_EDIT`.
-3. **Миграция V9**, сущность `entity/PresentationAiEdit`, `repository/PresentationAiEditRepository`
+3. **Миграция V14**, сущность `entity/PresentationAiEdit`, `repository/PresentationAiEditRepository`
    (`findByUserIdAndRequestId`, `countByUserIdAndCreatedAtAfter`, минимальный `created_at` в окне —
    для `resets_at`, проверка `refines_edit_id` по `(id, user_id, presentation_id)`). Usage — в
    `PresentationAiCall` и в новую перегрузку `PresentationAiCallHistory.complete`; старая
@@ -326,7 +326,7 @@ CREATE INDEX presentation_ai_calls_retention_idx ON presentation_ai_calls(operat
        им же задаётся тон. Действия `change_tone` и списка тонов нет.
 5. **Цель.** `core/AiEditTarget` (sealed: `TemplateFieldTarget`, `CustomBlockTarget`) и
    `TargetResolver`:
-   - владение (404), статус `SUCCEEDED` (409);
+   - владение (404), статус `DRAFT` или `SUCCEEDED` (иначе 409);
    - документ — актуальный черновик или `content_json`, по той же логике, что `currentDraft`;
    - слайд включён; поле есть в manifest слайда; блок есть в `textBlocks` слайда (иначе
      `invalid_target`);
@@ -459,7 +459,7 @@ Integration (PostgreSQL, MockMvc с настоящим Spring Security):
   - поле длиной `hard_max_chars + 1` → 422 `invalid_content`.
 - **Генерация по-прежнему обрезает:** очередь со слишком длинным ответом тестового генератора →
   PPTX и `content_json` обрезаны по `max_chars`, как в существующих тестах; ручная сборка тоже.
-- Чужая презентация → 404; без сессии → 401; без CSRF → 403; не `succeeded` → 409.
+- Чужая презентация → 404; без сессии → 401; без CSRF → 403; не `draft` и не `succeeded` → 409.
 - Каждый код 422 контракта — без вызова LLM.
 - Квота: 101-й запрос за 24 часа → 429 без вызова LLM.
 - Идемпотентность: повтор → `replayed: true` без второго вызова и без расхода квоты; другое тело →
@@ -525,6 +525,6 @@ Integration (PostgreSQL, MockMvc с настоящим Spring Security):
    (шаг 1).
 3. Рекомендуемый порядок PR:
    1. шаг 1 (длинный текст в редакторе) с тестами генерации и редактора;
-   2. V9, ошибки, политика, реестр, каталог, заглушка LLM, endpoint;
+   2. V14, ошибки, политика, реестр, каталог, заглушка LLM, endpoint;
    3. квоты, идемпотентность, `refines_edit_id`, хранение 90 дней, документация.
 4. Готово, когда выполнены критерии раздела 8 и `pnpm backend:test` зелёный.

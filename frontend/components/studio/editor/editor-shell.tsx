@@ -580,7 +580,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
           </div>
         ) : chatPanel)}
       </div>
-      {aiEdit && chatOpen && chatLayout === 'sheet' && !panelOpen && <div inert={processing !== null} className="flex shrink-0 flex-col">{chatPanel}</div>}
+      {aiEdit && chatOpen && chatLayout === 'sheet' && !panelOpen && <div inert={processing !== null || publicationPending} className="flex shrink-0 flex-col">{chatPanel}</div>}
     </div>
   )
 }

@@ -104,7 +104,8 @@ export const listShape = (page: Page) => canvas(page).locator('[data-text-shape-
 
 export async function openList(page: Page, id: string) {
   await page.goto(editorUrl(id))
-  await page.getByRole('button', { name: /^Слайд 2:/ }).click()
+  // The thumbnail's upper-right toolbar can cover its center on narrow screens.
+  await page.getByRole('button', { name: /^Слайд 2:/ }).click({ position: { x: 8, y: 8 } })
   await expect(listShape(page)).toBeVisible()
   await expect(canvas(page).locator('[data-slide-background]')).toHaveJSProperty('complete', true)
   await expect(canvas(page).locator('[data-slide-background]')).toHaveJSProperty('naturalWidth', 960)

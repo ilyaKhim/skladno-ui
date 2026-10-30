@@ -1,6 +1,7 @@
 package ru.godeck.presentation.aiedit.core;
 
 import static ru.godeck.presentation.model.PresentationStatus.SUCCEEDED;
+import static ru.godeck.presentation.model.PresentationStatus.DRAFT;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,7 +73,7 @@ public class TargetResolver {
                         .findByIdAndUserId(presentationId, userId)
                         .orElseThrow(
                                 () -> new GenerationException(GenerationError.PRESENTATION_NOT_FOUND));
-        if (presentation.getStatus() != SUCCEEDED)
+        if (presentation.getStatus() != SUCCEEDED && presentation.getStatus() != DRAFT)
             throw new GenerationException(GenerationError.PRESENTATION_NOT_READY);
         return resolve(presentation.getTemplateId(), presentationId, document(presentation), target, text);
     }

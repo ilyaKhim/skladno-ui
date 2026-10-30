@@ -164,7 +164,7 @@
 | --- | --- | --- |
 | 401 / 403 | (формат Spring Security) | нет сессии / нет CSRF |
 | 404 | `presentation_not_found` | презентации нет или она чужая (существование не раскрывается) |
-| 409 | `presentation_not_ready` | статус презентации не `succeeded` |
+| 409 | `presentation_not_ready` | статус презентации не `draft` и не `succeeded` |
 | 409 | `idempotency_conflict` | тот же `request_id` с другим телом запроса |
 | 409 | `ai_edit_in_progress` | правка с этим `request_id` ещё выполняется |
 | 409 | `content_unavailable` | у презентации нет сохранённого содержимого (старые презентации); как в редакторе |

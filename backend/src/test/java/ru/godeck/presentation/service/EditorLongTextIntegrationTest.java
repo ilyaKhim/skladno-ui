@@ -82,7 +82,9 @@ class EditorLongTextIntegrationTest {
                                 "jdbc:postgresql://127.0.0.1:5433/godeck?currentSchema=auth_test");
         properties.add(
                 "spring.datasource.url",
-                () -> database.replace("currentSchema=auth_test", "currentSchema=editor_text_test"));
+                () ->
+                        database.replace(
+                                "currentSchema=auth_test", "currentSchema=editor_text_test"));
         properties.add("godeck.generation.data-dir", OUTPUT::toString);
     }
 
@@ -117,7 +119,7 @@ class EditorLongTextIntegrationTest {
                         put("/api/generation/v1/presentations/{id}/editor/draft", id)
                                 .with(csrf())
                                 .contentType("application/json")
-                                .content(draft(editor, field, longText, 1, 0)))
+                                .content(draft(editor, field, longText, 0, 0)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.draft_revision").value(1));
 
@@ -125,21 +127,21 @@ class EditorLongTextIntegrationTest {
                         put("/api/generation/v1/presentations/{id}/editor/draft", id)
                                 .with(csrf())
                                 .contentType("application/json")
-                                .content(draft(editor, field, text(hard + 1), 1, 1)))
+                                .content(draft(editor, field, text(hard + 1), 0, 1)))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.error.code").value("invalid_content"));
         mvc.perform(
                         put("/api/generation/v1/presentations/{id}/editor/draft", id)
                                 .with(csrf())
                                 .contentType("application/json")
-                                .content(draft(editor, field, text(hard), 1, 1)))
+                                .content(draft(editor, field, text(hard), 0, 1)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.draft_revision").value(2));
         mvc.perform(
                         put("/api/generation/v1/presentations/{id}/editor/draft", id)
                                 .with(csrf())
                                 .contentType("application/json")
-                                .content(draft(editor, field, longText, 1, 2)))
+                                .content(draft(editor, field, longText, 0, 2)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.draft_revision").value(3));
 
@@ -151,9 +153,9 @@ class EditorLongTextIntegrationTest {
                         post("/api/generation/v1/presentations/{id}/editor/commit", id)
                                 .with(csrf())
                                 .contentType("application/json")
-                                .content("{\"base_version\":1,\"draft_revision\":3}"))
+                                .content("{\"base_version\":0,\"draft_revision\":3}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.version").value(2));
+                .andExpect(jsonPath("$.version").value(1));
         assertThat(publishedField(id, field)).isEqualTo(longText);
         assertThat(pptxText(id)).contains(longText);
         assertThat(fieldBlock(editor(id), field).path("text").asText()).isEqualTo(longText);
@@ -192,9 +194,21 @@ class EditorLongTextIntegrationTest {
         String longText = text(max + 50);
         when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenReturn(plan(Map.of(field, longText)));
-        UUID id = service.create(USER, TEMPLATE, "Длинный ответ модели", "openai", null, null).id();
+        UUID id =
+                service.create(
+                                USER,
+                                TEMPLATE,
+                                "Длинный ответ модели",
+                                "openai",
+                                null,
+                                null,
+                                null,
+                                null,
+                                null)
+                        .id();
         worker.processOne();
-        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.DRAFT);
+        publish(id);
         String stored = publishedField(id, field);
         assertThat(stored.length()).isLessThanOrEqualTo(max);
         assertThat(stored).endsWith("…");
@@ -207,6 +221,7 @@ class EditorLongTextIntegrationTest {
         int max = templates.fields(TEMPLATE).get(field);
         String longText = text(max + 50);
         UUID id = readyPresentation(Map.of(field, longText));
+        publish(id);
         String stored = publishedField(id, field);
         assertThat(stored.length()).isLessThanOrEqualTo(max);
         assertThat(pptxText(id)).doesNotContain(longText);
@@ -223,16 +238,44 @@ class EditorLongTextIntegrationTest {
 
     @SuppressWarnings("unchecked")
     private String coverField() {
-        List<String> fields = (List<String>) templates.slideManifest(TEMPLATE).getFirst().get("fields");
+        List<String> fields =
+                (List<String>) templates.slideManifest(TEMPLATE).getFirst().get("fields");
         return fields.contains("TITLE") ? "TITLE" : fields.getFirst();
     }
 
     private UUID readyPresentation(Map<String, String> overrides) {
-        UUID id = service.create(USER, TEMPLATE, "Длинный текст", "manual", null, null).id();
+        UUID id =
+                service.create(
+                                USER,
+                                TEMPLATE,
+                                "Длинный текст",
+                                "manual",
+                                null,
+                                null,
+                                null,
+                                null,
+                                null)
+                        .id();
         service.submitManual(USER, id, plan(overrides));
         worker.processOne();
-        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.DRAFT);
         return id;
+    }
+
+    private void publish(UUID id) throws Exception {
+        JsonNode editor = editor(id);
+        mvc.perform(
+                        put("/api/generation/v1/presentations/{id}/editor/draft", id)
+                                .with(csrf())
+                                .contentType("application/json")
+                                .content(draft(editor, null, null, 0, 0)))
+                .andExpect(status().isOk());
+        mvc.perform(
+                        post("/api/generation/v1/presentations/{id}/editor/commit", id)
+                                .with(csrf())
+                                .contentType("application/json")
+                                .content("{\"base_version\":0,\"draft_revision\":1}"))
+                .andExpect(status().isOk());
     }
 
     private PresentationContent plan(Map<String, String> overrides) {

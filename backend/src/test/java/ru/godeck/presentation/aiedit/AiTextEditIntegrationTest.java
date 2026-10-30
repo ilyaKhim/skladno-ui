@@ -163,6 +163,7 @@ class AiTextEditIntegrationTest {
     @Test
     void fieldEditReturnsAProposalAndDoesNotTouchTheDocument() throws Exception {
         Map<String, Object> before = documentState(id);
+        assertThat(before).containsEntry("status", "draft").containsEntry("current_version", 0);
         List<Path> filesBefore = files();
         String source = "Мы делаем презентации быстро и без лишней головной боли";
         JsonNode response =
@@ -315,7 +316,7 @@ class AiTextEditIntegrationTest {
         mvc.perform(get(ACTIONS)).andExpect(status().isUnauthorized());
         mvc.perform(post(TEXTS, id).with(as(OWNER)).contentType("application/json").content(body))
                 .andExpect(status().isForbidden());
-        UUID waiting = service.create(OWNER, TEMPLATE, "Ещё не готова", "manual", null, null).id();
+        UUID waiting = service.create(OWNER, TEMPLATE, "Ещё не готова", "manual", null, null, null, null, null).id();
         mvc.perform(post(TEXTS, waiting).with(as(OWNER)).with(csrf()).contentType("application/json").content(body))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("presentation_not_ready"));
@@ -447,9 +448,9 @@ class AiTextEditIntegrationTest {
                         .contentType("application/json").content(draft(editor)))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/generation/v1/presentations/{id}/editor/commit", id).with(as(OWNER)).with(csrf())
-                        .contentType("application/json").content("{\"base_version\":1,\"draft_revision\":1}"))
+                        .contentType("application/json").content("{\"base_version\":0,\"draft_revision\":1}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.version").value(2));
+                .andExpect(jsonPath("$.version").value(1));
 
         release.countDown();
         assertThat(first.get(20, TimeUnit.SECONDS)).isEqualTo(200);
@@ -607,7 +608,7 @@ class AiTextEditIntegrationTest {
                                     : List.of(),
                             List.of(),
                             List.of()));
-        UUID created = service.create(user, TEMPLATE, "Тема презентации", "manual", null, null).id();
+        UUID created = service.create(user, TEMPLATE, "Тема презентации", "manual", null, null, null, null, null).id();
         service.submitManual(user, created, new PresentationContent(fields, slides));
         worker.processOne();
         return created;
@@ -677,7 +678,7 @@ class AiTextEditIntegrationTest {
                             "custom_blocks", custom));
         }
         return json.writeValueAsString(
-                Map.of("base_version", 1, "draft_revision", 0, "title", "Черновик", "slides", slides));
+                Map.of("base_version", editor.path("base_version").asInt(), "draft_revision", editor.path("draft_revision").asLong(), "title", "Черновик", "slides", slides));
     }
 
     private UUID insertEdit(UUID user, UUID presentation, String status, Instant createdAt) {
