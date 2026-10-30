@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { EditorShell } from './editor-shell'
 import type { Deck, EditorOperationError } from './editor-types'
 import { serialize, toDeck } from './editor-document'
+import { createEditorPublisher } from './editor-publication'
 
 export function EditorPageClient() {
   const presentationId = useSearchParams().get('presentation')
@@ -23,6 +24,8 @@ export function EditorPageClient() {
   const [reload, setReload] = useState(0)
   const version = useRef({ base: 0, draft: 0 })
   const conflict = useRef(false)
+  const publisher = useRef(createEditorPublisher())
+  const [publicationPending, setPublicationPending] = useState(false)
   const getVersion = useCallback(() => version.current, [])
 
   const reportError = useCallback((operation: EditorOperationError['operation'], cause: unknown) => {
@@ -40,6 +43,8 @@ export function EditorPageClient() {
     setError('')
     setOperationError(null)
     conflict.current = false
+    publisher.current.reset()
+    setPublicationPending(false)
     Promise.all([
       generationApi.editor(presentationId, controller.signal),
       getAuthApi().then((api) => api.currentUser()),
@@ -62,6 +67,7 @@ export function EditorPageClient() {
     async (deck: Deck) => {
       if (!presentationId) throw new Error('Не указана презентация.')
       if (conflict.current) throw new Error('Откройте серверную версию перед следующим сохранением.')
+      if (publisher.current.isPending()) throw new Error('Уточните результат публикации перед следующими изменениями.')
       try {
         const saved = await generationApi.saveEditorDraft(
           presentationId,
@@ -78,21 +84,26 @@ export function EditorPageClient() {
   )
 
   /** Export renders a new PPTX through /commit; ordinary edits use /draft in save() above. */
-  const exportPptx = useCallback(async () => {
+  const exportPptx = useCallback(async (saveDraft: () => Promise<boolean>) => {
     if (!presentationId) throw new Error('Не указана презентация.')
     try {
-      const committed = await generationApi.commitEditor(
-        presentationId,
-        version.current.base,
-        version.current.draft,
-      )
-      const refreshed = await generationApi.editor(presentationId)
+      const { committed, refreshed } = await publisher.current.publish({
+        save: saveDraft,
+        version: () => version.current,
+        onPending: setPublicationPending,
+        commit: (snapshot) => generationApi.commitEditor(presentationId, snapshot.base, snapshot.draft),
+        refresh: () => generationApi.editor(presentationId),
+      })
       version.current = { base: refreshed.base_version, draft: refreshed.draft_revision }
       // Metadata advances without remounting the document or destroying local undo history.
       setOperationError(null)
       if (committed.download_url) window.location.assign(committed.download_url)
     } catch (exportError) {
       reportError('export', exportError)
+      if (publisher.current.isPending()) setOperationError({ operation: 'export', conflict: conflict.current,
+        message: conflict.current
+          ? 'Серверная версия изменилась во время публикации. Откройте серверную версию; текущую работу можно скачать как JSON.'
+          : 'Результат публикации не подтверждён. Редактирование временно приостановлено. Повторите экспорт — используем тот же сохранённый черновик без создания лишней версии.' })
       throw exportError
     }
   }, [presentationId, reportError])
@@ -102,6 +113,8 @@ export function EditorPageClient() {
     try {
       const fresh = await generationApi.editor(presentationId)
       version.current = { base: fresh.base_version, draft: fresh.draft_revision }
+      publisher.current.reset()
+      setPublicationPending(false)
       conflict.current = false
       setOperationError(null)
       setSource(fresh)
@@ -142,6 +155,7 @@ export function EditorPageClient() {
       getVersion={getVersion}
       operationError={operationError}
       onReloadServer={reloadServer}
+      publicationPending={publicationPending}
       contentOnly
     />
   )

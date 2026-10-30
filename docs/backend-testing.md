@@ -9,9 +9,12 @@ pnpm backend:test:unit         # без Spring-контекста, PostgreSQL и
 pnpm infra:up                 # PostgreSQL и Mailpit для локальной работы
 pnpm backend:test:integration  # Spring + настоящая PostgreSQL, отдельные тестовые схемы
 pnpm backend:test             # весь набор
+pnpm document-worker:test     # парсеры в отдельном Java-модуле
 ```
 
 Скрипт выбирает локальный JDK 26 из `.tools`, если он установлен. Maven-зависимости должны быть доступны локально или загружены при первом запуске. Для CI/PostgreSQL можно задать `TEST_DATABASE_URL`, `DATABASE_USER` и `DATABASE_PASSWORD`. Интеграционные тесты используют схемы `auth_test` и `generation_test`; рабочая схема `public` не очищается. Выполняйте их на локальной или выделенной тестовой БД. Тестовые AI-клиенты не отправляют запросы в OpenAI.
+
+Очередь материалов проверяется отдельно в схеме `material_test`: владелец, CSRF, ограничения загрузки и очереди, просроченные claims и удаление исходных байтов. Парсеры находятся в `document-worker/src/test`, а настоящий упакованный worker запускается вместе с API в браузерных E2E. `pnpm test:migrations` проверяет переход старых неопубликованных результатов в черновики в одноразовой схеме. GitLab запускает проверки обоих Java-модулей; миграцию и связку с worker проверяет job `editor_e2e`.
 
 Для сборки с нуля из `backend/`, при настроенном Java 26:
 

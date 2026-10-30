@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PresentationCard } from '@/components/studio/presentation-card'
-import { GenerationMaterialInput } from '@/components/studio/generation-material-input'
+import { clearPendingMaterial, GenerationMaterialInput } from '@/components/studio/generation-material-input'
 import { generationApi, isAuthenticationError } from '@/lib/generation-client'
 import { getAuthApi, AUTH_ERROR_MESSAGES } from '@/lib/auth-client'
 import type { Template, ModelOption, PresentationJob, CreatePresentationInput } from '@/lib/generation-types'
@@ -28,14 +28,11 @@ import {
   type CreationAttempt,
   type MaterialAction,
 } from '@/lib/generation-material'
-import { mergePresentationPage, releasePresentationCards } from '@/lib/presentation-list'
 
 export function GenerationStudio() {
   const router = useRouter()
   const [templates, setTemplates] = useState<Template[]>([])
   const [jobs, setJobs] = useState<PresentationJob[]>([])
-  const retainedOutlineIds = useRef(new Set<string>())
-  const currentPageIds = useRef(new Set<string>())
   const refreshSequence = useRef(0)
   const [templateId, setTemplateId] = useState('')
   const [topic, setTopic] = useState('')
@@ -63,6 +60,7 @@ export function GenerationStudio() {
   const materialsReady = materialCanGenerate(material)
 
   function changeMaterial(action: MaterialAction) {
+    if (action.type === 'clear') clearPendingMaterial()
     dispatchMaterial(action)
     setPromptPreview('')
   }
@@ -74,7 +72,6 @@ export function GenerationStudio() {
       topic: topic.trim(),
       mode: 'openai',
       model: selectedModel,
-      review_before_render: true,
       ...(goal.trim() ? { goal: goal.trim() } : {}),
       ...(audience.trim() ? { audience: audience.trim() } : {}),
       ...(source ? { source } : {}),
@@ -90,25 +87,7 @@ export function GenerationStudio() {
     const sequence = ++refreshSequence.current
     const incoming = (await generationApi.presentations()).items
     if (sequence !== refreshSequence.current) return
-    const incomingIds = new Set(incoming.map((job) => job.id))
-    currentPageIds.current = incomingIds
-    setJobs((current) => mergePresentationPage(incoming, current, retainedOutlineIds.current))
-
-    // A retained card may have moved off this page after another tab confirmed or cancelled it.
-    const missing = [...retainedOutlineIds.current].filter((id) => !incomingIds.has(id))
-    if (missing.length === 0) return
-    const results = await Promise.allSettled(missing.map((id) => generationApi.presentation(id)))
-    if (sequence !== refreshSequence.current) return
-    const updates = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
-    setJobs((current) => mergePresentationPage(incoming, current, retainedOutlineIds.current, updates))
-  }, [])
-
-  const retainOutline = useCallback((id: string, open: boolean) => {
-    if (open) retainedOutlineIds.current.add(id)
-    else {
-      retainedOutlineIds.current.delete(id)
-      setJobs((current) => releasePresentationCards(current, currentPageIds.current, retainedOutlineIds.current))
-    }
+    setJobs(incoming)
   }, [])
 
   useEffect(() => () => { refreshSequence.current++ }, [])
@@ -137,8 +116,7 @@ export function GenerationStudio() {
         setTemplates(catalog.items)
         setTemplateId((current) => current || catalog.items[0]?.id || '')
         if (refreshSequence.current === initialRefresh) {
-          currentPageIds.current = new Set(history.items.map((job) => job.id))
-          setJobs((current) => mergePresentationPage(history.items, current, retainedOutlineIds.current))
+          setJobs(history.items)
         }
         setOpenaiEnabled(health.openai_enabled)
         setModels(modelCatalog.items)
@@ -209,7 +187,7 @@ export function GenerationStudio() {
         await generationApi.submitContent(job.id, content)
         setResponseJob(null)
         lastCreation.current = null
-        setNotice('Ответ принят. Презентация собирается без обращения к OpenAI.')
+        setNotice('Ответ принят. Откройте черновик в редакторе и проверьте его перед первой публикацией.')
       } else {
         await createJob(openAiInput())
         lastCreation.current = null
@@ -218,7 +196,7 @@ export function GenerationStudio() {
         setAudience('')
         dispatchMaterial({ type: 'clear' })
         setPromptPreview('')
-        setNotice('Проект создан. AI подготовит текст и структуру — проверьте их перед сборкой PowerPoint.')
+        setNotice('Проект создан. AI подготовит черновик — проверьте его в редакторе перед первой публикацией.')
       }
       setActiveTab('recent')
       await refresh()
@@ -400,7 +378,7 @@ export function GenerationStudio() {
                     className="mt-2 min-h-40 w-full resize-y rounded-xl border border-input bg-background p-4 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Сначала покажем структуру и текст слайдов. После вашего подтверждения соберём PPTX.
+                    Сначала подготовим черновик. Проверьте его в редакторе и создайте первую версию PowerPoint.
                   </p>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     <div>
@@ -597,9 +575,9 @@ export function GenerationStudio() {
                   <Sparkles className="mr-2 size-4" />
                 )}
                 {submitting
-                  ? 'Отправляем на сборку…'
+                  ? 'Подготавливаем черновик…'
                   : mode === 'response'
-                    ? 'Собрать PPTX'
+                    ? 'Подготовить черновик'
                     : 'Создать презентацию'}
               </Button>
             </form>
@@ -644,7 +622,6 @@ export function GenerationStudio() {
                       openaiEnabled={openaiEnabled}
                       onResume={resumeResponse}
                       onChanged={refresh}
-                      onOutlineOpenChange={retainOutline}
                       onError={setError}
                     />
                   ))}

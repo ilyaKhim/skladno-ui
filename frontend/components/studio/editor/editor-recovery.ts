@@ -46,7 +46,7 @@ export function parseRecovery(raw: string, ownerId: string, deckId: string): Rec
     const value: unknown = JSON.parse(raw)
     if (!object(value) || value.schema !== 1 || value.ownerId !== ownerId
       || typeof value.savedAt !== 'number' || !Number.isFinite(value.savedAt) || value.savedAt <= 0) return null
-    if (!object(value.version) || !Number.isInteger(value.version.base) || Number(value.version.base) < 1
+    if (!object(value.version) || !Number.isInteger(value.version.base) || Number(value.version.base) < 0
       || !Number.isInteger(value.version.draft) || Number(value.version.draft) < 0) return null
     const deck = value.deck
     if (!object(deck) || deck.id !== deckId || !text(deck.title, 1000)

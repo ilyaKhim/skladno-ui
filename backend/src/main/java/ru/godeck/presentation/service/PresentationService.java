@@ -123,14 +123,6 @@ public class PresentationService {
                 templates.description(templateId));
     }
 
-    /**
-     * Builds, but does not send, the structured provider request. This makes prompt/schema changes
-     * inspectable and testable without spending tokens.
-     */
-    public Map<String, Object> previewPrompt(String templateId, String topic, String model) {
-        return previewPrompt(templateId, topic, model, null, null, null);
-    }
-
     /** Uses the same reviewed source snapshot as generation without invoking the provider. */
     public Map<String, Object> previewPrompt(
             String templateId,
@@ -166,15 +158,6 @@ public class PresentationService {
      */
     @Transactional
     public PresentationView create(
-            UUID userId, String templateId, String topic, String mode, String key, String model) {
-        return create(userId, templateId, topic, mode, key, model, null, null, null);
-    }
-
-    /**
-     * Saves all reviewed input in the same transaction as the queue row; binaries are not retained.
-     */
-    @Transactional
-    public PresentationView create(
             UUID userId,
             String templateId,
             String topic,
@@ -184,25 +167,6 @@ public class PresentationService {
             String goal,
             String audience,
             SourceMaterial source) {
-        return create(userId, templateId, topic, mode, key, model, goal, audience, source, false);
-    }
-
-    /**
-     * Review-enabled jobs pause after the single AI call; false retains the exact legacy request
-     * hash.
-     */
-    @Transactional
-    public PresentationView create(
-            UUID userId,
-            String templateId,
-            String topic,
-            String mode,
-            String key,
-            String model,
-            String goal,
-            String audience,
-            SourceMaterial source,
-            boolean reviewBeforeRender) {
         String selectedModel = models.resolve(model);
         GenerationMode selectedMode;
         try {
@@ -218,7 +182,7 @@ public class PresentationService {
         checkTopic(topic);
         String normalizedTopic = topic.strip();
         GenerationInput input = GenerationInput.normalize(goal, audience, source);
-        if (selectedMode == GenerationMode.MANUAL && (input != null || reviewBeforeRender))
+        if (selectedMode == GenerationMode.MANUAL && input != null)
             throw new GenerationException(GenerationError.INVALID_INPUT);
         String inputJson = inputs.encode(input);
         String fingerprint =
@@ -231,11 +195,7 @@ public class PresentationService {
                         + selectedModel;
         // Preserve existing idempotency keys byte-for-byte when the request has no new fields.
         String canonicalInput = inputJson == null ? fingerprint : fingerprint + "\n" + inputJson;
-        String hash =
-                Hashing.sha256(
-                        reviewBeforeRender
-                                ? canonicalInput + "\nreview_before_render=true"
-                                : canonicalInput);
+        String hash = Hashing.sha256(canonicalInput);
         if (key != null) {
             var previous = presentations.findByUserIdAndIdempotencyKey(userId, key);
             if (previous.isPresent()) return idempotent(previous.get(), hash);
@@ -244,7 +204,7 @@ public class PresentationService {
                                 userId, clock.instant().minus(PresentationPolicy.QUOTA_WINDOW))
                         >= PresentationPolicy.MAX_GENERATIONS_PER_DAY
                 || presentations.countByUserIdAndStatusIn(
-                                userId, List.of(AWAITING_CONTENT, AWAITING_REVIEW, QUEUED, RUNNING))
+                                userId, List.of(AWAITING_CONTENT, DRAFT, QUEUED, RUNNING))
                         >= PresentationPolicy.MAX_ACTIVE_PRESENTATIONS) {
             throw new GenerationException(GenerationError.GENERATION_LIMIT);
         }
@@ -260,9 +220,8 @@ public class PresentationService {
                 hash,
                 selectedModel,
                 clock.instant(),
-                PresentationPolicy.INITIAL_VERSION,
-                inputJson,
-                reviewBeforeRender);
+                0,
+                inputJson);
         return key == null
                 ? PresentationView.from(owned(userId, id))
                 : idempotent(
@@ -331,10 +290,12 @@ public class PresentationService {
     public PresentationView cancel(UUID userId, UUID id) {
         Presentation p =
                 presentations.findForUpdate(id, userId).orElseThrow(PresentationService::missing);
-        if (p.getStatus() != QUEUED
-                && p.getStatus() != AWAITING_CONTENT
-                && p.getStatus() != AWAITING_REVIEW)
+        if (p.getStatus() != QUEUED && p.getStatus() != AWAITING_CONTENT && p.getStatus() != DRAFT)
             throw new GenerationException(GenerationError.CANNOT_CANCEL);
+        if (p.getEditId() != null
+                && p.getEditStartedAt()
+                        .isAfter(clock.instant().minus(PresentationPolicy.EDIT_LEASE_TIMEOUT)))
+            throw new GenerationException(GenerationError.EDIT_IN_PROGRESS);
         p.cancel(clock.instant());
         return PresentationView.from(p);
     }
@@ -403,7 +364,7 @@ public class PresentationService {
         }
     }
 
-    /** Returns redacted provider-call diagnostics after presentation ownership is established. */
+    /** Returns private provider-call history after presentation ownership is established. */
     public List<PresentationAiCallView> aiCalls(UUID userId, UUID id) {
         owned(userId, id);
         return aiHistory.list(id);

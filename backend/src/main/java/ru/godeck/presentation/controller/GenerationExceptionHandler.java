@@ -19,8 +19,7 @@ import java.util.Map;
         assignableTypes = {
             GenerationController.class,
             PresentationEditorController.class,
-            MaterialController.class,
-            PresentationOutlineController.class
+            MaterialController.class
         })
 public class GenerationExceptionHandler {
     @ExceptionHandler(GenerationException.class)

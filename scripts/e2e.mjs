@@ -46,7 +46,7 @@ try {
   connected = true
   await database.query(`CREATE SCHEMA ${schema}`)
   schemaCreated = true
-  const buildCode = await run(['build'])
+  const buildCode = await run(['document-worker:build']) || await run(['build'])
   process.exitCode = buildCode || await run(['exec', 'playwright', 'test', ...process.argv.slice(2)])
 } catch (error) {
   console.error(`E2E could not start: ${error.message}`)

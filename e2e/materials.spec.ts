@@ -6,6 +6,35 @@ import { materialFile, type MaterialFormat } from './material-fixtures'
 const picker = 'Загрузить PDF, DOCX или TXT'
 const acknowledgement = 'Понимаю, что часть страниц не распознана, и хочу продолжить с извлечённым текстом'
 
+test('обработка документа восстанавливается после reload по сохранённому job id', async ({ page, request }) => {
+  await page.goto('/studio')
+  const uploaded = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/materials/extract'))
+  // Delay only status delivery to the old view; the real worker continues its durable job.
+  await page.route('**/materials/*', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue()
+    const id = route.request().url().split('/').pop()
+    await route.fulfill({ json: { id, status: 'queued', result: null, error: null } })
+  })
+  await page.getByLabel(picker, { exact: true }).setInputFiles(materialFile('txt'))
+  const response = await uploaded
+  expect(response.status()).toBe(202)
+  const job = await response.json()
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('godeck.material.pending-job'))).toBe(job.id)
+  await page.reload()
+  await page.unroute('**/materials/*')
+  await expect(page.getByLabel('Текст материалов', { exact: true })).toHaveValue(/E2E original TXT 41/)
+  const result = await request.get(`/api/generation/v1/materials/${job.id}`)
+  expect((await result.json()).status).toBe('succeeded')
+  const schema = process.env.E2E_SCHEMA
+  if (!schema?.match(/^editor_e2e_[a-f0-9]{12}$/)) throw new Error('An isolated E2E schema is required.')
+  const database = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL })
+  try {
+    await database.connect()
+    const row = await database.query(`SELECT payload FROM "${schema}".material_jobs WHERE id=$1`, [job.id])
+    expect(row.rows[0].payload).toBeNull()
+  } finally { await database.end() }
+})
+
 for (const format of ['pdf', 'docx', 'txt'] satisfies MaterialFormat[]) {
   test(`${format.toUpperCase()}: извлечь, исправить материалы и получить настоящий PPTX`, async ({ page, createdDecks }) => {
     await page.goto('/studio')
@@ -52,10 +81,7 @@ for (const format of ['pdf', 'docx', 'txt'] satisfies MaterialFormat[]) {
       await database.end()
     }
     const card = page.locator(`[data-presentation-id="${job.id}"]`)
-    await card.getByRole('button', { name: 'Проверить структуру', exact: true }).click({ timeout: 30_000 })
-    await card.getByRole('region', { name: 'Структура презентации', exact: true })
-      .getByRole('button', { name: 'Собрать PPTX', exact: true }).click()
-    await page.locator(`a[href*="presentation=${job.id}"]`).click({ timeout: 30_000 })
+    await card.getByRole('link', { name: 'Открыть редактор', exact: true }).click({ timeout: 30_000 })
     const zip = await downloadPptx(page)
     const slideText = Object.entries(zip).filter(([name]) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
       .map(([, bytes]) => strFromU8(bytes)).join('\n')
@@ -63,10 +89,13 @@ for (const format of ['pdf', 'docx', 'txt'] satisfies MaterialFormat[]) {
     expect(slideText).not.toContain('{{')
     const audit = await page.request.get(`/api/generation/v1/presentations/${job.id}/ai-calls`)
     expect(audit.ok()).toBe(true)
-    const diagnostics = await audit.text()
-    expect(diagnostics).not.toContain(approved)
-    expect(diagnostics).not.toContain('Revenue: 73')
-    expect(diagnostics).not.toContain('Board of directors')
+    const diagnostics = (await audit.json()).items
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0].request_body).toContain(approved)
+    expect(diagnostics[0].request_body).toContain('Revenue: 73')
+    expect(diagnostics[0].request_body).toContain('Board of directors')
+    expect(diagnostics[0].response_body).toContain(approved)
+    expect(diagnostics[0].request_body).not.toContain('e2e-local-fixture-not-a-real-key')
   })
 }
 
@@ -97,7 +126,7 @@ test('неверный TXT не запускает генерацию и поз�
   for (let attempt = 0; attempt < 2; attempt++) {
     const extraction = page.waitForResponse((response) => response.url().endsWith('/materials/extract'))
     await page.getByLabel(picker, { exact: true }).setInputFiles(invalid)
-    expect((await extraction).status()).toBe(422)
+    expect((await extraction).status()).toBe(202)
     await expect(page.locator('section[aria-labelledby="materials-title"]').getByRole('alert')).toHaveText(/UTF-8/)
     await expect(page.getByRole('button', { name: 'Создать презентацию', exact: true })).toBeDisabled()
   }
@@ -129,7 +158,7 @@ test('повтор после потерянного ответа сохраня
   await expect(page.locator('main').getByRole('alert')).toBeVisible()
   await expect(page.getByLabel('Текст материалов', { exact: true })).toHaveValue(/E2E original TXT 41/)
   await page.getByRole('button', { name: 'Создать презентацию', exact: true }).click()
-  await expect(page.getByText('Проект создан. AI подготовит текст и структуру — проверьте их перед сборкой PowerPoint.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Открыть редактор', exact: true })).toBeVisible({ timeout: 30_000 })
   expect(ids).toHaveLength(2)
   expect(ids[1]).toBe(ids[0])
   expect(keys[0]).toBeTruthy()
@@ -144,9 +173,9 @@ test('запоздалое извлечение удалённого файла 
   await page.route('**/materials/extract', async (route) => {
     if (++requests !== 1) return route.continue()
     await pending
-    await route.fulfill({ json: {
+    await route.fulfill({ status: 202, json: { id: 'stale-job', status: 'succeeded', error: null, result: {
       format: 'txt', name: 'old.txt', text: 'OUTDATED DOCUMENT', characters: 17, pages: null, warnings: [],
-    } }).catch(() => { /* The browser may already have cancelled this old request. */ })
+    } } }).catch(() => { /* The browser may already have cancelled this old request. */ })
   })
   try {
     const first = page.waitForRequest('**/materials/extract')

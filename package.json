@@ -8,10 +8,14 @@
     "start": "pnpm --filter @godeck/frontend start",
     "typecheck": "pnpm --filter @godeck/frontend typecheck",
     "backend:dev": "bash scripts/backend-dev.sh",
+    "document-worker:dev": "bash scripts/document-worker.sh",
+    "document-worker:build": "bash scripts/document-worker.sh build",
+    "document-worker:test": "bash scripts/document-worker.sh test",
     "backend:test": "bash scripts/backend-dev.sh test",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose stop",
     "test:bridge": "python3 -m unittest discover -s scripts -p 'test_v0_gitlab_bridge.py'",
+    "test:migrations": "node scripts/test-draft-migration.mjs",
     "test:auth": "python3 scripts/auth-smoke.py",
     "backend:test:unit": "bash scripts/backend-dev.sh test '-Dtest=*Test,!*IntegrationTest,!DevelopmentAuthBypassTest'",
     "backend:test:integration": "bash scripts/backend-dev.sh test '-Dtest=*IntegrationTest,DevelopmentAuthBypassTest'",
@@ -20,7 +24,7 @@
     "test:e2e:debug": "node scripts/e2e.mjs --debug",
     "test:e2e:types": "pnpm --filter @godeck/frontend exec tsc --noEmit -p ../e2e/tsconfig.json",
     "test:e2e:report": "playwright show-report",
-    "verify": "pnpm test:frontend && pnpm typecheck && pnpm test:e2e:types && pnpm backend:test && pnpm test:e2e"
+    "verify": "pnpm test:frontend && pnpm typecheck && pnpm test:e2e:types && pnpm test:migrations && pnpm document-worker:test && pnpm backend:test && pnpm test:e2e"
   },
   "pnpm": {
     "overrides": {

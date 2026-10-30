@@ -6,13 +6,8 @@ import ru.godeck.common.text.BackendMessages;
 import ru.godeck.presentation.policy.PresentationPolicy;
 
 public enum GenerationError {
-    INVALID_OUTLINE(
-            HttpStatus.UNPROCESSABLE_ENTITY,
-            "invalid_outline",
-            "presentation.error.invalid-outline"),
-    OUTLINE_CONFLICT(
-            HttpStatus.CONFLICT, "outline_conflict", "presentation.error.outline-conflict"),
-    OUTLINE_CLOSED(HttpStatus.CONFLICT, "outline_closed", "presentation.error.outline-closed"),
+    SOURCE_NOT_FOUND(
+            HttpStatus.NOT_FOUND, "source_not_found", "presentation.error.source-not-found"),
     SOURCE_LIMIT(HttpStatus.PAYLOAD_TOO_LARGE, "source_limit", "presentation.error.source-limit"),
     UNSUPPORTED_SOURCE(
             HttpStatus.UNSUPPORTED_MEDIA_TYPE,

@@ -6,7 +6,7 @@ import java.util.Locale;
 
 public enum PresentationStatus {
     AWAITING_CONTENT,
-    AWAITING_REVIEW,
+    DRAFT,
     QUEUED,
     RUNNING,
     SUCCEEDED,

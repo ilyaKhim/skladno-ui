@@ -37,7 +37,10 @@ import org.springframework.web.client.RestClient;
 import ru.godeck.presentation.ai.OpenAiResponseReader;
 import ru.godeck.presentation.ai.PresentationContentGenerator;
 import ru.godeck.presentation.ai.PresentationRequestFactory;
+import ru.godeck.presentation.dto.EditorDeckView;
+import ru.godeck.presentation.dto.EditorDraftSavedView;
 import ru.godeck.presentation.dto.PresentationView;
+import ru.godeck.presentation.dto.SaveEditorDraftRequest;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
 import ru.godeck.presentation.material.MaterialRetention;
@@ -46,6 +49,7 @@ import ru.godeck.presentation.model.AiOperation;
 import ru.godeck.presentation.model.GenerationInput;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.model.PresentationStatus;
+import ru.godeck.presentation.model.SourceMaterial;
 import ru.godeck.presentation.template.PresentationTemplateService;
 import ru.godeck.presentation.worker.PresentationWorker;
 
@@ -85,6 +89,7 @@ class PresentationGenerationIntegrationTest {
     @Autowired PresentationWorker worker;
     @Autowired PresentationContentCodec codec;
     @Autowired PresentationTransactions transactions;
+    @Autowired PresentationEditorService editor;
     @Autowired PresentationAiCallHistory aiHistory;
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired MaterialRetention materialRetention;
@@ -116,72 +121,6 @@ class PresentationGenerationIntegrationTest {
                 for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList())
                     Files.deleteIfExists(file);
             }
-    }
-
-    @Test
-    void extractsSourceThroughAuthenticatedCsrfEndpointWithoutCallingAi() throws Exception {
-        var file =
-                new MockMultipartFile(
-                        "file", "../../Отчёт.txt", "text/plain", "Выручка: 42 млн".getBytes(UTF_8));
-        mvc.perform(multipart("/api/generation/v1/materials/extract").file(file).with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(jsonPath("$.format").value("txt"))
-                .andExpect(jsonPath("$.name").value("Отчёт.txt"))
-                .andExpect(jsonPath("$.text").value("Выручка: 42 млн"))
-                .andExpect(jsonPath("$.warnings").isEmpty());
-        mvc.perform(multipart("/api/generation/v1/materials/extract").file(file))
-                .andExpect(status().isForbidden());
-        assertThat(db.queryForObject("SELECT count(*) FROM generated_presentations", Long.class))
-                .isZero();
-        verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
-        verify(generator, never())
-                .generate(any(), anyString(), anyMap(), anyList(), anyString(), any());
-    }
-
-    @Test
-    void invalidUploadReturnsDocumentSpecificErrorBeforeGeneration() throws Exception {
-        mvc.perform(
-                        multipart("/api/generation/v1/materials/extract")
-                                .file(
-                                        new MockMultipartFile(
-                                                "file",
-                                                "first.txt",
-                                                "text/plain",
-                                                "first".getBytes(UTF_8)))
-                                .file(
-                                        new MockMultipartFile(
-                                                "file",
-                                                "second.txt",
-                                                "text/plain",
-                                                "second".getBytes(UTF_8)))
-                                .with(csrf()))
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.error.code").value("source_invalid"));
-        mvc.perform(
-                        multipart("/api/generation/v1/materials/extract")
-                                .file(
-                                        new MockMultipartFile(
-                                                "file",
-                                                "report.xlsx",
-                                                "application/octet-stream",
-                                                "data".getBytes(UTF_8)))
-                                .with(csrf()))
-                .andExpect(status().isUnsupportedMediaType())
-                .andExpect(jsonPath("$.error.code").value("unsupported_source"));
-        mvc.perform(
-                        multipart("/api/generation/v1/materials/extract")
-                                .file(
-                                        new MockMultipartFile(
-                                                "file",
-                                                "report.txt",
-                                                "text/plain",
-                                                new byte[5 * 1024 * 1024 + 1]))
-                                .with(csrf()))
-                .andExpect(status().isPayloadTooLarge())
-                .andExpect(jsonPath("$.error.code").value("source_limit"));
-        verify(generator, never())
-                .generate(any(), anyString(), anyMap(), anyList(), anyString(), any());
     }
 
     @Test
@@ -235,7 +174,7 @@ class PresentationGenerationIntegrationTest {
                         anyString(),
                         any(GenerationInput.class)))
                 .thenReturn(typedPlan("Report based on materials"));
-        worker.processOne();
+        prepareAndPublish();
         var input = org.mockito.ArgumentCaptor.forClass(GenerationInput.class);
         verify(generator)
                 .generate(any(), anyString(), anyMap(), anyList(), anyString(), input.capture());
@@ -257,7 +196,7 @@ class PresentationGenerationIntegrationTest {
                 new ru.godeck.presentation.model.SourceMaterial(
                         "txt", "report.txt", " Revenue 42\r\n ");
         var first =
-                service.create(
+                create(
                         USER,
                         "aurora",
                         "Report",
@@ -268,7 +207,7 @@ class PresentationGenerationIntegrationTest {
                         null,
                         source);
         var repeated =
-                service.create(
+                create(
                         USER,
                         "aurora",
                         "Report",
@@ -282,7 +221,7 @@ class PresentationGenerationIntegrationTest {
         assertThat(repeated.id()).isEqualTo(first.id());
         assertThatThrownBy(
                         () ->
-                                service.create(
+                                create(
                                         USER,
                                         "aurora",
                                         "Report",
@@ -295,7 +234,7 @@ class PresentationGenerationIntegrationTest {
                                                 "txt", "report.txt", "Revenue 43")))
                 .extracting(error -> ((GenerationException) error).code())
                 .isEqualTo("idempotency_conflict");
-        var legacy = service.create(USER, "aurora", "Legacy", "manual", "legacy-retry-key", null);
+        var legacy = create(USER, "aurora", "Legacy", "manual", "legacy-retry-key", null);
         String model =
                 db.queryForObject(
                         "SELECT model FROM generated_presentations WHERE id=?",
@@ -310,7 +249,7 @@ class PresentationGenerationIntegrationTest {
                         ru.godeck.common.security.Hashing.sha256(
                                 "aurora\nLegacy\nmanual\n" + model));
         assertThat(
-                        service.create(
+                        create(
                                         USER,
                                         "aurora",
                                         "Legacy",
@@ -368,10 +307,8 @@ class PresentationGenerationIntegrationTest {
         var source =
                 new ru.godeck.presentation.model.SourceMaterial("txt", "x.txt", "Private input");
         var completed =
-                service.create(
-                        USER, "aurora", "Finished", "openai", null, null, null, null, source);
-        var queued =
-                service.create(USER, "aurora", "Queued", "openai", null, null, null, null, source);
+                create(USER, "aurora", "Finished", "openai", null, null, null, null, source);
+        var queued = create(USER, "aurora", "Queued", "openai", null, null, null, null, source);
         var before = java.time.Instant.now().minus(java.time.Duration.ofDays(31));
         db.update(
                 "UPDATE generated_presentations SET"
@@ -410,7 +347,7 @@ class PresentationGenerationIntegrationTest {
                                 .content(json.writeValueAsString(plan("Квартальный план"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("queued"));
-        worker.processOne();
+        prepareAndPublish();
         var presentation = service.get(USER, id);
         assertThat(presentation.status()).isEqualTo(PresentationStatus.SUCCEEDED);
         assertThat(json.writeValueAsString(presentation))
@@ -537,14 +474,14 @@ class PresentationGenerationIntegrationTest {
     @Test
     void idempotencyKeyIncludesTheChosenModeAndUnknownModesAreRejected() throws Exception {
         String key = UUID.randomUUID().toString();
-        var first = service.create(USER, "aurora", "Один и тот же запрос", "manual", key, null);
-        assertThat(service.create(USER, "aurora", "Один и тот же запрос", "manual", key, null))
+        var first = create(USER, "aurora", "Один и тот же запрос", "manual", key, null);
+        assertThat(create(USER, "aurora", "Один и тот же запрос", "manual", key, null))
                 .isEqualTo(first);
         assertThat(
                         assertThrows(
                                         GenerationException.class,
                                         () ->
-                                                service.create(
+                                                create(
                                                         USER,
                                                         "aurora",
                                                         "Один и тот же запрос",
@@ -557,7 +494,7 @@ class PresentationGenerationIntegrationTest {
                         assertThrows(
                                         GenerationException.class,
                                         () ->
-                                                service.create(
+                                                create(
                                                         USER,
                                                         "aurora",
                                                         "Один и тот же запрос",
@@ -570,7 +507,7 @@ class PresentationGenerationIntegrationTest {
                         assertThrows(
                                         GenerationException.class,
                                         () ->
-                                                service.create(
+                                                create(
                                                         USER,
                                                         "aurora",
                                                         "Один и тот же запрос",
@@ -603,7 +540,7 @@ class PresentationGenerationIntegrationTest {
         when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenReturn(typedPlan("План выступления"));
         var created =
-                service.create(
+                create(
                         USER,
                         "aurora",
                         "Презентация с выбранной моделью",
@@ -612,7 +549,7 @@ class PresentationGenerationIntegrationTest {
                         "gpt-6-luna");
         UUID id = created.id();
         assertThat(created.model()).isEqualTo("gpt-6-luna");
-        worker.processOne();
+        prepareAndPublish();
         verify(generator).generate(any(), anyString(), anyMap(), anyList(), eq("gpt-6-luna"));
         assertThat(service.versions(USER, id).getFirst().model()).isEqualTo("gpt-6-luna");
 
@@ -786,8 +723,7 @@ class PresentationGenerationIntegrationTest {
                         Thread.currentThread().interrupt();
                         throw new IllegalStateException(error);
                     }
-                    return service.create(
-                            USER, "aurora", "Один конкурентный запрос", "manual", key, null);
+                    return create(USER, "aurora", "Один конкурентный запрос", "manual", key, null);
                 };
         var first = CompletableFuture.supplyAsync(create);
         var second = CompletableFuture.supplyAsync(create);
@@ -814,7 +750,7 @@ class PresentationGenerationIntegrationTest {
         UUID id = createManual();
         service.submitManual(USER, id, typedPlan("Cancelled"));
         service.cancel(USER, id);
-        worker.processOne();
+        prepareAndPublish();
         assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.CANCELLED);
         assertThat(service.versions(USER, id)).isEmpty();
         verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
@@ -822,7 +758,7 @@ class PresentationGenerationIntegrationTest {
 
     @Test
     void obsoleteModelFailsItsJobWithoutBlockingTheNextJob() throws Exception {
-        UUID obsolete = service.create(USER, "aurora", "Old model", "openai", null, null).id();
+        UUID obsolete = create(USER, "aurora", "Old model", "openai", null, null).id();
         db.update("UPDATE generated_presentations SET model='retired-model' WHERE id=?", obsolete);
         UUID next = createManual();
         service.submitManual(USER, next, typedPlan("Next job"));
@@ -831,26 +767,26 @@ class PresentationGenerationIntegrationTest {
                 "UPDATE generated_presentations SET created_at=now()-interval '1 minute' WHERE"
                         + " id=?",
                 obsolete);
-        worker.processOne();
+        prepareAndPublish();
         assertThat(service.get(USER, obsolete).status()).isEqualTo(PresentationStatus.FAILED);
         assertThat(service.get(USER, obsolete).errorCode()).isEqualTo("unsupported_model");
-        worker.processOne();
+        prepareAndPublish();
         assertThat(service.get(USER, next).status()).isEqualTo(PresentationStatus.SUCCEEDED);
         verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
     }
 
     @Test
     void providerFailureDoesNotLeaveARevisionAndTheWorkerRemainsUsable() throws Exception {
-        UUID failed = service.create(USER, "aurora", "Provider failure", "openai", null, null).id();
+        UUID failed = create(USER, "aurora", "Provider failure", "openai", null, null).id();
         when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenThrow(new IllegalStateException("provider failed"));
-        worker.processOne();
+        prepareAndPublish();
         assertThat(service.get(USER, failed).status()).isEqualTo(PresentationStatus.FAILED);
         assertThat(service.get(USER, failed).errorCode()).isEqualTo("generation_failed");
         assertThat(service.versions(USER, failed)).isEmpty();
         UUID next = createManual();
         service.submitManual(USER, next, typedPlan("Recovery"));
-        worker.processOne();
+        prepareAndPublish();
         assertThat(service.get(USER, next).status()).isEqualTo(PresentationStatus.SUCCEEDED);
     }
 
@@ -869,7 +805,7 @@ class PresentationGenerationIntegrationTest {
         assertThat(
                         assertThrows(
                                         GenerationException.class,
-                                        () -> transactions.complete(job, "{}", "never-written", 1))
+                                        () -> transactions.prepareDraft(job, "{}"))
                                 .code())
                 .isEqualTo("worker_interrupted");
         assertThat(service.versions(USER, id)).isEmpty();
@@ -973,22 +909,18 @@ class PresentationGenerationIntegrationTest {
     @Test
     void activeQuotaBlocksNewJobsButStillPermitsAnIdempotentRetry() {
         String key = UUID.randomUUID().toString();
-        var first = service.create(USER, "aurora", "One", "manual", key, null);
-        service.create(USER, "aurora", "Two", "manual", null, null);
-        service.create(USER, "aurora", "Three", "manual", null, null);
+        var first = create(USER, "aurora", "One", "manual", key, null);
+        create(USER, "aurora", "Two", "manual", null, null);
+        create(USER, "aurora", "Three", "manual", null, null);
         assertThat(
                         assertThrows(
                                         GenerationException.class,
-                                        () ->
-                                                service.create(
-                                                        USER, "aurora", "Four", "manual", null,
-                                                        null))
+                                        () -> create(USER, "aurora", "Four", "manual", null, null))
                                 .code())
                 .isEqualTo("generation_limit");
-        assertThat(service.create(USER, "aurora", "One", "manual", key, null).id())
-                .isEqualTo(first.id());
+        assertThat(create(USER, "aurora", "One", "manual", key, null).id()).isEqualTo(first.id());
         service.cancel(USER, first.id());
-        assertThat(service.create(USER, "aurora", "Replacement", "manual", null, null)).isNotNull();
+        assertThat(create(USER, "aurora", "Replacement", "manual", null, null)).isNotNull();
     }
 
     private java.util.Set<Path> outputFiles() throws Exception {
@@ -1003,7 +935,7 @@ class PresentationGenerationIntegrationTest {
         UUID id = createManual();
         service.submitManual(USER, id, typedPlan("Offline plan"));
         db.update("UPDATE generated_presentations SET model='retired-model' WHERE id=?", id);
-        worker.processOne();
+        prepareAndPublish();
         assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
         verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
     }
@@ -1046,7 +978,7 @@ class PresentationGenerationIntegrationTest {
                                                 new PresentationContent.Slide(
                                                         n, n == 1 || n == 5, "Так решила модель"))
                                 .toList());
-        UUID id = service.create(USER, templateId, "Ответ LLM", "manual", null, null).id();
+        UUID id = create(USER, templateId, "Ответ LLM", "manual", null, null).id();
         mvc.perform(
                         put("/api/generation/v1/presentations/{id}/content", id)
                                 .with(csrf())
@@ -1054,7 +986,7 @@ class PresentationGenerationIntegrationTest {
                                 .content(json.writeValueAsString(content)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("queued"));
-        worker.processOne();
+        prepareAndPublish();
         assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
         assertThat(service.get(USER, id).slideCount()).isEqualTo(2);
         byte[] pptx =
@@ -1075,7 +1007,7 @@ class PresentationGenerationIntegrationTest {
         var description = templates.description(templateId);
         when(generator.preview(anyString(), anyMap(), anyList(), anyString()))
                 .thenReturn(Map.of("test", true));
-        service.previewPrompt(templateId, "Тема доклада", null);
+        service.previewPrompt(templateId, "Тема доклада", null, null, null, null);
         verify(generator)
                 .preview(
                         contains(description.path("style").asText()),
@@ -1092,8 +1024,8 @@ class PresentationGenerationIntegrationTest {
                                 .toList());
         when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenReturn(content);
-        UUID id = service.create(USER, templateId, "Норд для доклада", "openai", null, null).id();
-        worker.processOne();
+        UUID id = create(USER, templateId, "Норд для доклада", "openai", null, null).id();
+        prepareAndPublish();
         assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
         assertThat(service.chat(USER, id, "Сохрани стиль", null).version()).isEqualTo(2);
         verify(generator, times(2))
@@ -1110,10 +1042,8 @@ class PresentationGenerationIntegrationTest {
         var server = recordedProvider();
         String response = providerResponse(typedPlan("Запись генерации"));
         server.expect(anything()).andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
-        UUID id =
-                service.create(USER, "aurora", "Проверяем историю генерации", "openai", null, null)
-                        .id();
-        worker.processOne();
+        UUID id = create(USER, "aurora", "Проверяем историю генерации", "openai", null, null).id();
+        prepareAndPublish();
         assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
         var history = service.aiCalls(USER, id);
         assertThat(history).hasSize(1);
@@ -1164,7 +1094,7 @@ class PresentationGenerationIntegrationTest {
     @Test
     void historyRejectsOtherOwnersAndUnknownPresentations() throws Exception {
         UUID other = UUID.randomUUID();
-        UUID id = service.create(other, "aurora", "Чужая презентация", "manual", null, null).id();
+        UUID id = create(other, "aurora", "Чужая презентация", "manual", null, null).id();
         aiHistory.start(new AiCallContext(id, AiOperation.CHAT), "gpt-5.4", "private request");
         assertThat(service.aiCalls(other, id)).hasSize(1);
         mvc.perform(get("/api/generation/v1/presentations/{id}/ai-calls", id))
@@ -1198,7 +1128,7 @@ class PresentationGenerationIntegrationTest {
     @Test
     void manualAssemblyAndPromptPreviewDoNotInventSentAiRequests() throws Exception {
         UUID id = readyManual();
-        service.previewPrompt("aurora", "Проверяем предварительный запрос", null);
+        service.previewPrompt("aurora", "Проверяем предварительный запрос", null, null, null, null);
         assertThat(service.aiCalls(USER, id)).isEmpty();
     }
 
@@ -1330,9 +1260,9 @@ class PresentationGenerationIntegrationTest {
                                                                 List.of(custom))
                                                         : slide)
                                 .toList());
-        UUID id = service.create(USER, "aurora", "Редактор и AI", "manual", null, null).id();
+        UUID id = create(USER, "aurora", "Редактор и AI", "manual", null, null).id();
         service.submitManual(USER, id, withCustom);
-        worker.processOne();
+        prepareAndPublish();
         when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
                 .thenReturn(typedPlan("После AI-правки"));
 
@@ -1355,10 +1285,9 @@ class PresentationGenerationIntegrationTest {
     void rejectsDownloadsOfOtherOwnersUnknownProjectsAndMissingVersions() throws Exception {
         UUID owner = UUID.randomUUID();
         UUID foreignId =
-                service.create(owner, "aurora", "Чужой проект для скачивания", "manual", null, null)
-                        .id();
+                create(owner, "aurora", "Чужой проект для скачивания", "manual", null, null).id();
         service.submitManual(owner, foreignId, typedPlan("Чужой файл"));
-        worker.processOne();
+        prepareAndPublish();
         assertThat(service.downloadVersion(owner, foreignId, 1)).exists();
         mvc.perform(get("/api/generation/v1/presentations/{id}/versions/1/download", foreignId))
                 .andExpect(status().isNotFound());
@@ -1406,9 +1335,9 @@ class PresentationGenerationIntegrationTest {
                                         new PresentationContent.Slide(
                                                 number, number == 1 || number == 13, "Editor test"))
                         .toList();
-        UUID id = service.create(USER, "atlas", "Редактор", "manual", null, null).id();
+        UUID id = create(USER, "atlas", "Редактор", "manual", null, null).id();
         service.submitManual(USER, id, new PresentationContent(fields, decisions));
-        worker.processOne();
+        prepareAndPublish();
         byte[] original = Files.readAllBytes(service.download(USER, id));
 
         mvc.perform(
@@ -1459,7 +1388,7 @@ class PresentationGenerationIntegrationTest {
                         .andExpect(status().isOk())
                         .andExpect(header().string("Cache-Control", "no-store"))
                         .andExpect(jsonPath("$.base_version").value(1))
-                        .andExpect(jsonPath("$.draft_revision").value(0))
+                        .andExpect(jsonPath("$.draft_revision").value(2))
                         .andExpect(jsonPath("$.slides.length()").value(2))
                         .andExpect(jsonPath("$.slides[0].blocks[0].max_chars").isNumber())
                         .andExpect(jsonPath("$.slides[0].blocks[0].layout_id").isString())
@@ -1548,7 +1477,7 @@ class PresentationGenerationIntegrationTest {
                                 "base_version",
                                 1,
                                 "draft_revision",
-                                0,
+                                2,
                                 "title",
                                 "Редактор — новая версия",
                                 "slides",
@@ -1559,7 +1488,7 @@ class PresentationGenerationIntegrationTest {
                                 .contentType("application/json")
                                 .content(draft))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.draft_revision").value(1));
+                .andExpect(jsonPath("$.draft_revision").value(3));
         assertThat(service.get(USER, id).version()).isEqualTo(1);
         assertThat(service.versions(USER, id)).hasSize(1);
         mvc.perform(
@@ -1574,7 +1503,7 @@ class PresentationGenerationIntegrationTest {
                         post("/api/generation/v1/presentations/{id}/editor/commit", id)
                                 .with(csrf())
                                 .contentType("application/json")
-                                .content("{\"base_version\":1,\"draft_revision\":1}"))
+                                .content("{\"base_version\":1,\"draft_revision\":3}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(2));
         assertThat(service.versions(USER, id)).hasSize(2);
@@ -1624,7 +1553,7 @@ class PresentationGenerationIntegrationTest {
         mvc.perform(get("/api/generation/v1/presentations/{id}/editor", id))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.base_version").value(2))
-                .andExpect(jsonPath("$.draft_revision").value(2))
+                .andExpect(jsonPath("$.draft_revision").value(4))
                 .andExpect(
                         jsonPath("$.slides[0].blocks[?(@.id == 'text-editor-test')].text")
                                 .value("Добавленный текст"))
@@ -1646,9 +1575,9 @@ class PresentationGenerationIntegrationTest {
                                         new PresentationContent.Slide(
                                                 number, number == 9, "Multi-paragraph editor test"))
                         .toList();
-        UUID id = service.create(USER, "opal", "Список", "manual", null, null).id();
+        UUID id = create(USER, "opal", "Список", "manual", null, null).id();
         service.submitManual(USER, id, new PresentationContent(fields, decisions));
-        worker.processOne();
+        prepareAndPublish();
 
         String editorJson =
                 mvc.perform(get("/api/generation/v1/presentations/{id}/editor", id))
@@ -1721,7 +1650,7 @@ class PresentationGenerationIntegrationTest {
                                 "base_version",
                                 1,
                                 "draft_revision",
-                                0,
+                                2,
                                 "title",
                                 "Список",
                                 "slides",
@@ -1747,12 +1676,12 @@ class PresentationGenerationIntegrationTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(draft))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.draft_revision").value(1));
+                .andExpect(jsonPath("$.draft_revision").value(3));
         mvc.perform(
                         post("/api/generation/v1/presentations/{id}/editor/commit", id)
                                 .with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"base_version\":1,\"draft_revision\":1}"))
+                                .content("{\"base_version\":1,\"draft_revision\":3}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(2));
 
@@ -1773,10 +1702,246 @@ class PresentationGenerationIntegrationTest {
         }
     }
 
+    @Test
+    void generatedContentIsEditableBeforeItsFirstPublicationAndCommitReplayIsSafe()
+            throws Exception {
+        var content = typedPlan("Initial AI title");
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString()))
+                .thenReturn(content);
+        UUID id = create(USER, "aurora", "Review before publishing", "openai", null, null).id();
+        worker.processOne();
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.DRAFT);
+        assertThat(service.get(USER, id).version()).isZero();
+        assertThat(service.get(USER, id).downloadUrl()).isNull();
+        assertThat(service.versions(USER, id)).isEmpty();
+        mvc.perform(get("/api/generation/v1/presentations/{id}/download", id))
+                .andExpect(status().isNotFound());
+        var deck = editor.get(USER, id);
+        assertThat(deck.baseVersion()).isZero();
+        mvc.perform(get("/api/generation/v1/presentations/{id}/editor", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.base_version").value(0));
+        var request = snapshot(deck);
+        var savedBody =
+                mvc.perform(
+                                put("/api/generation/v1/presentations/{id}/editor/draft", id)
+                                        .with(csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(json.writeValueAsString(request)))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.base_version").value(0))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        var saved = json.readValue(savedBody, EditorDraftSavedView.class);
+        assertThat(saved.baseVersion()).isZero();
+        assertThat(service.versions(USER, id)).isEmpty();
+        assertThat(
+                        db.queryForObject(
+                                "SELECT output_path FROM generated_presentations WHERE id=?",
+                                String.class,
+                                id))
+                .isNull();
+        mvc.perform(
+                        post("/api/generation/v1/presentations/{id}/editor/commit", id)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        json.writeValueAsString(
+                                                Map.of(
+                                                        "base_version",
+                                                        0,
+                                                        "draft_revision",
+                                                        saved.draftRevision()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(1));
+        var result = service.get(USER, id);
+        assertThat(result.version()).isEqualTo(1);
+        assertThat(result.status()).isEqualTo(PresentationStatus.SUCCEEDED);
+        assertThat(editor.commit(USER, id, 0, saved.draftRevision()).version()).isEqualTo(1);
+        assertThat(service.versions(USER, id)).hasSize(1);
+        assertThat(service.download(USER, id)).exists();
+        verify(generator, times(1)).generate(any(), anyString(), anyMap(), anyList(), anyString());
+        mvc.perform(get("/api/generation/v1/presentations/{id}/editor", id))
+                .andExpect(jsonPath("$.base_version").value(1));
+    }
+
+    @Test
+    void queuedAiContentSurvivesReviewMigrationWithoutAnotherProviderCall() throws Exception {
+        UUID id =
+                create(USER, "aurora", "Already generated before migration", "openai", null, null)
+                        .id();
+        String prepared =
+                codec.encode(
+                        templates.normalize("aurora", typedPlan("Previously confirmed content")));
+        db.update("UPDATE generated_presentations SET content_json=? WHERE id=?", prepared, id);
+        worker.processOne();
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.DRAFT);
+        assertThat(
+                        db.queryForObject(
+                                "SELECT content_json FROM generated_presentations WHERE id=?",
+                                String.class,
+                                id))
+                .isEqualTo(prepared);
+        assertThat(service.versions(USER, id)).isEmpty();
+        verify(generator, never()).generate(any(), anyString(), anyMap(), anyList(), anyString());
+        verify(generator, never())
+                .generate(any(), anyString(), anyMap(), anyList(), anyString(), any());
+    }
+
+    @Test
+    void lateGenerationCallbacksCannotOverwriteADraftOrItsPublishedVersion() throws Exception {
+        UUID id = createManual();
+        service.submitManual(USER, id, typedPlan("Manual draft"));
+        var claim = transactions.claim().orElseThrow();
+        transactions.prepareDraft(claim, claim.contentJson());
+        transactions.fail(claim, "late_failure");
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.DRAFT);
+        assertThatThrownBy(() -> transactions.prepareDraft(claim, claim.contentJson()))
+                .isInstanceOf(GenerationException.class);
+        var saved = editor.save(USER, id, snapshot(editor.get(USER, id)));
+        editor.commit(USER, id, 0, saved.draftRevision());
+        transactions.fail(claim, "later_failure");
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
+        assertThat(service.versions(USER, id)).hasSize(1);
+    }
+
+    @Test
+    void cancellationCannotRaceAnActiveFirstCommitOrAcceptItsExpiredLateResult() throws Exception {
+        UUID id = createManual();
+        service.submitManual(USER, id, typedPlan("Cancel draft"));
+        worker.processOne();
+        var saved = editor.save(USER, id, snapshot(editor.get(USER, id)));
+        var commit = transactions.beginEditorCommit(USER, id, 0, saved.draftRevision());
+        assertThatThrownBy(() -> service.cancel(USER, id))
+                .extracting(e -> ((GenerationException) e).code())
+                .isEqualTo("edit_in_progress");
+        db.update(
+                "UPDATE generated_presentations SET edit_started_at=now()-interval '1 day' WHERE"
+                        + " id=?",
+                id);
+        service.cancel(USER, id);
+        assertThatThrownBy(
+                        () -> transactions.completeEditorCommit(commit, "{}", "never-written", 1))
+                .extracting(e -> ((GenerationException) e).code())
+                .isEqualTo("edit_expired");
+        assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.CANCELLED);
+        assertThat(service.versions(USER, id)).isEmpty();
+    }
+
+    private PresentationView create(
+            UUID owner, String template, String topic, String mode, String key, String model) {
+        return create(owner, template, topic, mode, key, model, null, null, null);
+    }
+
+    private PresentationView create(
+            UUID owner,
+            String template,
+            String topic,
+            String mode,
+            String key,
+            String model,
+            String goal,
+            String audience,
+            SourceMaterial source) {
+        return service.create(owner, template, topic, mode, key, model, goal, audience, source);
+    }
+
+    /** Existing published-document regressions explicitly publish their generated fixture first. */
+    private void prepareAndPublish() throws Exception {
+        worker.processOne();
+        for (var row :
+                db.queryForList(
+                        "SELECT id,user_id FROM generated_presentations WHERE status='draft'")) {
+            UUID id = (UUID) row.get("id");
+            UUID owner = (UUID) row.get("user_id");
+            var deck = editor.get(owner, id);
+            var saved = editor.save(owner, id, snapshot(deck));
+            editor.commit(owner, id, saved.baseVersion(), saved.draftRevision());
+        }
+    }
+
+    private SaveEditorDraftRequest snapshot(EditorDeckView deck) {
+        return new SaveEditorDraftRequest(
+                deck.baseVersion(),
+                deck.draftRevision(),
+                deck.title(),
+                deck.slides().stream()
+                        .map(
+                                slide -> {
+                                    var fields =
+                                            slide.blocks().stream()
+                                                    .filter(b -> b.fieldKey() != null)
+                                                    .map(
+                                                            b ->
+                                                                    new SaveEditorDraftRequest
+                                                                            .TextBlock(
+                                                                            b.fieldKey(), b.text()))
+                                                    .toList();
+                                    var custom =
+                                            slide.blocks().stream()
+                                                    .filter(b -> b.fieldKey() == null)
+                                                    .map(
+                                                            b ->
+                                                                    new SaveEditorDraftRequest
+                                                                            .CustomTextBlock(
+                                                                            b.id(),
+                                                                            b.text(),
+                                                                            b.x(),
+                                                                            b.y(),
+                                                                            b.width(),
+                                                                            b.height(),
+                                                                            b.fontSize(),
+                                                                            b.weight(),
+                                                                            b.align(),
+                                                                            b.color()))
+                                                    .toList();
+                                    var images =
+                                            slide.images().stream()
+                                                    .map(
+                                                            i ->
+                                                                    new SaveEditorDraftRequest
+                                                                            .ImageBlock(
+                                                                            i.id(),
+                                                                            i.assetId(),
+                                                                            i.alt(),
+                                                                            i.x(),
+                                                                            i.y(),
+                                                                            i.width(),
+                                                                            i.height()))
+                                                    .toList();
+                                    var layouts =
+                                            new LinkedHashMap<
+                                                    String, SaveEditorDraftRequest.TextLayout>();
+                                    slide.blocks().stream()
+                                            .filter(b -> b.layoutId() != null)
+                                            .forEach(
+                                                    b ->
+                                                            layouts.putIfAbsent(
+                                                                    b.layoutId(),
+                                                                    new SaveEditorDraftRequest
+                                                                            .TextLayout(
+                                                                            b.layoutId(),
+                                                                            b.x(),
+                                                                            b.y(),
+                                                                            b.width(),
+                                                                            b.height())));
+                                    return new SaveEditorDraftRequest.Slide(
+                                            slide.sourceSlideNumber(),
+                                            slide.name(),
+                                            slide.hidden(),
+                                            fields,
+                                            custom,
+                                            images,
+                                            List.copyOf(layouts.values()));
+                                })
+                        .toList());
+    }
+
     private UUID readyManual() throws Exception {
         UUID id = createManual();
         service.submitManual(USER, id, typedPlan("Исходный план"));
-        worker.processOne();
+        prepareAndPublish();
         assertThat(service.get(USER, id).status()).isEqualTo(PresentationStatus.SUCCEEDED);
         return id;
     }

@@ -67,10 +67,10 @@ test('ошибка экспорта оставляет документ и undo;
   await edit(page, 'Сохранённый текст после ошибки экспорта')
   await page.getByRole('button', { name: 'Экспорт', exact: true }).click()
   await page.getByRole('button', { name: 'Экспортировать', exact: true }).click()
-  await expect(page.getByRole('alert', { name: 'Ошибка редактора' })).toContainText('Не удалось собрать PowerPoint')
+  await expect(page.getByRole('alert', { name: 'Ошибка редактора' })).toContainText('Результат публикации не подтверждён')
   await page.keyboard.press('Escape')
   await expect(field(page)).toHaveValue('Сохранённый текст после ошибки экспорта')
-  await expect(page.getByRole('button', { name: 'Отменить', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Отменить', exact: true })).toBeDisabled()
   fail = false
   const pending = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Повторить экспорт', exact: true }).click()

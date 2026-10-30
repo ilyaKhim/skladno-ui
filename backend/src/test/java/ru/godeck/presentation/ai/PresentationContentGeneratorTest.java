@@ -81,7 +81,7 @@ class PresentationContentGeneratorTest {
     }
 
     @Test
-    void sourceAndContextReachProviderButNeverBecomeAuditBodyCopies() {
+    void sourceAndContextArePreservedInTheActualRequestAndResponseHistory() {
         var input =
                 GenerationInput.normalize(
                         "Inform",
@@ -120,20 +120,34 @@ class PresentationContentGeneratorTest {
         var request = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(history).start(eq(context), eq("gpt-5.4"), request.capture());
         assertThat(request.getValue())
-                .contains("request_sha256", "redacted")
-                .doesNotContain("Confidential", "Board", "report.txt");
+                .isEqualTo(
+                        json.writeValueAsString(
+                                generator.preview(
+                                        "Summarize",
+                                        Map.of("TITLE", 80),
+                                        List.of(Map.of("slide", 1)),
+                                        "gpt-5.4",
+                                        input)))
+                .contains("Confidential revenue 42", "Board", "report.txt")
+                .doesNotContain("unit-test-key", "request_sha256");
         var response = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(history).complete(eq(callId), response.capture(), eq(200), isNull());
-        assertThat(response.getValue()).contains("redacted").doesNotContain("Confidential");
+        assertThat(response.getValue())
+                .isEqualTo(
+                        completed(
+                                "{\"fields\":{\"TITLE\":\"Confidential revenue"
+                                    + " 42\"},\"slides\":[]}"));
     }
 
     @Test
-    void sourceProviderErrorIsAlsoRemovedFromAudit() {
+    void sourceProviderErrorIsPreservedInPrivateHistoryWithTheApiKeyMasked() {
         var input =
                 GenerationInput.normalize(
                         null, null, new SourceMaterial("txt", "x.txt", "Private source"));
         server.expect(requestTo(URL))
-                .andRespond(withStatus(HttpStatus.BAD_REQUEST).body("Private source echoed"));
+                .andRespond(
+                        withStatus(HttpStatus.BAD_REQUEST)
+                                .body("Private source echoed unit-test-key"));
         assertThatThrownBy(
                         () ->
                                 generator.generate(
@@ -142,7 +156,7 @@ class PresentationContentGeneratorTest {
         verify(history)
                 .complete(
                         eq(callId),
-                        argThat(value -> !value.contains("Private")),
+                        eq("Private source echoed [REDACTED]"),
                         eq(400),
                         eq("generation_failed"));
     }

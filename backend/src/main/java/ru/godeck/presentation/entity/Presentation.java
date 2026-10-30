@@ -49,15 +49,6 @@ public class Presentation {
     @Column(name = "generation_input_json", columnDefinition = "text")
     private String generationInputJson;
 
-    @Column(name = "review_before_render", nullable = false)
-    private boolean reviewBeforeRender;
-
-    @Column(name = "outline_revision", nullable = false)
-    private long outlineRevision;
-
-    @Column(name = "outline_confirmed_revision")
-    private Long outlineConfirmedRevision;
-
     @Column(name = "generation_input_expires_at")
     private Instant generationInputExpiresAt;
 
@@ -123,44 +114,13 @@ public class Presentation {
     }
 
     /**
-     * Review is an explicit generation option; semantic content alone never identifies the phase.
-     */
-    public boolean isReviewBeforeRender() {
-        return reviewBeforeRender;
-    }
-
-    public long getOutlineRevision() {
-        return outlineRevision;
-    }
-
-    public Long getOutlineConfirmedRevision() {
-        return outlineConfirmedRevision;
-    }
-
-    /**
      * Persists normalized AI content without publishing a file, version, or source-retention
      * deadline.
      */
-    public void awaitReview(String json, Instant now) {
+    public void prepareDraft(String json, Instant now) {
         contentJson = json;
-        outlineRevision = 1;
-        status = PresentationStatus.AWAITING_REVIEW;
-        updatedAt = now;
-    }
-
-    /** Replaces only a validated review snapshot and advances its optimistic concurrency token. */
-    public void saveOutline(String json, Instant now) {
-        contentJson = json;
-        outlineRevision++;
-        updatedAt = now;
-    }
-
-    /**
-     * Freezes the accepted revision and queues render-only work, preserving the original AI mode.
-     */
-    public void confirmOutline(Instant now) {
-        outlineConfirmedRevision = outlineRevision;
-        status = PresentationStatus.QUEUED;
+        currentVersion = 0;
+        status = PresentationStatus.DRAFT;
         updatedAt = now;
     }
 

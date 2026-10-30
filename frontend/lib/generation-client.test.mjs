@@ -153,22 +153,29 @@ test('editor image upload uses multipart data without overriding its content typ
   assert.equal(calls[0].init.headers.get('X-CSRF-TOKEN'), 'csrf')
 })
 
-test('material extraction uses the protected multipart endpoint and returns its preview without AI creation', async () => {
+test('material extraction queues a protected multipart job and polls its result without AI creation', async () => {
   const calls = []
   const material = { format: 'txt', name: 'Отчёт.txt', text: 'Выручка: 42 млн', characters: 14, pages: null, warnings: [] }
   globalThis.fetch = async (url, init) => {
     if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
-    calls.push({ url, init }); return json(material)
+    calls.push({ url, init })
+    return json(init.method === 'POST'
+      ? { id: 'material/id', status: 'queued', result: null, error: null }
+      : { id: 'material/id', status: 'succeeded', result: material, error: null }, init.method === 'POST' ? 202 : 200)
   }
   const controller = new AbortController()
   assert.deepEqual(await generationApi.extractMaterial(new File(['Выручка: 42 млн'], 'Отчёт.txt', { type: 'text/plain' }), controller.signal), material)
-  assert.equal(calls.length, 1)
+  assert.equal(calls.length, 2)
   assert.equal(calls[0].url, '/api/generation/v1/materials/extract')
   assert.equal(calls[0].init.body.get('file').name, 'Отчёт.txt')
   assert.equal(calls[0].init.headers.has('Content-Type'), false)
   assert.equal(calls[0].init.headers.get('X-CSRF-TOKEN'), 'csrf')
   assert.equal(calls[0].init.credentials, 'same-origin')
   assert.equal(calls[0].init.cache, 'no-store')
+  assert.equal(calls[1].url, '/api/generation/v1/materials/material%2Fid')
+  assert.equal(calls[1].init.method, 'GET')
+  assert.equal(calls[1].init.credentials, 'same-origin')
+  assert.equal(calls[1].init.cache, 'no-store')
 })
 
 test('source/context are included in create and preview; retries keep the supplied idempotency key', async () => {
@@ -186,6 +193,39 @@ test('source/context are included in create and preview; retries keep the suppli
   assert.equal(calls[1].init.headers.get('Idempotency-Key'), 'unchanged-request-key')
   assert.deepEqual(JSON.parse(calls[0].init.body), input)
   assert.deepEqual(JSON.parse(calls[2].init.body), { template_id: 'opal', topic: 'Сделай обзор', model: 'chosen', ...context })
+})
+
+test('processing can resume by opaque id without reuploading or reading CSRF', async () => {
+  const calls = []
+  const material = { format: 'txt', name: 'notes.txt', text: 'Facts', characters: 5, pages: null, warnings: [] }
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init })
+    return json({ id: 'job/id', status: calls.length === 1 ? 'running' : 'succeeded', result: calls.length === 1 ? null : material, error: null })
+  }
+  assert.deepEqual(await generationApi.resumeMaterial('job/id'), material)
+  assert.equal(calls.length, 2)
+  assert.ok(calls.every(({ url, init }) => url === '/api/generation/v1/materials/job%2Fid' && init.method === 'GET' && init.cache === 'no-store'))
+})
+
+test('worker failures in a successful job-status response remain public typed errors', async () => {
+  globalThis.fetch = async () => json({ id: 'job', status: 'failed', result: null, error: { code: 'source_encoding', message: 'Сохраните TXT в UTF-8.' } })
+  await assert.rejects(generationApi.resumeMaterial('job'), error => error instanceof GenerationApiError && error.code === 'source_encoding' && /UTF-8/.test(error.message))
+  globalThis.fetch = async () => json({ id: 'job', status: 'succeeded', result: { text: 'bad' }, error: null })
+  await assert.rejects(generationApi.resumeMaterial('job'), /Не удалось прочитать материалы/)
+})
+
+test('cancelling after acceptance stops polling without creating another job', async () => {
+  const controller = new AbortController()
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    calls.push({ url, init })
+    return json({ id: 'job', status: 'queued', result: null, error: null }, 202)
+  }
+  await assert.rejects(generationApi.extractMaterial(new File(['Facts'], 'notes.txt'), controller.signal,
+    () => setTimeout(() => controller.abort(), 10)), error => error.name === 'AbortError')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].init.method, 'POST')
 })
 
 test('material validation errors preserve their public code and malformed previews are rejected', async () => {
@@ -229,66 +269,52 @@ test('material cancellation reaches the transport and does not become a recovera
   await assert.rejects(pending, error => error.name === 'AbortError')
 })
 
-test('outline read/save/confirm/cancel use protected endpoints and independent outline revisions', async () => {
+test('first publication sends base version zero through the existing draft and commit endpoints', async () => {
   const calls = []
   let csrfReads = 0
   globalThis.fetch = async (url, init) => {
     if (url === '/api/auth/csrf') return json({ ok: true, data: { token: `csrf-${++csrfReads}`, headerName: 'X-CSRF-TOKEN' } })
     calls.push({ url, init })
-    return json({ id: 'deck/id', revision: 7, slides: [] })
+    return json({ id: 'deck/id', version: 1 })
   }
-  const plan = { revision: 7, slides: [{ source_slide_number: 9, include: true, title: 'Выводы' }, { source_slide_number: 1, include: false, title: null }] }
-  await generationApi.outline('deck/id')
-  await generationApi.saveOutline('deck/id', plan)
-  await generationApi.confirmOutline('deck/id', 8)
+  const plan = { base_version: 0, draft_revision: 7, title: 'Черновик', slides: [] }
+  await generationApi.saveEditorDraft('deck/id', plan)
+  await generationApi.commitEditor('deck/id', 0, 8)
   await generationApi.cancel('deck/id')
   assert.equal(csrfReads, 3)
-  assert.equal(calls[0].url, '/api/generation/v1/presentations/deck%2Fid/outline')
-  assert.equal(calls[0].init.method, 'GET')
+  assert.equal(calls[0].url, '/api/generation/v1/presentations/deck%2Fid/editor/draft')
+  assert.equal(calls[0].init.method, 'PUT')
   assert.equal(calls[0].init.cache, 'no-store')
-  assert.equal(calls[1].init.method, 'PUT')
-  assert.deepEqual(JSON.parse(calls[1].init.body), plan)
-  assert.equal(calls[2].url, '/api/generation/v1/presentations/deck%2Fid/outline/confirm')
-  assert.deepEqual(JSON.parse(calls[2].init.body), { revision: 8 })
-  assert.equal(calls[2].init.headers.get('X-CSRF-TOKEN'), 'csrf-2')
-  assert.equal(calls[3].url, '/api/generation/v1/presentations/deck%2Fid/cancel')
+  assert.deepEqual(JSON.parse(calls[0].init.body), plan)
+  assert.equal(calls[1].url, '/api/generation/v1/presentations/deck%2Fid/editor/commit')
+  assert.deepEqual(JSON.parse(calls[1].init.body), { base_version: 0, draft_revision: 8 })
+  assert.equal(calls[1].init.headers.get('X-CSRF-TOKEN'), 'csrf-2')
+  assert.equal(calls[2].url, '/api/generation/v1/presentations/deck%2Fid/cancel')
 })
 
-test('outline revision conflicts remain typed errors and review mode is an explicit create option', async () => {
+test('draft conflicts remain typed errors and creation has no separate review mode', async () => {
   const mutations = []
   globalThis.fetch = async (url, init) => {
     if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
     mutations.push({ url, init })
-    if (init.method === 'PUT') return json({ error: { code: 'outline_conflict', message: 'Структура уже изменена.' } }, 409)
+    if (init.method === 'PUT') return json({ error: { code: 'edit_expired', message: 'Черновик уже изменён.' } }, 409)
     return json({ id: 'created', status: 'queued' })
   }
-  await assert.rejects(generationApi.saveOutline('id', { revision: 4, slides: [] }), error => error.status === 409 && error.code === 'outline_conflict')
-  await generationApi.create({ template_id: 'opal', topic: 'Результаты', mode: 'openai', review_before_render: true }, 'review-key')
+  await assert.rejects(generationApi.saveEditorDraft('id', { base_version: 0, draft_revision: 4, title: 'Title', slides: [] }), error => error.status === 409 && error.code === 'edit_expired')
+  await generationApi.create({ template_id: 'opal', topic: 'Результаты', mode: 'openai' }, 'review-key')
   await generationApi.create({ template_id: 'opal', topic: 'Вставленный ответ', mode: 'manual' }, 'manual-key')
-  assert.equal(JSON.parse(mutations[1].init.body).review_before_render, true)
+  assert.equal(Object.hasOwn(JSON.parse(mutations[1].init.body), 'review_before_render'), false)
   assert.equal(Object.hasOwn(JSON.parse(mutations[2].init.body), 'review_before_render'), false)
 })
 
-test('an unreadable accepted confirmation preserves its 202 status for safe same-revision retry', async () => {
+test('an unreadable publication response preserves its status instead of reporting success', async () => {
   globalThis.fetch = async (url) => url === '/api/auth/csrf'
     ? json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
     : new Response('{incomplete accepted response', { status: 202, headers: { 'Content-Type': 'application/json' } })
-  await assert.rejects(generationApi.confirmOutline('id', 7), error => {
+  await assert.rejects(generationApi.commitEditor('id', 0, 7), error => {
     assert.ok(error instanceof GenerationApiError)
     assert.equal(error.status, 202)
     assert.match(error.message, /Не удалось прочитать ответ/)
     return true
   })
-})
-
-test('a retained presentation status is fetched privately without creating a new backend route', async () => {
-  const calls = []
-  globalThis.fetch = async (url, init) => { calls.push({ url, init }); return json({ id: 'deck/id', status: 'succeeded' }) }
-  const result = await generationApi.presentation('deck/id')
-  assert.equal(result.status, 'succeeded')
-  assert.equal(calls.length, 1)
-  assert.equal(calls[0].url, '/api/generation/v1/presentations/deck%2Fid')
-  assert.equal(calls[0].init.method, 'GET')
-  assert.equal(calls[0].init.credentials, 'same-origin')
-  assert.equal(calls[0].init.cache, 'no-store')
 })

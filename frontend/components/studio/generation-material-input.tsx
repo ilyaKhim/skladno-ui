@@ -3,7 +3,8 @@
 import { useEffect, useRef, type Dispatch, type DragEvent } from 'react'
 import { FileText, LoaderCircle, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { generationApi, isAuthenticationError } from '@/lib/generation-client'
+import { generationApi, GenerationApiError, isAuthenticationError } from '@/lib/generation-client'
+import type { ExtractedMaterial } from '@/lib/generation-types'
 import {
   MATERIAL_MAX_CHARACTERS,
   materialRequiresAcknowledgement,
@@ -21,24 +22,70 @@ type Props = {
   onAuthenticationError: () => void
 }
 
+const PENDING_JOB = 'godeck.material.pending-job'
+function rememberJob(id?: string) {
+  try {
+    if (id) sessionStorage.setItem(PENDING_JOB, id)
+    else sessionStorage.removeItem(PENDING_JOB)
+  } catch { /* Upload still works when browser storage is unavailable. */ }
+}
+
+export function clearPendingMaterial() { rememberJob() }
+
 export function GenerationMaterialInput({ state, dispatch, disabled, onAuthenticationError }: Props) {
   const activeRequest = useRef<AbortController | null>(null)
 
-  useEffect(() => () => {
-    activeRequest.current?.abort()
-    activeRequest.current = null
+  useEffect(() => {
+    // Store only the opaque job id, never uploaded bytes or extracted text. Ownership is checked by API.
+    let id: string | null = null
+    try { id = sessionStorage.getItem(PENDING_JOB) } catch { /* Optional recovery. */ }
+    if (id && /^[0-9a-f-]{36}$/i.test(id)) {
+      const controller = new AbortController()
+      const requestId = crypto.randomUUID()
+      activeRequest.current = controller
+      dispatch({ type: 'start', requestId, name: 'Документ' })
+      void receive(generationApi.resumeMaterial(id, controller.signal), requestId, controller)
+    }
+    return () => {
+      activeRequest.current?.abort()
+      activeRequest.current = null
+    }
+    // Recovery belongs to this mounted upload view, not subsequent edits of its preview.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function remove() {
     activeRequest.current?.abort()
     activeRequest.current = null
+    rememberJob()
     dispatch({ type: 'clear' })
+  }
+
+  async function receive(pending: Promise<ExtractedMaterial>, requestId: string, controller: AbortController) {
+    try {
+      const material = await pending
+      if (activeRequest.current !== controller || controller.signal.aborted) return
+      rememberJob()
+      const textError = materialTextError(material.text)
+      if (textError) throw new Error(textError)
+      dispatch({ type: 'loaded', requestId, material })
+    } catch (cause) {
+      if (activeRequest.current !== controller || controller.signal.aborted) return
+      // A transport failure does not mean the durable job failed: keep its id for reload recovery.
+      if (cause instanceof GenerationApiError && (cause.code || isAuthenticationError(cause))) rememberJob()
+      if (isAuthenticationError(cause)) onAuthenticationError()
+      dispatch({ type: 'failed', requestId,
+        message: cause instanceof Error ? cause.message : 'Не удалось прочитать документ. Повторите загрузку.' })
+    } finally {
+      if (activeRequest.current === controller) activeRequest.current = null
+    }
   }
 
   async function selectFiles(files: FileList | File[]) {
     if (disabled || files.length === 0) return
     activeRequest.current?.abort()
     activeRequest.current = null
+    rememberJob()
     const file = files[0]
     const requestId = crypto.randomUUID()
     dispatch({ type: 'start', requestId, name: file.name })
@@ -51,22 +98,9 @@ export function GenerationMaterialInput({ state, dispatch, disabled, onAuthentic
     }
     const controller = new AbortController()
     activeRequest.current = controller
-    try {
-      const material = await generationApi.extractMaterial(file, controller.signal)
-      if (activeRequest.current !== controller || controller.signal.aborted) return
-      const textError = materialTextError(material.text)
-      if (textError) throw new Error(textError)
-      dispatch({ type: 'loaded', requestId, material })
-    } catch (cause) {
-      if (activeRequest.current !== controller || controller.signal.aborted) return
-      if (isAuthenticationError(cause)) onAuthenticationError()
-      dispatch({
-        type: 'failed', requestId,
-        message: cause instanceof Error ? cause.message : 'Не удалось прочитать документ. Повторите загрузку.',
-      })
-    } finally {
-      if (activeRequest.current === controller) activeRequest.current = null
-    }
+    await receive(generationApi.extractMaterial(file, controller.signal, (id) => {
+      if (activeRequest.current === controller && !controller.signal.aborted) rememberJob(id)
+    }), requestId, controller)
   }
 
   function drop(event: DragEvent<HTMLDivElement>) {
@@ -171,8 +205,9 @@ export function GenerationMaterialInput({ state, dispatch, disabled, onAuthentic
               </p>
               {textError && <p id="material-text-error" role="alert" className="mt-1 text-sm text-destructive">{textError}</p>}
               <p id="material-privacy" className="mt-2 text-sm leading-6 text-muted-foreground">
-                При создании презентации этот текст будет отправлен AI-провайдеру. Оригинал файла не сохраняется.
-                Текст материалов хранится до 30 дней после завершения задачи.
+                Файл временно хранится для обработки. При создании презентации этот текст будет отправлен
+                AI-провайдеру и сохранён в вашей истории AI-вызовов без автоматического удаления через 30 дней.
+                Срок 30 дней относится только к отдельной копии контекста завершённой задачи.
               </p>
             </>
           )}

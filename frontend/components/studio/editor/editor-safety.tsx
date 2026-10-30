@@ -27,7 +27,7 @@ export function EditorSafety({ error, candidate, canRestore, storageError, busy,
       {error && (
         <div role="alert" aria-label="Ошибка редактора" className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-card px-4 py-3 text-sm">
           <p className="min-w-0 flex-1 basis-64 text-foreground">
-            <span className="font-medium">{error.conflict ? 'Конфликт версий. ' : 'Действие не выполнено. '}</span>
+            <span className="font-medium">{error.conflict ? 'Конфликт версий. ' : error.operation === 'export' ? 'Проверьте результат публикации. ' : 'Действие не выполнено. '}</span>
             {error.message}
           </p>
           <div className="flex flex-wrap gap-2">

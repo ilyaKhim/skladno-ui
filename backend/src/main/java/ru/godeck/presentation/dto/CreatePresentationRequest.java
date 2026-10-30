@@ -18,5 +18,4 @@ public record CreatePresentationRequest(
         String model,
         @Size(max = MaterialPolicy.MAX_CONTEXT_CHARACTERS) String goal,
         @Size(max = MaterialPolicy.MAX_CONTEXT_CHARACTERS) String audience,
-        SourceMaterial source,
-        Boolean reviewBeforeRender) {}
+        SourceMaterial source) {}

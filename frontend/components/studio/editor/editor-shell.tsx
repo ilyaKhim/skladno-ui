@@ -53,17 +53,18 @@ function isEditableTarget(target: EventTarget | null) {
 type EditorShellProps = {
   initialDeck: Deck
   onSave?: (deck: Deck) => Promise<void>
-  onExport?: () => Promise<void>
+  onExport?: (saveDraft: () => Promise<boolean>) => Promise<void>
   onUploadImage?: (file: File) => Promise<EditorAsset>
   contentOnly?: boolean
   ownerId?: string
   getVersion?: () => EditorVersion
   operationError?: EditorOperationError | null
   onReloadServer?: () => Promise<void>
+  publicationPending?: boolean
 }
 
 export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, contentOnly = false,
-  ownerId, getVersion, operationError, onReloadServer }: EditorShellProps) {
+  ownerId, getVersion, operationError, onReloadServer, publicationPending = false }: EditorShellProps) {
   const recovery = useEditorRecovery(initialDeck, ownerId, getVersion)
   const editor = useEditorState(initialDeck, onSave, { onChange: recovery.backup, onSaved: recovery.clear })
   const { deck } = editor
@@ -110,8 +111,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     busy.current = true
     setProcessing('export')
     try {
-      if (!(await editor.saveNow())) throw new Error('Не удалось сохранить изменения перед экспортом.')
-      await onExport?.()
+      await onExport?.(editor.saveNow)
     } finally {
       busy.current = false
       setProcessing(null)
@@ -251,7 +251,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   const removeElement = () => image ? removeImage() : removeBlock()
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.defaultPrevented || busy.current) return
+    if (event.defaultPrevented || busy.current || publicationPending) return
     const mod = event.metaKey || event.ctrlKey
     const key = event.key.toLowerCase()
 
@@ -312,7 +312,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   })
 
   const onPaste = useEffectEvent((event: ClipboardEvent) => {
-    if (busy.current) return
+    if (busy.current || publicationPending) return
     if (isEditableTarget(event.target) || !event.clipboardData) return
     const pastedImage = [...event.clipboardData.items]
       .find((item) => item.kind === 'file' && ['image/png', 'image/jpeg'].includes(item.type))
@@ -365,14 +365,14 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <div inert={processing !== null}>
+      <div inert={processing !== null || publicationPending}>
         <EditorToolbar
           title={deck.title}
           slideCount={deck.slides.length}
           hiddenCount={hiddenCount}
           saveStatus={editor.saveStatus}
-          canUndo={editor.canUndo}
-          canRedo={editor.canRedo}
+          canUndo={editor.canUndo && !publicationPending}
+          canRedo={editor.canRedo && !publicationPending}
           panelToggleVisible={!isWide}
           panelOpen={panelOpen}
           onRename={editor.renameDeck}
@@ -387,11 +387,12 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
           onBack={() => void leaveEditor()}
           onTogglePanel={() => setPanelOpen((open) => !open)}
           titleEditable={!contentOnly}
+          firstPublication={Boolean(onExport) && (getVersion?.().base ?? initialDeck.baseVersion) === 0}
         />
       </div>
       <EditorSafety
         error={operationError}
-        candidate={recovery.candidate}
+        candidate={publicationPending ? null : recovery.candidate}
         canRestore={Boolean(recovery.candidate && restoreRecovery(recovery.candidate.copy,
           { ...initialDeck, baseVersion: getVersion?.().base ?? initialDeck.baseVersion }))}
         storageError={recovery.storageError}
@@ -414,7 +415,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
         {processing === 'leave' ? 'Сохраняем изменения перед выходом…' : processing === 'reload' ? 'Загружаем серверную версию…' : 'Подготавливаем PowerPoint…'}
       </p>}
 
-      <div inert={processing !== null} className="flex min-h-0 flex-1 flex-col-reverse md:flex-row">
+      <div inert={processing !== null || publicationPending} className="flex min-h-0 flex-1 flex-col-reverse md:flex-row">
         <SlideRail
           slides={deck.slides}
           selectedSlideId={slide.id}

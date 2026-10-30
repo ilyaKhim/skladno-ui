@@ -27,6 +27,7 @@ interface EditorToolbarProps {
   onExport?: () => Promise<void>
   onTogglePanel: () => void
   titleEditable?: boolean
+  firstPublication?: boolean
   onBack?: () => void
 }
 
@@ -50,6 +51,7 @@ export function EditorToolbar({
   onExport,
   onTogglePanel,
   titleEditable = true,
+  firstPublication = false,
   onBack,
 }: EditorToolbarProps) {
   const imageInput = useRef<HTMLInputElement>(null)
@@ -153,7 +155,7 @@ export function EditorToolbar({
             <PanelRight />
           </Button>
         )}
-        <ExportMenu title={title} hiddenCount={hiddenCount} onExport={onExport} />
+        <ExportMenu title={title} hiddenCount={hiddenCount} onExport={onExport} firstPublication={firstPublication} />
       </div>
     </header>
   )
@@ -205,13 +207,16 @@ function ExportMenu({
   title,
   hiddenCount,
   onExport,
+  firstPublication,
 }: {
   title: string
   hiddenCount: number
   onExport?: () => Promise<void>
+  firstPublication: boolean
 }) {
   const [format, setFormat] = useState<ExportFormat>('pdf')
   const [includeHidden, setIncludeHidden] = useState(false)
+  const [open, setOpen] = useState(false)
   const [phase, setPhase] = useState<'idle' | 'preparing' | 'ready'>('idle')
   const timer = useRef<number | undefined>(undefined)
 
@@ -222,7 +227,10 @@ function ExportMenu({
       setPhase('preparing')
       void onExport()
         .then(() => setPhase('ready'))
-        .catch(() => setPhase('idle'))
+        .catch(() => {
+          setPhase('idle')
+          setOpen(false)
+        })
       return
     }
     setPhase('preparing')
@@ -233,14 +241,18 @@ function ExportMenu({
   const extension = format === 'png' ? 'zip' : format
 
   return (
-    <Popover onOpenChange={(open) => !open && setPhase('idle')}>
-      <PopoverTrigger render={<Button size="sm" className="ml-1 hover:bg-primary-hover" />}>
+    <Popover open={open} onOpenChange={(nextOpen) => {
+      setOpen(nextOpen)
+      if (!nextOpen) setPhase('idle')
+    }}>
+      <PopoverTrigger render={<Button size="sm" aria-label="Экспорт" className="ml-1 hover:bg-primary-hover" />}>
         <Download />
         <span className="hidden sm:inline">Экспорт</span>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-3">
         <div className="flex flex-col gap-3">
-          <p className="text-xs font-medium text-foreground">Экспорт презентации</p>
+          <p className="text-sm font-medium text-foreground">{firstPublication ? 'Публикация первой версии' : 'Экспорт презентации'}</p>
+          {firstPublication && <p className="text-sm leading-6 text-muted-foreground">Сейчас это черновик. Создайте первую версию, чтобы подтвердить презентацию и скачать PowerPoint.</p>}
           {!onExport && <div role="radiogroup" aria-label="Формат" className="flex flex-col gap-1">
             {EXPORT_FORMATS.map((option) => {
               const checked = option.value === format
@@ -287,7 +299,7 @@ function ExportMenu({
 
           <Button onClick={startExport} disabled={phase === 'preparing'} className="w-full hover:bg-primary-hover">
             {phase === 'preparing' ? <LoaderCircle className="animate-spin" /> : <Download />}
-            {phase === 'preparing' ? 'Подготовка файла…' : 'Экспортировать'}
+            {phase === 'preparing' ? 'Подготовка файла…' : firstPublication ? 'Создать первую версию' : 'Экспортировать'}
           </Button>
 
           <p role="status" aria-live="polite" className="text-xs leading-relaxed text-muted-foreground">

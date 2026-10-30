@@ -7,11 +7,10 @@ import type {
   ExtractedMaterial,
   GenerationContext,
   ModelOption,
+  MaterialJob,
   PresentationJob,
-  PresentationOutline,
   Revision,
   SaveEditorDraft,
-  SavePresentationOutline,
   Template,
   TemplateContext,
 } from './generation-types'
@@ -136,37 +135,62 @@ const segment = encodeURIComponent
 const presentationPath = (id: string) => `/v1/presentations/${segment(id)}`
 const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) })
 
+const MATERIAL_TIMEOUT = 'Не удалось обработать документ вовремя. Повторите загрузку или выберите файл меньшего размера.'
+
+/** Wait for the durable worker job, not an open upload request. Cancellation only stops this view. */
+async function waitForMaterial(initial: MaterialJob, signal?: AbortSignal): Promise<ExtractedMaterial> {
+  const deadline = signalWithTimeout(signal, 60_000)
+  let job = initial
+  try {
+    for (;;) {
+      deadline.throwIfAborted()
+      if (!job || typeof job.id !== 'string' || !job.id || !['queued', 'running', 'succeeded', 'failed'].includes(job.status))
+        throw new GenerationApiError('Не удалось прочитать материалы. Повторите загрузку документа.')
+      if (job.status === 'failed') {
+        if (!job.error || typeof job.error.code !== 'string' || typeof job.error.message !== 'string')
+          throw new GenerationApiError('Не удалось прочитать материалы. Повторите загрузку документа.')
+        throw new GenerationApiError(job.error.message, undefined, job.error.code)
+      }
+      if (job.status === 'succeeded') {
+        if (!isExtractedMaterial(job.result))
+          throw new GenerationApiError('Не удалось прочитать материалы. Повторите загрузку документа.')
+        return job.result
+      }
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => { clearTimeout(timer); deadline.removeEventListener('abort', abort); reject(deadline.reason) }
+        const timer = setTimeout(() => { deadline.removeEventListener('abort', abort); resolve() }, 500)
+        deadline.addEventListener('abort', abort, { once: true })
+        if (deadline.aborted) abort()
+      })
+      job = await request<MaterialJob>(`/v1/materials/${segment(job.id)}`, { signal: deadline }, REQUEST_TIMEOUT_MS, MATERIAL_TIMEOUT)
+    }
+  } catch (cause) {
+    if (!signal?.aborted && deadline.aborted) throw new GenerationApiError(MATERIAL_TIMEOUT)
+    throw cause
+  }
+}
+
 export const generationApi = {
   health: () => request<{ openai_enabled: boolean }>('/health/ready'),
   templates: () => request<{ items: Template[] }>('/v1/templates'),
   models: () => request<{ items: ModelOption[]; default_model: string }>('/v1/models'),
   presentations: () => request<{ items: PresentationJob[] }>('/v1/presentations?limit=20&offset=0'),
-  presentation: (id: string) => request<PresentationJob>(presentationPath(id)),
-  outline: (id: string, signal?: AbortSignal) =>
-    request<PresentationOutline>(`${presentationPath(id)}/outline`, { signal }),
-  saveOutline: (id: string, outline: SavePresentationOutline, signal?: AbortSignal) =>
-    request<PresentationOutline>(`${presentationPath(id)}/outline`, {
-      method: 'PUT', body: JSON.stringify(outline), signal,
-    }),
-  confirmOutline: (id: string, revision: number, signal?: AbortSignal) =>
-    request<PresentationJob>(`${presentationPath(id)}/outline/confirm`, {
-      ...post({ revision }), signal,
-    }),
   cancel: (id: string, signal?: AbortSignal) =>
     request<PresentationJob>(`${presentationPath(id)}/cancel`, { ...post({}), signal }),
-  extractMaterial: async (file: File, signal?: AbortSignal) => {
+  extractMaterial: async (file: File, signal?: AbortSignal, onQueued?: (id: string) => void) => {
     const form = new FormData()
     form.append('file', file)
-    const material = await request<ExtractedMaterial>(
+    const job = await request<MaterialJob>(
       '/v1/materials/extract',
       { method: 'POST', body: form, signal },
       30_000,
-      'Не удалось обработать документ вовремя. Повторите загрузку или выберите файл меньшего размера.',
+      MATERIAL_TIMEOUT,
     )
-    if (!isExtractedMaterial(material))
-      throw new GenerationApiError('Не удалось прочитать материалы. Повторите загрузку документа.')
-    return material
+    if (job && typeof job.id === 'string' && job.id && !signal?.aborted) onQueued?.(job.id)
+    return waitForMaterial(job, signal)
   },
+  resumeMaterial: async (id: string, signal?: AbortSignal) =>
+    waitForMaterial(await request<MaterialJob>(`/v1/materials/${segment(id)}`, { signal }), signal),
   editor: (id: string, signal?: AbortSignal) =>
     request<EditorDeck>(`${presentationPath(id)}/editor`, { signal }),
   uploadEditorImage: (id: string, file: File) => {

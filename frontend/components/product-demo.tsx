@@ -561,7 +561,7 @@ function StructureScreen({
       onSelect={onSelect}
       ariaLabel="Показать этап «Структура» целиком"
       title="Проверь структуру"
-      description="GoDeck предложит состав слайдов. Проверь заголовки, измени порядок и исключи лишнее перед сборкой PowerPoint."
+      description="GoDeck подготовит черновик. Проверь текст, измени порядок и скрой лишние слайды в редакторе перед первой публикацией."
     >
       <div className="flex flex-1 flex-col justify-center gap-2">
         {order.map((id, index) => (

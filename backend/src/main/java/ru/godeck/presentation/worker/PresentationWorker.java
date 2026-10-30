@@ -16,16 +16,13 @@ import ru.godeck.presentation.model.AiCallContext;
 import ru.godeck.presentation.model.AiOperation;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.model.PresentationContent;
-import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.service.PresentationTransactions;
-import ru.godeck.presentation.storage.PresentationFiles;
 import ru.godeck.presentation.template.PresentationTemplateService;
 
-import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Single-process queue consumer that turns queued semantic jobs into published PPTX revisions.
+ * Queue consumer that prepares unpublished content for the existing editor.
  *
  * <p>The database supplies the durable queue and row locking; {@link #processOne()} merely polls
  * for one claim. An in-memory guard prevents overlapping scheduled invocations in this JVM, while
@@ -44,7 +41,6 @@ public class PresentationWorker {
     private final PresentationTemplateService templates;
     private final PresentationContentGenerator generator;
     private final PresentationContentCodec codec;
-    private final PresentationFiles files;
     private final PresentationModelCatalog models;
     private final GenerationInputCodec inputs;
     private final AtomicBoolean working = new AtomicBoolean();
@@ -54,14 +50,12 @@ public class PresentationWorker {
             PresentationTemplateService templates,
             PresentationContentGenerator generator,
             PresentationContentCodec codec,
-            PresentationFiles files,
             PresentationModelCatalog models,
             GenerationInputCodec inputs) {
         this.transactions = transactions;
         this.templates = templates;
         this.generator = generator;
         this.codec = codec;
-        this.files = files;
         this.models = models;
         this.inputs = inputs;
     }
@@ -84,12 +78,8 @@ public class PresentationWorker {
         }
     }
 
-    /**
-     * Generates or decodes content, validates it, renders the initial file, and publishes success.
-     * Any failure removes an unpublished file and records a stable terminal error code.
-     */
+    /** Generates or decodes once and saves a draft. Only an explicit editor commit renders PPTX. */
     private void process(PresentationTransactions.Job claimed) {
-        Path output = null;
         try {
             var job =
                     new PresentationTransactions.Job(
@@ -101,29 +91,12 @@ public class PresentationWorker {
                                     ? claimed.model()
                                     : models.resolve(claimed.model()),
                             claimed.contentJson(),
-                            claimed.generationInputJson(),
-                            claimed.reviewBeforeRender(),
-                            claimed.outlineRevision(),
-                            claimed.outlineConfirmedRevision());
+                            claimed.generationInputJson());
             PresentationContent content =
-                    job.mode() == GenerationMode.MANUAL || job.renderConfirmedOutline()
-                            ? codec.decode(job.contentJson())
-                            : generate(job);
+                    job.contentJson() != null ? codec.decode(job.contentJson()) : generate(job);
             content = templates.normalize(job.templateId(), content);
-            if (job.reviewBeforeRender() && !job.renderConfirmedOutline()) {
-                transactions.awaitReview(job, codec.encode(content));
-                return;
-            }
-            output =
-                    files.write(
-                            job.id(),
-                            PresentationPolicy.INITIAL_VERSION,
-                            job.templateId(),
-                            content);
-            transactions.complete(
-                    job, codec.encode(content), output.toString(), content.slideCount());
+            transactions.prepareDraft(job, codec.encode(content));
         } catch (Exception error) {
-            files.discard(output);
             String code = failureCode(error);
             transactions.fail(claimed, code);
             log.warn(GENERATION_FAILURE_LOG, claimed.id(), error.getClass().getSimpleName());

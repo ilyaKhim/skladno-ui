@@ -38,6 +38,19 @@ export default defineConfig({
   ],
   webServer: [
     {
+      name: 'Documents',
+      command: 'bash scripts/document-worker.sh --no-build',
+      wait: { stdout: /Document worker ready/ },
+      reuseExistingServer: false,
+      timeout: 30_000,
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
+      env: {
+        DATABASE_URL: `jdbc:postgresql://${database.host}${database.pathname}?currentSchema=${process.env.E2E_SCHEMA}`,
+        DATABASE_USER: decodeURIComponent(database.username),
+        DATABASE_PASSWORD: decodeURIComponent(database.password),
+      },
+    },
+    {
       name: 'API',
       command: process.env.E2E_JAVA_DEBUG === '1'
         ? 'bash scripts/backend-dev.sh -Dspring-boot.run.jvmArguments=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:15005'

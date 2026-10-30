@@ -119,8 +119,7 @@ public class GenerationController {
                                 input.model(),
                                 input.goal(),
                                 input.audience(),
-                                input.source(),
-                                Boolean.TRUE.equals(input.reviewBeforeRender())));
+                                input.source()));
     }
 
     /** Returns one current presentation aggregate for status polling and navigation. */
@@ -153,7 +152,7 @@ public class GenerationController {
         return Map.of("items", service.versions(user(auth), id));
     }
 
-    /** Returns no-store, redacted AI call diagnostics for support and observability. */
+    /** Returns no-store AI call history visible only to the presentation owner. */
     @GetMapping("/v1/presentations/{id}/ai-calls")
     public ResponseEntity<Map<String, List<PresentationAiCallView>>> aiCalls(
             @PathVariable UUID id, Authentication auth) {

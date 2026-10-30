@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
-import ru.godeck.common.security.Hashing;
 import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.model.AiCallContext;
@@ -25,7 +24,7 @@ import java.util.UUID;
 /**
  * Audited boundary around the OpenAI Responses API for presentation content generation.
  *
- * <p>The service uses the same request factory for preview and execution, records a redacted
+ * <p>The service uses the same request factory for preview and execution, records the actual
  * request before making a paid call, converts provider output into the semantic document model, and
  * records the response/error best-effort afterward. Template validation remains outside this class
  * because provider parsing and template business rules are separate concerns.
@@ -108,7 +107,7 @@ public class PresentationContentGenerator {
         return generate(context, topic, fields, slides, model, null);
     }
 
-    /** Source-backed calls retain operational metadata, not a second copy of confidential input. */
+    /** Stores actual payloads in the owner's call history, masking only the configured API key. */
     public PresentationContent generate(
             AiCallContext context,
             String topic,
@@ -120,23 +119,7 @@ public class PresentationContentGenerator {
         String request =
                 json.writeValueAsString(requests.create(topic, fields, slides, model, input));
         // Persist before a paid call. If the DB is unavailable, do not send an untracked request.
-        boolean privateInput = input != null;
-        String auditRequest =
-                privateInput
-                        ? json.writeValueAsString(
-                                Map.of(
-                                        "redacted",
-                                        true,
-                                        "request_sha256",
-                                        Hashing.sha256(request),
-                                        "source_present",
-                                        input.source() != null,
-                                        "source_characters",
-                                        input.source() == null
-                                                ? 0
-                                                : input.source().text().length()))
-                        : redactKey(request);
-        UUID callId = history.start(context, model, auditRequest);
+        UUID callId = history.start(context, model, redactKey(request));
         String responseBody = null;
         Integer httpStatus = null;
         GenerationError error = GenerationError.GENERATION_FAILED;
@@ -164,22 +147,11 @@ public class PresentationContentGenerator {
         } catch (Exception failure) {
             throw new AiGenerationException(error, failure);
         } finally {
-            recordResponse(
-                    callId,
-                    privateInput
-                            ? json.writeValueAsString(
-                                    Map.of(
-                                            "redacted",
-                                            true,
-                                            "response_received",
-                                            responseBody != null))
-                            : responseBody,
-                    httpStatus,
-                    error);
+            recordResponse(callId, responseBody, httpStatus, error);
         }
     }
 
-    /** Records redacted response diagnostics without replacing the primary operation's outcome. */
+    /** Records the provider response without replacing the primary operation's outcome. */
     private void recordResponse(
             UUID callId, String body, Integer httpStatus, GenerationError error) {
         try {

@@ -30,8 +30,8 @@ public interface PresentationRepository extends JpaRepository<Presentation, UUID
      */
     @Query(
             "select p from Presentation p where p.userId=:userId order by case when"
-                + " p.status=ru.godeck.presentation.model.PresentationStatus.AWAITING_REVIEW then 0"
-                + " else 1 end")
+                    + " p.status=ru.godeck.presentation.model.PresentationStatus.DRAFT then 0"
+                    + " else 1 end")
     List<Presentation> findByUserId(UUID userId, Pageable pageable);
 
     long countByUserId(UUID userId);
@@ -44,14 +44,6 @@ public interface PresentationRepository extends JpaRepository<Presentation, UUID
     @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "0"))
     @Query("select p from Presentation p where p.id=:id and p.userId=:userId")
     Optional<Presentation> findForUpdate(UUID id, UUID userId);
-
-    /**
-     * Short outline transactions wait for each other, allowing concurrent confirm retries to be
-     * idempotent.
-     */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select p from Presentation p where p.id=:id and p.userId=:userId")
-    Optional<Presentation> findOutlineForUpdate(UUID id, UUID userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Presentation p where p.id=:id")
@@ -87,9 +79,9 @@ public interface PresentationRepository extends JpaRepository<Presentation, UUID
                     INSERT INTO generated_presentations
                         (id, user_id, template_id, topic, status, mode,
                          idempotency_key, request_hash, model, created_at, updated_at, current_version,
-                         generation_input_json, review_before_render)
+                         generation_input_json)
                     VALUES (:id, :userId, :templateId, :topic, :status, :mode,
-                            :key, :hash, :model, :now, :now, :initialVersion, :generationInputJson, :reviewBeforeRender)
+                            :key, :hash, :model, :now, :now, :initialVersion, :generationInputJson)
                     ON CONFLICT (user_id, idempotency_key) DO NOTHING
                     """,
             nativeQuery = true)
@@ -105,8 +97,7 @@ public interface PresentationRepository extends JpaRepository<Presentation, UUID
             String model,
             Instant now,
             int initialVersion,
-            String generationInputJson,
-            boolean reviewBeforeRender);
+            String generationInputJson);
 
     /**
      * Deletes only source/context snapshots of terminal jobs; queued/running jobs retain their
