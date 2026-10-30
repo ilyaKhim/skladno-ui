@@ -101,12 +101,15 @@ for (const format of ['pdf', 'docx', 'txt'] satisfies MaterialFormat[]) {
 
 test('PDF с нераспознанной страницей требует подтверждения, удаление снимает ограничение', async ({ page }) => {
   await page.goto('/studio')
+  // SSR inputs can be filled before hydration; wait for the real client-loaded catalog.
+  await expect(page.getByLabel('Модель AI', { exact: true })).toBeEnabled()
   await page.getByLabel('О чём презентация?', { exact: true }).fill('Prepare a report from the document')
   const submit = page.getByRole('button', { name: 'Создать презентацию', exact: true })
   await page.getByLabel(picker, { exact: true }).setInputFiles(materialFile('pdf', true))
   await expect(page.getByLabel(acknowledgement, { exact: true })).toBeVisible()
   await expect(submit).toBeDisabled()
   await page.getByLabel(acknowledgement, { exact: true }).check()
+  await expect(page.getByLabel('О чём презентация?', { exact: true })).toHaveValue('Prepare a report from the document')
   await expect(submit).toBeEnabled()
   await page.getByLabel('Текст материалов', { exact: true }).fill('')
   await expect(submit).toBeDisabled()
@@ -117,6 +120,7 @@ test('PDF с нераспознанной страницей требует по
 
 test('неверный TXT не запускает генерацию и позволяет выбрать тот же файл повторно', async ({ page }) => {
   await page.goto('/studio')
+  await expect(page.getByLabel('Модель AI', { exact: true })).toBeEnabled()
   await page.getByLabel('О чём презентация?', { exact: true }).fill('Prepare a presentation from materials')
   let creates = 0
   page.on('request', (request) => {
@@ -133,6 +137,7 @@ test('неверный TXT не запускает генерацию и поз�
   expect(creates).toBe(0)
   await page.getByLabel(picker, { exact: true }).setInputFiles(materialFile('txt'))
   await expect(page.getByLabel('Текст материалов', { exact: true })).toHaveValue(/E2E original TXT 41/)
+  await expect(page.getByLabel('О чём презентация?', { exact: true })).toHaveValue('Prepare a presentation from materials')
   await expect(page.getByRole('button', { name: 'Создать презентацию', exact: true })).toBeEnabled()
 })
 
