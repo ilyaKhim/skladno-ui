@@ -27,6 +27,8 @@ try {
   await db.query(`INSERT INTO presentation_revisions(id,presentation_id,user_id,version,message,content_json,output_path,slide_count)
     VALUES($1,$2,$3,4,'published','{}','unchanged.pptx',1)`, [randomUUID(), ids.succeeded, owner])
   await db.query(await readFile(new URL('V13__unpublished_editor_drafts.sql', directory), 'utf8'))
+  await db.query(await readFile(new URL('V14__presentation_ai_edits.sql', directory), 'utf8'))
+  assert.equal((await db.query('SELECT count(*)::int AS count FROM presentation_ai_edits')).rows[0].count, 0)
   for (const status of ['awaiting_review', 'queued', 'running']) {
     const { rows: [row] } = await db.query('SELECT status,current_version,content_json FROM generated_presentations WHERE id=$1', [ids[status]])
     assert.equal(row.status, 'draft')
@@ -36,7 +38,7 @@ try {
   const { rows: [published] } = await db.query('SELECT status,current_version FROM generated_presentations WHERE id=$1', [ids.succeeded])
   assert.deepEqual(published, { status: 'succeeded', current_version: 4 })
   assert.equal((await db.query('SELECT count(*)::int AS count FROM presentation_revisions')).rows[0].count, 1)
-  console.log('Draft migration: old prepared jobs preserved; published v4 unchanged.')
+  console.log('Draft and AI-edit migrations: old prepared jobs preserved; published v4 unchanged; AI journal ready.')
 } finally {
   await db.query('RESET search_path')
   await db.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)

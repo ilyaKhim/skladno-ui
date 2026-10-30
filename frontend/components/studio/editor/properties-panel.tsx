@@ -1,7 +1,7 @@
 'use client'
 
 import { useId, type ReactNode, type Ref } from 'react'
-import { AlignCenter, AlignLeft, AlignRight, CopyPlus, Eye, EyeOff, ImageIcon, Minus, Plus, Trash2, X } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, CopyPlus, Eye, EyeOff, ImageIcon, Minus, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -17,6 +17,8 @@ import {
   type Slide,
   type TextBlock,
 } from './editor-types'
+import { hardLimit, softLimit } from './ai/ai-target'
+import { plural } from './ai/plural'
 
 const WEIGHT_OPTIONS: { value: BlockWeight; label: string }[] = [
   { value: 400, label: 'Обычный' },
@@ -55,6 +57,10 @@ interface PropertiesPanelProps {
   onDeleteElement: () => void
   onDuplicateElement: () => void
   contentOnly?: boolean
+  /** Opens the AI chat for the selected text block. */
+  onAskAi?: () => void
+  /** Hides the title row when the panel is a tab of the right column. */
+  showHeader?: boolean
 }
 
 export function PropertiesPanel({
@@ -74,6 +80,8 @@ export function PropertiesPanel({
   onDeleteElement,
   onDuplicateElement,
   contentOnly = false,
+  onAskAi,
+  showHeader = true,
 }: PropertiesPanelProps) {
   const ids = useId()
   const canStyleBlock = Boolean(block && (!contentOnly || !block.fieldKey))
@@ -92,17 +100,27 @@ export function PropertiesPanel({
           open ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
         )}
       >
-        <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-4">
-          <h2 className="text-xs font-medium text-foreground">Свойства</h2>
-          <Button variant="ghost" size="icon-xs" className="lg:hidden" onClick={onClose} aria-label="Закрыть панель свойств">
-            <X />
-          </Button>
-        </div>
+        {showHeader && (
+          <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-4">
+            <h2 className="text-xs font-medium text-foreground">Свойства</h2>
+            <Button variant="ghost" size="icon-xs" className="lg:hidden" onClick={onClose} aria-label="Закрыть панель свойств">
+              <X />
+            </Button>
+          </div>
+        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {block ? (
             <PanelSection title="Текстовый блок" aside={BLOCK_ROLE_LABELS[block.role]}>
-              <Field label="Текст" htmlFor={`${ids}-text`}>
+              <Field
+                label="Текст"
+                htmlFor={`${ids}-text`}
+                action={onAskAi && (
+                  <Button variant="ghost" size="xs" onClick={onAskAi} aria-label="Открыть AI-чат для этого текста" title="AI-чат (Ctrl/⌘ + J)">
+                    <Sparkles className="text-primary" /> AI
+                  </Button>
+                )}
+              >
                 <Textarea
                   id={`${ids}-text`}
                   ref={textFieldRef}
@@ -110,9 +128,11 @@ export function PropertiesPanel({
                   onChange={(event) => onUpdateBlock({ text: event.target.value }, `${block.id}:text`)}
                   onBlur={onCommitField}
                   rows={4}
-                  maxLength={block.maxChars}
+                  maxLength={hardLimit(block)}
+                  aria-describedby={`${ids}-text-limit`}
                   className="max-h-48 min-h-20 bg-background text-sm leading-relaxed"
                 />
+                <TextLimit id={`${ids}-text-limit`} block={block} />
               </Field>
 
               {canStyleBlock && <>
@@ -321,16 +341,35 @@ function PanelSection({ title, aside, children }: { title: string; aside?: strin
   )
 }
 
-function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
+/**
+ * The template limit is a layout recommendation: text may exceed it up to the hard limit, so the
+ * person can trim an AI result by hand. Custom blocks show the counter only near their maximum.
+ */
+function TextLimit({ id, block }: { id: string; block: TextBlock }) {
+  const limit = softLimit(block)
+  if (limit === undefined) return <span id={id} hidden />
+  const length = block.text.length
+  const over = length - limit
+  if (!block.fieldKey && length < limit * 0.9) return <span id={id} hidden />
+  return (
+    <p id={id} className={cn('text-[11px] leading-snug tabular-nums', over > 0 ? 'font-medium text-destructive' : 'text-muted-foreground')}>
+      {length} / {limit}
+      {over > 0 && <> · Длиннее лимита поля на {over} {plural(over, 'символ', 'символа', 'символов')} — может не поместиться в блок</>}
+    </p>
+  )
+}
+
+function Field({ label, htmlFor, action, children }: { label: string; htmlFor?: string; action?: ReactNode; children: ReactNode }) {
+  const caption = htmlFor ? (
+    <label htmlFor={htmlFor} className="text-xs text-muted-foreground">
+      {label}
+    </label>
+  ) : (
+    <span className="text-xs text-muted-foreground">{label}</span>
+  )
   return (
     <div className="flex flex-col gap-1.5">
-      {htmlFor ? (
-        <label htmlFor={htmlFor} className="text-xs text-muted-foreground">
-          {label}
-        </label>
-      ) : (
-        <span className="text-xs text-muted-foreground">{label}</span>
-      )}
+      {action ? <div className="-my-1 flex items-center justify-between gap-2">{caption}{action}</div> : caption}
       {children}
     </div>
   )

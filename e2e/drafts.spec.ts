@@ -17,6 +17,76 @@ async function createDraft(request: APIRequestContext, ids: string[], topic: str
   return job.id as string
 }
 
+for (const width of [1440, 390]) {
+  test(`AI-правка черновика v0: длинный вариант, сохранение и первый PPTX (${width}px)`, async ({ page, request, createdDecks }) => {
+    const id = await createDraft(request, createdDecks, `AI edit ${width}`)
+    await page.setViewportSize({ width, height: 1000 })
+    await openList(page, id)
+    await listShape(page).locator('[data-paragraph-index="2"]').dblclick()
+    const original = '__LONG__ Исходный текст для проверки AI'
+    await page.getByRole('textbox', { name: 'Текст', exact: true }).fill(original)
+    await saved(page)
+    if (width < 1024) await page.getByRole('button', { name: 'Закрыть панель свойств', exact: true }).click()
+    await page.getByRole('button', { name: 'AI-помощник', exact: true }).click()
+    const chat = page.getByRole('complementary', { name: 'AI-чат', exact: true })
+    const pending = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith('/editor/ai/text-edits'))
+    await chat.getByRole('button', { name: 'Сократить', exact: true }).click()
+    const response = await pending
+    expect(response.status()).toBe(200)
+    const proposal = await response.json()
+    const variant = proposal.variants[0].text as string
+    expect(variant.length).toBeGreaterThan(proposal.max_chars)
+    let state = await editorState(page, id)
+    expect(state.base_version).toBe(0)
+    expect(state.slides[1].blocks.find((b: { field_key: string }) => b.field_key === 'LIST_3').text).toBe(original)
+    await chat.getByRole('button', { name: /^Применить вариант к блоку/ }).click()
+    await saved(page)
+    state = await editorState(page, id)
+    expect(state.slides[1].blocks.find((b: { field_key: string }) => b.field_key === 'LIST_3').text).toBe(variant)
+    const path = test.info().outputPath(`ai-chat-${width}.png`)
+    await page.screenshot({ path, animations: 'disabled' })
+    await test.info().attach(`ai-chat-${width}`, { path, contentType: 'image/png' })
+    await page.reload()
+    expect((await editorState(page, id)).base_version).toBe(0)
+    const zip = await downloadPptx(page)
+    expect(strFromU8(zip['ppt/slides/slide9.xml'])).toContain(variant)
+    expect((await (await request.get(`${root}/${id}/versions`)).json()).items).toHaveLength(1)
+    const publishedProposal = await mutation(request, 'post', `${editorApi(id)}/ai/text-edits`, {
+      request_id: crypto.randomUUID(), action: 'shorten', params: {},
+      target: proposal.target, text: variant, refines_edit_id: null, variants: 1, model: null,
+    })
+    expect(publishedProposal.edit_id).not.toBe(proposal.edit_id)
+    state = await editorState(page, id)
+    expect(state.base_version).toBe(1)
+    expect(state.slides[1].blocks.find((b: { field_key: string }) => b.field_key === 'LIST_3').text).toBe(variant)
+  })
+}
+
+test('мобильный AI-чат не применяет предложение при неподтверждённой публикации', async ({ page, request, createdDecks }) => {
+  const id = await createDraft(request, createdDecks, 'AI publication lock')
+  await page.setViewportSize({ width: 390, height: 1000 })
+  await openList(page, id)
+  await listShape(page).locator('[data-paragraph-index="2"]').dblclick()
+  const original = 'Исходный текст для проверки запрета изменений при экспорте'
+  await page.getByRole('textbox', { name: 'Текст', exact: true }).fill(original)
+  await saved(page)
+  await page.getByRole('button', { name: 'Закрыть панель свойств', exact: true }).click()
+  await page.getByRole('button', { name: 'AI-помощник', exact: true }).click()
+  const chat = page.getByRole('complementary', { name: 'AI-чат', exact: true })
+  await chat.getByRole('button', { name: 'Сократить', exact: true }).click()
+  const apply = chat.getByRole('button', { name: /^Применить вариант к блоку/ })
+  await expect(apply).toBeEnabled()
+  await page.route(`**/${id}/editor/commit`, route => route.fulfill({ status: 502, json: { error: { code: 'edit_failed', message: 'Test publication failure' } } }))
+  await page.getByRole('button', { name: 'Экспорт', exact: true }).click()
+  await page.getByRole('button', { name: 'Создать первую версию', exact: true }).click()
+  await expect(page.getByRole('alert', { name: 'Ошибка редактора' })).toContainText('Результат публикации не подтверждён')
+  await expect.poll(() => apply.evaluate(button => Boolean(button.closest('[inert]')))).toBe(true)
+  await expect(apply.click({ timeout: 500 })).rejects.toThrow()
+  const state = await editorState(page, id)
+  expect(state.base_version).toBe(0)
+  expect(state.slides[1].blocks.find((b: { field_key: string }) => b.field_key === 'LIST_3').text).toBe(original)
+})
+
 test('AI готовит неопубликованный черновик; редактор сохраняет его и публикует первую версию без второго AI', async ({ page, request, createdDecks }) => {
   const id = await createDraft(request, createdDecks, 'draft to first publication')
   const job = await (await request.get(`${root}/${id}`)).json()

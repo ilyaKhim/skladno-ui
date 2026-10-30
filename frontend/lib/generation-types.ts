@@ -60,7 +60,7 @@ export type TemplateContext = {
 }
 export type AiCall = {
   id: string
-  operation: 'generation' | 'chat'
+  operation: 'generation' | 'chat' | 'text_edit'
   model: string
   request_body: string
   response_body: string | null
@@ -77,6 +77,8 @@ type EditorTextBlock = {
   field_key: string | null
   layout_id: string | null
   max_chars: number
+  /** Hard save limit; absent on backends released before AI text edits. */
+  hard_max_chars?: number
   role: 'eyebrow' | 'title' | 'subtitle' | 'body' | 'metric' | 'caption'
   text: string
   x: number
@@ -183,4 +185,74 @@ export type EditorDraftSaved = {
   base_version: number
   draft_revision: number
   saved_at: number
+}
+
+export type AiActionParamOption = { id: string; label: string }
+export type AiActionParam = {
+  name: string
+  /** `enum` and `string` are known; an unknown type is rendered as free text. */
+  type: 'enum' | 'string' | (string & {})
+  required: boolean
+  max_length?: number | null
+  options: AiActionParamOption[]
+}
+export type TextEditTargetKind = 'template_field' | 'custom_block'
+export type AiAction = {
+  id: string
+  label: string
+  description: string
+  /** `quick` is a chat button, `input` is sent by the free-text field; unknown values act as `quick`. */
+  ui: 'quick' | 'input' | (string & {})
+  targets: (TextEditTargetKind | (string & {}))[]
+  params: AiActionParam[]
+}
+export type AiActionCatalog = {
+  actions: AiAction[]
+  variants: { default: number; max: number }
+  limits: { custom_block_max_input_chars: number }
+  enabled: boolean
+}
+export type TextEditTarget =
+  | { kind: 'template_field'; slide_id: string; field_key: string; block_id: null }
+  | { kind: 'custom_block'; slide_id: string; field_key: null; block_id: string }
+export type TextEditRequest = {
+  request_id: string
+  action: string
+  params: Record<string, string>
+  target: TextEditTarget
+  text: string
+  refines_edit_id: string | null
+  variants: number
+  model: string | null
+}
+export type TextVariantWarning = 'over_limit' | 'exceeds_hard_limit' | 'not_shorter' | 'line_breaks_removed'
+export type TextVariant = {
+  text: string
+  length: number
+  over_by: number
+  warnings: (TextVariantWarning | (string & {}))[]
+}
+export type AiUsage = {
+  input_tokens: number | null
+  cached_input_tokens: number | null
+  output_tokens: number | null
+  reasoning_tokens: number | null
+}
+export type AiQuota = { limit: number; remaining: number; resets_at: string }
+export type TextEditResponse = {
+  edit_id: string
+  request_id: string
+  refines_edit_id: string | null
+  status: 'ok' | 'unchanged' | 'unsupported'
+  message: string | null
+  action: string
+  target: TextEditTarget
+  source_text: string
+  max_chars: number
+  hard_max_chars: number
+  variants: TextVariant[]
+  model: string
+  usage: AiUsage
+  quota: AiQuota
+  replayed: boolean
 }

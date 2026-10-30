@@ -19,6 +19,7 @@ export function toDeck(source: EditorDeck): Deck {
         fieldKey: block.field_key ?? undefined,
         layoutKey: block.layout_id ?? undefined,
         maxChars: block.max_chars,
+        hardMaxChars: block.hard_max_chars ?? block.max_chars,
         role: block.role,
         text: block.text,
         x: block.x,

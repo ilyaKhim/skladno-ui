@@ -27,6 +27,7 @@ public class PresentationContentValidator {
     private static final String FIELDS_MISMATCH = "Fields do not match the template.";
     private static final String MISSING_FIELD = "Missing template field ";
     private static final String UNRESOLVED_MARKER = "Unresolved template marker.";
+    private static final String TEXT_TOO_LONG = "Field text exceeds the editor hard limit.";
     private static final int MAX_TEXT_BLOCKS_PER_SLIDE = 100;
     private static final int MAX_TEXT_BLOCK_LENGTH = 4_000;
     private static final int MAX_IMAGE_BLOCKS_PER_SLIDE = 50;
@@ -45,12 +46,24 @@ public class PresentationContentValidator {
      */
     public PresentationContent normalize(
             PresentationContent content, Map<String, Integer> fields, int slideCount) {
+        return normalize(content, fields, slideCount, TextLengthMode.TRUNCATE);
+    }
+
+    /**
+     * Same as {@link #normalize(PresentationContent, Map, int)}, with an explicit policy for field
+     * text longer than {@code max_chars}. All other checks are identical in both modes.
+     */
+    public PresentationContent normalize(
+            PresentationContent content,
+            Map<String, Integer> fields,
+            int slideCount,
+            TextLengthMode mode) {
         try {
             if (content == null
                     || content.fields() == null
                     || content.slides() == null
                     || content.slides().size() != slideCount) throw new IllegalArgumentException();
-            Map<String, String> values = normalizeValues(content.fields(), fields);
+            Map<String, String> values = normalizeValues(content.fields(), fields, mode);
             var seen = new HashSet<Integer>();
             for (var slide : content.slides()) {
                 if (slide == null
@@ -196,6 +209,16 @@ public class PresentationContentValidator {
      */
     public Map<String, String> normalizeValues(
             Map<String, String> values, Map<String, Integer> fields) {
+        return normalizeValues(values, fields, TextLengthMode.TRUNCATE);
+    }
+
+    /**
+     * Validates field values with an explicit length policy: {@code TRUNCATE} shortens text to
+     * {@code max_chars}; {@code ALLOW_OVERFLOW} keeps it intact and rejects text longer than {@link
+     * EditorTextLimits#hard(int)}.
+     */
+    public Map<String, String> normalizeValues(
+            Map<String, String> values, Map<String, Integer> fields, TextLengthMode mode) {
         if (!values.keySet().equals(fields.keySet()))
             throw new IllegalArgumentException(FIELDS_MISMATCH);
         Map<String, String> normalized = new LinkedHashMap<>();
@@ -204,9 +227,16 @@ public class PresentationContentValidator {
             if (value == null) throw new IllegalArgumentException(MISSING_FIELD + field.getKey());
             if (value.contains("{{") || value.contains("}}"))
                 throw new IllegalArgumentException(UNRESOLVED_MARKER);
-            normalized.put(field.getKey(), limit(value, field.getValue()));
+            normalized.put(field.getKey(), applyLength(value, field.getValue(), mode));
         }
         return normalized;
+    }
+
+    private static String applyLength(String value, int max, TextLengthMode mode) {
+        if (mode == TextLengthMode.TRUNCATE) return limit(value, max);
+        if (value.length() > EditorTextLimits.hard(max))
+            throw new IllegalArgumentException(TEXT_TOO_LONG);
+        return value;
     }
 
     /**

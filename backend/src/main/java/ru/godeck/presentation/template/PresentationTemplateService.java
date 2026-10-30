@@ -279,8 +279,24 @@ public class PresentationTemplateService {
      * duplicate block identifiers, invalid slide decisions, and overlong text cannot reach POI.
      */
     public PresentationContent normalize(String id, PresentationContent content) {
+        return normalize(id, content, TextLengthMode.TRUNCATE);
+    }
+
+    /**
+     * Produces the canonical snapshot for visual-editor paths (draft save, editor load, export).
+     *
+     * <p>Unlike {@link #normalize(String, PresentationContent)}, field text longer than {@code
+     * max_chars} is kept intact up to {@link EditorTextLimits#hard(int)} and rejected above it. All
+     * other checks are the same.
+     */
+    public PresentationContent normalizeEditor(String id, PresentationContent content) {
+        return normalize(id, content, TextLengthMode.ALLOW_OVERFLOW);
+    }
+
+    private PresentationContent normalize(
+            String id, PresentationContent content, TextLengthMode mode) {
         Template template = get(id);
-        return validator.normalize(content, template.fields(), template.slideCount());
+        return validator.normalize(content, template.fields(), template.slideCount(), mode);
     }
 
     /** Renders content with the default template and no external image assets. */
@@ -309,7 +325,21 @@ public class PresentationTemplateService {
     public byte[] render(
             String id, PresentationContent content, Function<String, byte[]> imageResolver)
             throws Exception {
-        PresentationContent plan = normalize(id, content);
+        return render(id, content, imageResolver, TextLengthMode.TRUNCATE);
+    }
+
+    /**
+     * Same as {@link #render(String, PresentationContent, Function)}, with an explicit length policy
+     * for template field text. The editor export uses {@link TextLengthMode#ALLOW_OVERFLOW} so the
+     * PPTX contains the full text the user saved.
+     */
+    public byte[] render(
+            String id,
+            PresentationContent content,
+            Function<String, byte[]> imageResolver,
+            TextLengthMode mode)
+            throws Exception {
+        PresentationContent plan = normalize(id, content, mode);
         Map<String, String> normalized = plan.fields();
         try (XMLSlideShow show = open(id)) {
             Map<Integer, XSLFSlide> bySourceNumber = new LinkedHashMap<>();
@@ -386,7 +416,7 @@ public class PresentationTemplateService {
             Map<Integer, String> slideNames,
             PresentationContent content)
             throws Exception {
-        PresentationContent plan = normalize(templateId, content);
+        PresentationContent plan = normalizeEditor(templateId, content);
         try (XMLSlideShow show = open(templateId)) {
             var page = pageBounds(show);
             List<EditorDeckView.Slide> slides = new ArrayList<>();
@@ -447,6 +477,7 @@ public class PresentationTemplateService {
                             String field = matcher.group(1);
                             int occurrence = occurrences.merge(field, 1, Integer::sum);
                             String role = role(field);
+                            int maxChars = get(templateId).fields().get(field);
                             blocks.add(
                                     new EditorDeckView.TextBlock(
                                             "slide-"
@@ -457,7 +488,8 @@ public class PresentationTemplateService {
                                                     + occurrence,
                                             field,
                                             layoutId,
-                                            get(templateId).fields().get(field),
+                                            maxChars,
+                                            EditorTextLimits.hard(maxChars),
                                             role,
                                             plan.fields().get(field),
                                             x,
@@ -479,7 +511,8 @@ public class PresentationTemplateService {
                                     block.id(),
                                     null,
                                     null,
-                                    4_000,
+                                    EditorTextLimits.ABSOLUTE_MAX,
+                                    EditorTextLimits.ABSOLUTE_MAX,
                                     "body",
                                     block.text(),
                                     block.x(),

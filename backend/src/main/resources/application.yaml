@@ -53,3 +53,7 @@ godeck:
     responses-url: ${GODECK_OPENAI_RESPONSES_URL:https://api.openai.com/v1/responses}
     model: ${OPENAI_MODEL:gpt-6.1-sol}
     data-dir: ${GODECK_DATA_DIR:./data/presentations}
+  ai-edit:
+    model: ${GODECK_AI_EDIT_MODEL:gpt-5.4-mini}
+    # "scripted" is a deterministic stub allowed only in the test and e2e profiles.
+    llm: ${GODECK_AI_EDIT_LLM:openai}

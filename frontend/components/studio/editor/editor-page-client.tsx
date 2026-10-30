@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { AlertCircle, LoaderCircle } from 'lucide-react'
@@ -9,6 +9,7 @@ import { generationApi, GenerationApiError } from '@/lib/generation-client'
 import { getAuthApi } from '@/lib/auth-client'
 import type { EditorDeck } from '@/lib/generation-types'
 import { cn } from '@/lib/utils'
+import { createHttpAiEditPort } from './ai/ai-edit-port'
 import { EditorShell } from './editor-shell'
 import type { Deck, EditorOperationError } from './editor-types'
 import { serialize, toDeck } from './editor-document'
@@ -27,6 +28,10 @@ export function EditorPageClient() {
   const publisher = useRef(createEditorPublisher())
   const [publicationPending, setPublicationPending] = useState(false)
   const getVersion = useCallback(() => version.current, [])
+  const aiEdit = useMemo(
+    () => (presentationId ? { port: createHttpAiEditPort(), presentationId } : undefined),
+    [presentationId],
+  )
 
   const reportError = useCallback((operation: EditorOperationError['operation'], cause: unknown) => {
     const expired = cause instanceof GenerationApiError && cause.code === 'edit_expired'
@@ -156,6 +161,7 @@ export function EditorPageClient() {
       operationError={operationError}
       onReloadServer={reloadServer}
       publicationPending={publicationPending}
+      aiEdit={aiEdit}
       contentOnly
     />
   )

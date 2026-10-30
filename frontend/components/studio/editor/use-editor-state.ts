@@ -156,7 +156,7 @@ export function applyDeckAction(deck: Deck, action: DeckAction): Deck {
   }
 }
 
-function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
+export function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
   switch (action.type) {
     case 'apply': {
       const next = applyDeckAction(state.present, action.action)

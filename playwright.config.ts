@@ -72,6 +72,8 @@ export default defineConfig({
         GODECK_OPENAI_ENABLED: 'true',
         OPENAI_API_KEY: 'e2e-local-fixture-not-a-real-key',
         GODECK_OPENAI_RESPONSES_URL: process.env.E2E_AI_URL,
+        SPRING_PROFILES_ACTIVE: 'e2e',
+        GODECK_AI_EDIT_LLM: 'scripted',
         FRONTEND_URL: frontendUrl,
       },
     },

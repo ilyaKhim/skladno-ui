@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import ru.godeck.presentation.aiedit.ai.ResponsesUsage;
 import ru.godeck.presentation.dto.PresentationAiCallView;
 import ru.godeck.presentation.entity.PresentationAiCall;
 import ru.godeck.presentation.model.AiCallContext;
@@ -57,6 +58,30 @@ public class PresentationAiCallHistory {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void complete(UUID id, String responseBody, Integer httpStatus, String errorCode) {
         var call = calls.findById(id).orElseThrow();
+        finish(call, responseBody, httpStatus, errorCode);
+    }
+
+    /** Same as {@link #complete(UUID, String, Integer, String)} and also stores token usage. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void complete(
+            UUID id,
+            String responseBody,
+            Integer httpStatus,
+            String errorCode,
+            ResponsesUsage usage) {
+        var call = calls.findById(id).orElseThrow();
+        ResponsesUsage reported = usage == null ? ResponsesUsage.NONE : usage;
+        call.recordUsage(
+                reported.inputTokens(),
+                reported.cachedInputTokens(),
+                reported.outputTokens(),
+                reported.reasoningTokens());
+        finish(call, responseBody, httpStatus, errorCode);
+    }
+
+    private void finish(
+            PresentationAiCall call, String responseBody, Integer httpStatus, String errorCode) {
+        UUID id = call.getId();
         call.complete(responseBody, httpStatus, errorCode, clock.instant());
         log.info(
                 "AI request finished: call={} presentation={} operation={} model={} httpStatus={}"

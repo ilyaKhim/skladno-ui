@@ -31,6 +31,8 @@ export interface TextBlock {
   /** Template text shape whose geometry is shared by all fields inside it. */
   layoutKey?: string
   maxChars?: number
+  /** Longest text the server accepts on save; `maxChars` is only the layout recommendation. */
+  hardMaxChars?: number
   role: BlockRole
   text: string
   /** Position and width are percentages of the slide frame. */

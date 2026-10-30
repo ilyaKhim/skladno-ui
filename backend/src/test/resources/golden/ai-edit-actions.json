@@ -1,0 +1,15 @@
+{
+  "actions": [
+    { "id": "shorten", "label": "Сократить", "description": "Короче, с сохранением главной мысли",
+      "ui": "quick", "targets": ["template_field", "custom_block"], "params": [] },
+    { "id": "rephrase", "label": "Переформулировать", "description": "Другими словами, примерно той же длины",
+      "ui": "quick", "targets": ["template_field", "custom_block"], "params": [] },
+    { "id": "custom", "label": "Своя просьба", "description": "Например: сделай формальнее, добавь энтузиазма, ещё короче",
+      "ui": "input", "targets": ["template_field", "custom_block"],
+      "params": [ { "name": "instruction", "type": "string", "required": true, "max_length": 300,
+        "options": [] } ] }
+  ],
+  "variants": { "default": 1, "max": 3 },
+  "limits": { "custom_block_max_input_chars": 2000 },
+  "enabled": true
+}

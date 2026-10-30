@@ -10,6 +10,7 @@ import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.template.PresentationTemplateService;
+import ru.godeck.presentation.template.TextLengthMode;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
@@ -57,6 +58,21 @@ public class PresentationFiles {
      */
     public Path write(UUID id, int version, String templateId, PresentationContent content)
             throws Exception {
+        return write(id, version, templateId, content, TextLengthMode.TRUNCATE);
+    }
+
+    /**
+     * Same as {@link #write(UUID, int, String, PresentationContent)}, with an explicit length policy
+     * for template field text. The visual editor export passes {@link
+     * TextLengthMode#ALLOW_OVERFLOW} so text longer than {@code max_chars} is not shortened.
+     */
+    public Path write(
+            UUID id,
+            int version,
+            String templateId,
+            PresentationContent content,
+            TextLengthMode mode)
+            throws Exception {
         Files.createDirectories(directory);
         Path output = directory.resolve(id + "-v" + version + "-" + UUID.randomUUID() + ".pptx");
         Path temp = Files.createTempFile(directory, id.toString(), ".tmp");
@@ -64,13 +80,22 @@ public class PresentationFiles {
             boolean hasImages =
                     content.slides().stream()
                             .anyMatch(slide -> !slide.imageBlocksOrEmpty().isEmpty());
-            byte[] rendered =
-                    hasImages
-                            ? templates.render(
-                                    templateId,
-                                    content,
-                                    assetId -> imageBytes(id, UUID.fromString(assetId)))
-                            : templates.render(templateId, content);
+            byte[] rendered;
+            if (mode == TextLengthMode.TRUNCATE)
+                rendered =
+                        hasImages
+                                ? templates.render(
+                                        templateId,
+                                        content,
+                                        assetId -> imageBytes(id, UUID.fromString(assetId)))
+                                : templates.render(templateId, content);
+            else
+                rendered =
+                        templates.render(
+                                templateId,
+                                content,
+                                assetId -> imageBytes(id, UUID.fromString(assetId)),
+                                mode);
             Files.write(temp, rendered);
             Files.move(temp, output, StandardCopyOption.ATOMIC_MOVE);
             return output;

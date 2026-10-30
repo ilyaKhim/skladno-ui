@@ -33,7 +33,8 @@ ru.godeck
 │   ├── template        чтение/заполнение PPTX, валидация плана и политика текста
 │   ├── storage         PresentationFiles
 │   ├── mapper          PresentationContentCodec
-│   └── worker          PresentationWorker
+│   ├── worker          PresentationWorker
+│   └── aiedit          AI-правка текста в редакторе (см. ниже)
 ├── common
 │   ├── security        Hashing, SecurityPolicy
 │   └── text            BackendMessages
@@ -48,7 +49,43 @@ ru.godeck
 
 Связи сущностей представлены UUID: сценариям не требуется загружать граф пользователей, презентаций и версий. Связь версии с презентацией дополнительно защищена внешним ключом PostgreSQL. Пагинация сохраняет HTTP-контракт с произвольными `limit` и `offset`.
 
+## AI-правка текста: пакет `aiedit`
+
+```text
+ru.godeck.presentation.aiedit
+├── controller   AiEditController (каталог, text-edits)
+├── dto          TextEditRequest, TextEditView и вложенные view
+├── core         AiEditTarget (sealed), TargetKind, ResolvedTextTarget, TargetResolver, AiEditStatus
+├── action       TextEditAction, TextEditActionRegistry, ActionParam, ActionUi; builtin/*
+├── ai           AiResponsesClient, TextEditRequestFactory, TextEditResponseParser,
+│                TextEditLlm + OpenAiTextEditLlm / ScriptedTextEditLlm, ResponsesUsage
+├── text         TextResultSanitizer
+├── service      AiTextEditService, AiEditTransactions, AiEditRetention
+├── entity       PresentationAiEdit
+├── repository   PresentationAiEditRepository
+├── config       AiEditClientConfig (RestClient openAiTextEditClient, чтение 30 с)
+└── policy       AiEditPolicy
+```
+
+Новое действие — один `@Component`, реализующий `TextEditAction`, и строки в `messages.properties`;
+каталог, валидация параметров и промпт подхватывают его автоматически. Порядок в каталоге — `@Order`.
+`AiTextEditService` проверяет запрос без записи, затем короткой транзакцией (`AiEditTransactions`)
+решает идемпотентность и квоту, вызывает модель без открытой транзакции и второй короткой
+транзакцией сохраняет результат. Документ презентации не меняется. `openAiTextEditClient` объявлен с
+`defaultCandidate = false`, поэтому существующие точки внедрения `RestClient` получают прежний
+`openAiClient`.
+
+**`TextLengthMode`.** `PresentationContentValidator`, `PresentationTemplateService.render` и
+`PresentationFiles.write` получили перегрузки с режимом длины. Существующие методы работают в режиме
+`TRUNCATE` (обрезка до `max_chars`) — его используют генерация, ручная сборка и тестовый чат.
+`ALLOW_OVERFLOW` (`normalizeEditor`) не обрезает текст поля и отклоняет текст длиннее
+`EditorTextLimits.hard(max)`; его используют только пути редактора: draft save, `GET /editor`,
+commit.
+
 ## Где менять лимиты и тексты
+
+- `presentation/aiedit/policy/AiEditPolicy`: квота AI-правок, число вариантов, лимиты входа и
+  контекста, таймауты, срок хранения, reasoning effort по модели.
 
 - `auth/policy/AuthPolicy`: длины пароля/email, размер и срок кода, cooldown, число попыток и срок reset token. DTO и сервисы используют одни значения; срок действия в письме берётся из той же политики.
 - `presentation/policy/PresentationPolicy`: длины темы и правки, дневные квоты, размер страницы, сроки обработки/резервирования правки, длины полей сущностей.

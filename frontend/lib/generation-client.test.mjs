@@ -318,3 +318,61 @@ test('an unreadable publication response preserves its status instead of reporti
     return true
   })
 })
+
+test('the AI action catalog is a private read without CSRF', async () => {
+  const calls = []
+  const catalog = { actions: [], variants: { default: 1, max: 3 }, limits: { custom_block_max_input_chars: 2000 }, enabled: true }
+  globalThis.fetch = async (url, init) => { calls.push({ url, init }); return json(catalog) }
+  assert.deepEqual(await generationApi.aiActions(), catalog)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, '/api/generation/v1/editor/ai/actions')
+  assert.equal(calls[0].init.method, 'GET')
+  assert.equal(calls[0].init.cache, 'no-store')
+})
+
+test('a text edit posts the contract body with CSRF and a 45 second deadline', async () => {
+  const calls = []
+  const timeouts = []
+  const originalTimeout = AbortSignal.timeout
+  AbortSignal.timeout = (ms) => { timeouts.push(ms); return originalTimeout.call(AbortSignal, ms) }
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    calls.push({ url, init })
+    return json({ edit_id: 'edit-1', status: 'ok', variants: [] })
+  }
+  const body = {
+    request_id: '3f6c2a8e-1b7d-4c1e-9a52-6f0d2b7c9e11',
+    action: 'custom',
+    params: { instruction: 'сделай формальнее' },
+    target: { kind: 'template_field', slide_id: 'slide-3', field_key: 'STATEMENT', block_id: null },
+    text: 'Мы делаем презентации быстро и без лишней головной боли',
+    refines_edit_id: '9c1d7b52-0f7e-4c55-8f3e-2d4b1a6e7c90',
+    variants: 1,
+    model: null,
+  }
+  try {
+    await generationApi.textEdit('deck/id', body)
+  } finally {
+    AbortSignal.timeout = originalTimeout
+  }
+  assert.equal(calls[0].url, '/api/generation/v1/presentations/deck%2Fid/editor/ai/text-edits')
+  assert.equal(calls[0].init.method, 'POST')
+  assert.equal(calls[0].init.headers.get('X-CSRF-TOKEN'), 'csrf')
+  assert.equal(calls[0].init.headers.get('Content-Type'), 'application/json')
+  assert.deepEqual(JSON.parse(calls[0].init.body), body)
+  assert.ok(timeouts.includes(45_000))
+})
+
+test('a text edit failure keeps the contract error code for the chat reply', async () => {
+  globalThis.fetch = async (url) => {
+    if (url === '/api/auth/csrf') return json({ ok: true, data: { token: 'csrf', headerName: 'X-CSRF-TOKEN' } })
+    return json({ error: { code: 'ai_edit_limit', message: 'Дневной лимит AI-правок исчерпан.' } }, 429)
+  }
+  await assert.rejects(generationApi.textEdit('id', {}), error => {
+    assert.ok(error instanceof GenerationApiError)
+    assert.equal(error.status, 429)
+    assert.equal(error.code, 'ai_edit_limit')
+    assert.equal(error.message, 'Дневной лимит AI-правок исчерпан.')
+    return true
+  })
+})

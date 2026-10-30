@@ -63,6 +63,34 @@ Smoke создаёт один локальный аккаунт и два пис
 
 Число в отчёте Surefire включает каждую строку параметризованного теста. Набор не подтверждает доступность реального OpenAI, качество сгенерированного текста или состояние production. Сбой процесса между записью файла и commit может оставить файл без ссылки — файловая система и PostgreSQL не являются одной распределённой транзакцией. Квоты генерации сейчас являются ограничениями по подсчёту записей; строгая глобальная квота при параллельных запросах с разными ключами не обеспечивается отдельной атомарной операцией.
 
+## AI-правка текста и длинный текст в редакторе
+
+Модель заменена `ScriptedTextEditLlm` (`godeck.ai-edit.llm=scripted`, профиль `test`); OpenAI не
+вызывается. Интеграционные тесты используют схемы `ai_edit_test` и `editor_text_test`.
+
+- Unit: `TextEditActionRegistryTest` (уникальность id, ровно одно `input`-действие, каталог совпадает
+  с примером контракта, строгая валидация параметров), `TextEditRequestFactoryTest` (снимок `input`
+  для каждого действия, только минимальный контекст, strict schema, `store: false`, формула
+  `max_output_tokens`), `TextEditResponseParserTest`, `TextResultSanitizerTest` (кавычки, markdown,
+  переносы, маркеры, предупреждения; текст не обрезается), `TargetResolverTest` (заголовки, aurora без
+  sidecar, исключённый слайд, чужое поле, блок только в черновике/опубликованном документе, лимиты),
+  `ScriptedTextEditLlmTest` (заглушка не стартует вне `test`/`e2e`),
+  `PresentationContentValidatorOverflowTest` (граница `hard` для 7/46/170/3000, `TRUNCATE` прежний).
+- Golden: `PresentationRequestGoldenTest` сравнивает тело запроса генерации со снимком
+  `src/test/resources/golden/presentation-generation-request.json` (окончания строк нормализуются).
+  Намеренное изменение — `./mvnw test -Dtest=PresentationRequestGoldenTest -Dgodeck.golden.update=true`.
+- `AiTextEditIntegrationTest`: каталог и `enabled: false`, 200 для поля и блока с записью в обоих
+  журналах, неизменность документа и файлов, уточнение и `refines_edit_id`, `__LONG__`/`__HUGE__`
+  без обрезки и с одним вызовом, `unsupported`, 401/403/404/409, каждый код 422 без вызова модели,
+  квота (101-й запрос → 429 с временем сброса), идемпотентность и параллельный дубль (один вызов),
+  autosave и экспорт во время вызова, отсутствие транзакции во время вызова, зависшая `running`,
+  ошибка провайдера, хранение 90 дней.
+- `EditorLongTextIntegrationTest`: draft/`GET /editor`/commit сохраняют текст до `hard_max_chars`
+  целиком (в `content_json` и PPTX), `hard + 1` → 422; генерация и ручная сборка по-прежнему обрезают.
+
+На Windows без права создавать символические ссылки `PresentationFilesTest.outsidePathsAndSymlinksCannotBeDownloaded`
+падает с `AccessDeniedException` до проверки — это ограничение окружения, а не кода.
+
 ## Проверки после ревью поддерживаемости
 
 - `PresentationRequestFactoryTest`: строгая JSON Schema соответствует полям и номерам макетов выбранного шаблона.
