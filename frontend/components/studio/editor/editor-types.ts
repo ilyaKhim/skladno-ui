@@ -1,3 +1,5 @@
+import type { EditorTextStyle } from '../../../lib/generation-types'
+
 type BlockRole = 'eyebrow' | 'title' | 'subtitle' | 'body' | 'metric' | 'caption'
 export type BlockColor = 'ink' | 'muted' | 'brand'
 export type BlockAlign = 'left' | 'center' | 'right'
@@ -47,6 +49,11 @@ export interface TextBlock {
   color: BlockColor
   /** Resolved PowerPoint font color; custom text continues using semantic color tokens. */
   fontColor?: string
+  fontFamily?: string
+  italic?: boolean
+  underline?: boolean
+  /** Only deliberate user overrides are persisted, never guessed source-template styles. */
+  textStyle?: EditorTextStyle
   /** Present for template fields; geometry remains owned by layoutKey. */
   paragraph?: TextParagraphStyle
 }

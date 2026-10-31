@@ -72,6 +72,16 @@ export type AiCall = {
   duration_ms: number | null
 }
 
+export type EditorTextStyle = {
+  font_family?: string | null
+  font_size?: number | null
+  weight?: 400 | 500 | 700 | null
+  align?: 'left' | 'center' | 'right' | null
+  color?: string | null
+  italic?: boolean | null
+  underline?: boolean | null
+}
+
 type EditorTextBlock = {
   id: string
   field_key: string | null
@@ -90,6 +100,10 @@ type EditorTextBlock = {
   align: 'left' | 'center' | 'right'
   color: 'ink' | 'muted' | 'brand'
   font_color: string | null
+  font_family?: string | null
+  italic?: boolean
+  underline?: boolean
+  text_style?: EditorTextStyle | null
   paragraph: {
     index: number
     bullet: string | null
@@ -156,6 +170,7 @@ export type SaveEditorDraft = {
       y: number
       width: number
       height: number
+      text_style?: EditorTextStyle
     }[]
     custom_blocks: {
       id: string
@@ -168,6 +183,7 @@ export type SaveEditorDraft = {
       weight: 400 | 500 | 700
       align: 'left' | 'center' | 'right'
       color: 'ink' | 'muted' | 'brand'
+      text_style?: EditorTextStyle
     }[]
     images: {
       id: string

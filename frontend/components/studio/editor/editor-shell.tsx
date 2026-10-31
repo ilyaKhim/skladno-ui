@@ -1,19 +1,16 @@
 'use client'
 
 import { useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from 'react'
-import { AlertCircle, Sparkles } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { AlertCircle } from 'lucide-react'
 import {
   createEditorImage,
   duplicateEditorImage,
   moveEditorElement,
   validateEditorImage,
 } from '@/lib/editor-image'
-import type { EditorAsset } from '@/lib/generation-types'
-import { AiAssistantTrigger } from './ai-assistant-trigger'
+import type { EditorAsset, EditorTextStyle } from '@/lib/generation-types'
 import { AiChatPanel, type AiChatLayout } from './ai/ai-chat-panel'
 import { targetFor } from './ai/ai-target'
-import { RightColumnTabs, type RightColumnTab } from './ai/right-column-tabs'
 import { useAiChat, type AiEditConfig } from './ai/use-ai-chat'
 import { EditorToolbar } from './editor-toolbar'
 import {
@@ -23,7 +20,8 @@ import {
   type ImageBlock,
   type TextBlock,
 } from './editor-types'
-import { PropertiesPanel } from './properties-panel'
+import { TextFormatToolbar } from './text-format-toolbar'
+import { EDITOR_FONTS, resolvedTextStyle, validTextStyle } from './text-style'
 import { SlideCanvas } from './slide-canvas'
 import { SlideRail } from './slide-rail'
 import { useEditorState } from './use-editor-state'
@@ -32,10 +30,9 @@ import { restoreRecovery, type EditorVersion } from './editor-recovery'
 import { EditorSafety } from './editor-safety'
 
 const WIDE_LAYOUT_QUERY = '(min-width: 1024px)'
-/** From this width the AI chat is a separate column next to the properties panel. */
-const CHAT_COLUMN_QUERY = '(min-width: 1440px)'
-const CHAT_PANEL_IDS = { properties: 'editor-properties-tabpanel', chat: 'editor-ai-chat' } as const
+const CHAT_PANEL_ID = 'editor-ai-chat'
 const ELEMENT_CLIPBOARD_TYPE = 'application/x-godeck-element'
+const EDITOR_FONT_NAMES: readonly string[] = EDITOR_FONTS
 
 function useMediaQuery(query: string) {
   const subscribe = useCallback(
@@ -79,18 +76,14 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   const { deck } = editor
   const [selectedSlideId, setSelectedSlideId] = useState(initialDeck.slides[0]?.id ?? '')
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState('')
   const [processing, setProcessing] = useState<'export' | 'leave' | 'reload' | null>(null)
   const busy = useRef(false)
   const isWide = useMediaQuery(WIDE_LAYOUT_QUERY)
-  const textFieldRef = useRef<HTMLTextAreaElement>(null)
-  const isChatColumn = useMediaQuery(CHAT_COLUMN_QUERY)
-  const chatLayout: AiChatLayout = isChatColumn ? 'column' : isWide ? 'tab' : 'sheet'
-  const [chatOpen, setChatOpen] = useState(false)
-  const [chatCollapsed, setChatCollapsed] = useState(false)
-  const [rightTab, setRightTab] = useState<RightColumnTab>('properties')
+  const chatLayout: AiChatLayout = isWide ? 'column' : 'sheet'
+  const [chatOpen, setChatOpen] = useState(true)
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
   // Focus after the panel or its tab has rendered and after the opening button has handled its click.
   const [chatFocusRequest, setChatFocusRequest] = useState(0)
@@ -104,7 +97,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     editor,
     // Custom blocks are validated against the saved document, so unsaved edits are saved first.
     ensureSaved: onSave ? () => (editor.hasUnsavedChanges() ? editor.saveNow() : Promise.resolve(true)) : undefined,
-    active: chatOpen,
+    active: chatOpen && (isWide || chatFocusRequest > 0),
   })
 
   const protectUnload = useEffectEvent((event: BeforeUnloadEvent) => {
@@ -189,34 +182,30 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   const selectSlide = (slideId: string) => {
     setSelectedSlideId(slideId)
     setSelectedElementId(null)
+    setEditingBlockId(null)
   }
 
-  const chatVisible = Boolean(aiEdit) && chatOpen && (
-    chatLayout === 'column' ? !chatCollapsed : chatLayout === 'tab' ? rightTab === 'chat' : !panelOpen)
+  const chatVisible = Boolean(aiEdit) && chatOpen && (isWide || chatFocusRequest > 0)
 
   const openChat = () => {
     if (!aiEdit) return
     setChatOpen(true)
-    setChatCollapsed(false)
-    setRightTab('chat')
-    // The sheet and the properties drawer share the bottom of a narrow screen.
-    if (chatLayout === 'sheet') setPanelOpen(false)
     setChatFocusRequest((value) => value + 1)
   }
-
-  const closeChat = () => {
-    setChatOpen(false)
-    setRightTab('properties')
-  }
-
+  const closeChat = () => setChatOpen(false)
   const toggleChat = () => (chatVisible ? closeChat() : openChat())
 
   const activateBlock = (blockId: string) => {
     setSelectedElementId(blockId)
-    // Double click means manual editing: the tabbed column switches back to properties.
-    setRightTab('properties')
-    setPanelOpen(true)
-    requestAnimationFrame(() => textFieldRef.current?.focus())
+    setEditingBlockId(blockId)
+  }
+  const finishEditing = () => {
+    setEditingBlockId(null)
+    editor.sealHistory()
+  }
+  const formatBlock = (patch: EditorTextStyle) => {
+    if (!block) return
+    editor.updateBlock(slide.id, block.id, { textStyle: { ...block.textStyle, ...patch } })
   }
 
   const toggleSlideHidden = (slideId: string) => {
@@ -225,6 +214,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   }
 
   const insertTextBlock = (text = 'Новый текст', source?: TextBlock) => {
+    const sourceStyle = source ? resolvedTextStyle(source, slide.theme) : null
     const offset = ((slide.blocks.filter((item) => !item.fieldKey).length + 1) % 6) * 2
     const id = `text-${crypto.randomUUID()}`
     const width = source?.width ?? 36
@@ -241,12 +231,17 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
       weight: source?.weight ?? 400,
       align: source?.align ?? 'left',
       color: source?.color ?? 'ink',
+      ...(sourceStyle && validTextStyle(source?.textStyle) ? { textStyle: {
+        font_family: EDITOR_FONT_NAMES.includes(sourceStyle.fontFamily) ? sourceStyle.fontFamily : 'Arial',
+        font_size: sourceStyle.fontSize, weight: sourceStyle.weight,
+        align: sourceStyle.align, color: sourceStyle.color,
+        italic: sourceStyle.italic, underline: sourceStyle.underline,
+      } } : {}),
       maxChars: CUSTOM_TEXT_MAX_CHARS,
     }
     editor.addBlock(slide.id, next)
     setSelectedElementId(id)
-    setPanelOpen(true)
-    requestAnimationFrame(() => textFieldRef.current?.focus())
+    setEditingBlockId(id)
   }
 
   const duplicateBlock = () => {
@@ -257,7 +252,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     const next = createEditorImage(asset, slide.images.length)
     editor.addImage(slide.id, next)
     setSelectedElementId(next.id)
-    setPanelOpen(true)
+    setEditingBlockId(null)
   }
 
   const uploadAndInsertImage = async (file: File) => {
@@ -283,19 +278,21 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     const next = duplicateEditorImage(image, slide.images.length)
     editor.addImage(slide.id, next)
     setSelectedElementId(next.id)
-    setPanelOpen(true)
+    setEditingBlockId(null)
   }
 
   const removeBlock = () => {
     if (!block || block.fieldKey) return
     editor.removeBlock(slide.id, block.id)
     setSelectedElementId(null)
+    setEditingBlockId(null)
   }
 
   const removeImage = () => {
     if (!image) return
     editor.removeImage(slide.id, image.id)
     setSelectedElementId(null)
+    setEditingBlockId(null)
   }
 
   const duplicateElement = () => image ? duplicateImage() : duplicateBlock()
@@ -316,9 +313,20 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
       toggleChat()
       return
     }
+    const editingSlideText = event.target instanceof HTMLElement && event.target.getAttribute('aria-label') === 'Текст'
+    if (mod && block && ['b', 'i', 'u'].includes(key) && (!isEditableTarget(event.target) || editingSlideText)) {
+      event.preventDefault()
+      const style = resolvedTextStyle(block)
+      formatBlock(key === 'b' ? { weight: style.weight === 700 ? 400 : 700 }
+        : key === 'i' ? { italic: !style.italic } : { underline: !style.underline })
+      return
+    }
     if (isEditableTarget(event.target)) return
 
-    if (mod && key === 'd' && (block || image)) {
+    if (event.key === 'Enter' && block && !event.isComposing) {
+      event.preventDefault()
+      activateBlock(block.id)
+    } else if (mod && key === 'd' && (block || image)) {
       event.preventDefault()
       duplicateElement()
     } else if (mod && key === 'z') {
@@ -329,8 +337,8 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
       event.preventDefault()
       editor.redo()
     } else if (event.key === 'Escape') {
-      if (!isWide && panelOpen) setPanelOpen(false)
-      else setSelectedElementId(null)
+      setEditingBlockId(null)
+      setSelectedElementId(null)
     } else if ((event.key === 'Backspace' || event.key === 'Delete') && (image || (block && !block.fieldKey))) {
       event.preventDefault()
       removeElement()
@@ -392,7 +400,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
           const next = duplicateEditorImage(copied.value, slide.images.length)
           editor.addImage(slide.id, next)
           setSelectedElementId(next.id)
-          setPanelOpen(true)
+          setEditingBlockId(null)
           return
         }
       } catch {
@@ -419,47 +427,17 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     }
   }, [])
 
-  const propertiesPanel = (showHeader: boolean) => (
-    <PropertiesPanel
-      slide={slide}
-      slideIndex={slideIndex}
-      block={block}
-      image={image}
-      open={panelOpen}
-      isDrawer={!isWide}
-      textFieldRef={textFieldRef}
-      onClose={() => setPanelOpen(false)}
-      onSelectElement={setSelectedElementId}
-      onUpdateBlock={(patch, coalesceKey) => {
-        if (block) editor.updateBlock(slide.id, block.id, patch, coalesceKey)
-      }}
-      onUpdateImage={(patch, coalesceKey) => {
-        if (image) editor.updateImage(slide.id, image.id, patch, coalesceKey)
-      }}
-      onUpdateSlide={(patch, coalesceKey) => editor.updateSlide(slide.id, patch, coalesceKey)}
-      onCommitField={editor.sealHistory}
-      onDeleteElement={removeElement}
-      onDuplicateElement={duplicateElement}
-      contentOnly={contentOnly}
-      onAskAi={aiEdit ? openChat : undefined}
-      showHeader={showHeader}
-    />
-  )
-
-  const tabbedChat = Boolean(aiEdit) && chatOpen && chatLayout === 'tab'
   const chatPanel = aiEdit && (
     <AiChatPanel
-      id={CHAT_PANEL_IDS.chat}
+      id={CHAT_PANEL_ID}
       chat={chat}
       deck={deck}
       target={block ? targetFor(slide, block) : null}
       block={block}
       layout={chatLayout}
-      showHeader={!tabbedChat}
       inputRef={chatInputRef}
       onClose={closeChat}
-      onDismiss={chatLayout === 'sheet' ? closeChat : chatLayout === 'tab' ? () => setRightTab('properties') : undefined}
-      onCollapse={chatLayout === 'column' ? () => setChatCollapsed(true) : undefined}
+      onDismiss={chatLayout === 'sheet' ? closeChat : undefined}
     />
   )
 
@@ -473,8 +451,8 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
           saveStatus={editor.saveStatus}
           canUndo={editor.canUndo && !publicationPending}
           canRedo={editor.canRedo && !publicationPending}
-          panelToggleVisible={!isWide}
-          panelOpen={panelOpen}
+          chatAvailable={Boolean(aiEdit)}
+          chatOpen={chatVisible}
           onRename={editor.renameDeck}
           onCommitTitle={editor.sealHistory}
           onUndo={editor.undo}
@@ -485,7 +463,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
           imageUploading={imageUploading}
           onExport={onExport ? exportDocument : undefined}
           onBack={() => void leaveEditor()}
-          onTogglePanel={() => setPanelOpen((open) => !open)}
+          onToggleChat={toggleChat}
           titleEditable={!contentOnly}
           firstPublication={Boolean(onExport) && (getVersion?.().base ?? initialDeck.baseVersion) === 0}
         />
@@ -524,7 +502,10 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
           onToggleHidden={toggleSlideHidden}
         />
 
-        <main className="relative min-h-0 min-w-0 flex-1">
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <TextFormatToolbar theme={slide.theme} block={block} image={image} onFormat={formatBlock}
+            onImageAlt={(alt) => { if (image) editor.updateImage(slide.id, image.id, { alt }, `${image.id}:alt`) }}
+            onDuplicate={duplicateElement} onDelete={removeElement} onCommit={editor.sealHistory} />
           {imageError && (
             <div role="alert" className="absolute top-12 left-1/2 z-20 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-lg border border-destructive/25 bg-card px-3 py-2 text-xs text-destructive shadow-md">
               <AlertCircle className="size-4 shrink-0" />
@@ -532,55 +513,31 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
               <button type="button" className="ml-1 underline underline-offset-2" onClick={() => setImageError('')}>Закрыть</button>
             </div>
           )}
-          <SlideCanvas
+          <div className="min-h-0 flex-1"><SlideCanvas
+            editingBlockId={editingBlockId}
+            onFinishEditing={finishEditing}
             slide={slide}
             slideIndex={slideIndex}
             slideCount={deck.slides.length}
             selectedElementId={selectedElementId}
             selectedElementKind={image ? 'image' : block ? 'text' : null}
             selectedElementCanMove={Boolean(image || block)}
-            onSelectElement={setSelectedElementId}
+            onSelectElement={(id) => { setSelectedElementId(id); if (id !== editingBlockId) setEditingBlockId(null) }}
             onActivateBlock={activateBlock}
             onToggleHidden={() => toggleSlideHidden(slide.id)}
+            onRenameSlide={(name) => editor.updateSlide(slide.id, { name }, `${slide.id}:name`)}
             onUpdateBlock={(blockId, patch, coalesceKey) => editor.updateBlock(slide.id, blockId, patch, coalesceKey)}
             onUpdateImage={(imageId, patch, coalesceKey) => editor.updateImage(slide.id, imageId, patch, coalesceKey)}
             onCommitElement={editor.sealHistory}
-          />
-          {aiEdit && <AiAssistantTrigger open={chatVisible} controls={CHAT_PANEL_IDS.chat} onToggle={toggleChat} />}
+          /></div>
+          {block && block.maxChars && block.text.length > block.maxChars && <p role="status" className="shrink-0 px-4 py-2 text-xs text-muted-foreground">
+            Текст длиннее рекомендованного для макета ({block.text.length} / {block.maxChars}). Весь текст сохранится; проверьте, помещается ли он в блок.
+          </p>}
         </main>
 
-        {tabbedChat ? (
-          <div className="flex min-h-0 w-72 shrink-0 flex-col border-l border-border bg-card xl:w-80">
-            <RightColumnTabs value={rightTab} panelIds={CHAT_PANEL_IDS} onChange={setRightTab} onCloseChat={closeChat} />
-            <div
-              role="tabpanel"
-              id={CHAT_PANEL_IDS.properties}
-              aria-labelledby={`${CHAT_PANEL_IDS.properties}-tab`}
-              hidden={rightTab !== 'properties'}
-              className="flex min-h-0 flex-1 flex-col [&>aside]:min-h-0 [&>aside]:w-full [&>aside]:flex-1 [&>aside]:border-l-0"
-            >
-              {propertiesPanel(false)}
-            </div>
-            <div
-              role="tabpanel"
-              aria-labelledby={`${CHAT_PANEL_IDS.chat}-tab`}
-              hidden={rightTab !== 'chat'}
-              className="flex min-h-0 flex-1 flex-col"
-            >
-              {chatPanel}
-            </div>
-          </div>
-        ) : propertiesPanel(true)}
-
-        {aiEdit && chatOpen && chatLayout === 'column' && (chatCollapsed ? (
-          <div className="flex w-10 shrink-0 flex-col items-center border-l border-border bg-card py-2">
-            <Button variant="ghost" size="icon-sm" onClick={() => setChatCollapsed(false)} aria-label="Развернуть AI-чат" title="Развернуть AI-чат">
-              <Sparkles className="text-primary" />
-            </Button>
-          </div>
-        ) : chatPanel)}
+        {chatVisible && isWide && chatPanel}
       </div>
-      {aiEdit && chatOpen && chatLayout === 'sheet' && !panelOpen && <div inert={processing !== null || publicationPending} className="flex shrink-0 flex-col">{chatPanel}</div>}
+      {chatVisible && !isWide && <div inert={processing !== null || publicationPending} className="fixed inset-x-0 bottom-0 z-30 flex flex-col">{chatPanel}</div>}
     </div>
   )
 }

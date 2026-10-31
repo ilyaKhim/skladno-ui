@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { toDeck } from '../components/studio/editor/editor-document.ts'
+import { serialize, toDeck } from '../components/studio/editor/editor-document.ts'
 
 const serverBlock = (overrides = {}) => ({
   id: 'slide-3-field-1',
@@ -50,4 +50,14 @@ test('an older backend without hard_max_chars keeps max_chars as the hard limit'
   const block = toDeck(serverDeck(serverBlock())).slides[0].blocks[0]
   assert.equal(block.maxChars, 46)
   assert.equal(block.hardMaxChars, 46)
+})
+
+test('explicit formatting round-trips while source font metadata never becomes an override', () => {
+  const text_style = { font_family: 'Georgia', italic: true, underline: false, font_size: 32, color: '#224466' }
+  const deck = toDeck(serverDeck(serverBlock({ font_family: 'Georgia', italic: true, text_style })))
+  assert.deepEqual(deck.slides[0].blocks[0].textStyle, text_style)
+  const payload = serialize(deck, 1, 2)
+  assert.deepEqual(payload.slides[0].layouts[0].text_style, text_style)
+  const old = serialize(toDeck(serverDeck(serverBlock({ font_family: 'Some source font' }))), 1, 0)
+  assert.deepEqual(old.slides[0].layouts[0].text_style, {})
 })

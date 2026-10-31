@@ -72,3 +72,11 @@ test('editing semantic text still updates matching fields without changing sibli
   assert.equal(next.slides[0].blocks[1].text, 'Subtitle')
   assert.equal(next.slides[1].blocks[0].text, 'Updated')
 })
+
+test('formatting follows the PowerPoint text shape, not a repeated field on another slide', () => {
+  const textStyle = { font_family: 'Inter', italic: true, underline: false }
+  const next = applyDeckAction(deck, { type: 'updateBlock', slideId: 'slide-1', blockId: 'title-1', patch: { textStyle } })
+  assert.deepEqual(next.slides[0].blocks.map((block) => block.textStyle), [textStyle, textStyle])
+  assert.equal(next.slides[1].blocks[0].textStyle, undefined)
+  assert.equal(deck.slides[0].blocks[0].textStyle, undefined)
+})

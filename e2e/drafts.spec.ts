@@ -26,8 +26,8 @@ for (const width of [1440, 390]) {
     const original = '__LONG__ Исходный текст для проверки AI'
     await page.getByRole('textbox', { name: 'Текст', exact: true }).fill(original)
     await saved(page)
-    if (width < 1024) await page.getByRole('button', { name: 'Закрыть панель свойств', exact: true }).click()
-    await page.getByRole('button', { name: 'AI-помощник', exact: true }).click()
+    await page.keyboard.press('Escape')
+    if (!await page.getByRole('complementary', { name: 'AI-чат', exact: true }).isVisible()) await page.getByRole('button', { name: 'AI-чат', exact: true }).click()
     const chat = page.getByRole('complementary', { name: 'AI-чат', exact: true })
     const pending = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith('/editor/ai/text-edits'))
     await chat.getByRole('button', { name: 'Сократить', exact: true }).click()
@@ -70,8 +70,8 @@ test('мобильный AI-чат не применяет предложени�
   const original = 'Исходный текст для проверки запрета изменений при экспорте'
   await page.getByRole('textbox', { name: 'Текст', exact: true }).fill(original)
   await saved(page)
-  await page.getByRole('button', { name: 'Закрыть панель свойств', exact: true }).click()
-  await page.getByRole('button', { name: 'AI-помощник', exact: true }).click()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'AI-чат', exact: true }).click()
   const chat = page.getByRole('complementary', { name: 'AI-чат', exact: true })
   await chat.getByRole('button', { name: 'Сократить', exact: true }).click()
   const apply = chat.getByRole('button', { name: /^Применить вариант к блоку/ })
@@ -108,7 +108,7 @@ test('AI готовит неопубликованный черновик; ре�
   expect((await (await request.get(`${root}/${id}/versions`)).json()).items).toHaveLength(0)
   for (const [name, width, height] of [['desktop', 1440, 1000], ['mobile', 390, 844]] as const) {
     await page.setViewportSize({ width, height })
-    if (name === 'mobile') await expect(page.getByRole('button', { name: 'Панель свойств', exact: true })).toBeVisible()
+    if (name === 'mobile') await expect(page.getByRole('button', { name: 'AI-чат', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Экспорт', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Создать первую версию', exact: true })).toBeVisible()
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)

@@ -78,6 +78,7 @@ final class TemplateEditorMapper {
                     if (editableParagraphs.isEmpty()) continue;
                     String layoutId = textLayoutId(source, ++layoutIndex);
                     PresentationContent.TextLayout override = layoutOverrides.get(layoutId);
+                    if (override != null) TemplateTextStyles.apply(textShape, override.textStyle(), page.getWidth());
                     Rectangle2D anchor = textShape.getAnchor();
                     double x =
                             override != null
@@ -137,7 +138,11 @@ final class TemplateEditorMapper {
                                             alignment(paragraph),
                                             color(role),
                                             run == null ? null : paintColor(run.getFontColor()),
-                                            paragraphStyle));
+                                            paragraphStyle,
+                                            run == null ? null : run.getFontFamily(),
+                                            run != null && run.isItalic(),
+                                            run != null && run.isUnderlined(),
+                                            override == null ? null : override.textStyle()));
                         }
                     }
                 }
@@ -160,7 +165,11 @@ final class TemplateEditorMapper {
                                     block.align(),
                                     block.color(),
                                     null,
-                                    null));
+                                    null,
+                                    block.textStyle() == null ? "Arial" : block.textStyle().fontFamily(),
+                                    block.textStyle() != null && Boolean.TRUE.equals(block.textStyle().italic()),
+                                    block.textStyle() != null && Boolean.TRUE.equals(block.textStyle().underline()),
+                                    block.textStyle()));
                 }
                 List<EditorDeckView.ImageBlock> images =
                         decision.imageBlocksOrEmpty().stream()

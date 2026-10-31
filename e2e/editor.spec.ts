@@ -1,4 +1,4 @@
-import { test, expect, canvas, downloadPptx, editorState, inspectPresentationOrder, inspectSlide, listShape, openList, saved } from './support'
+import { test, expect, canvas, downloadPptx, editorState, inspectPresentationOrder, inspectSlide, listShape, moveListShapeTo, openList, saved } from './support'
 import { strFromU8 } from 'fflate'
 
 test('создать презентацию через студию и открыть редактор с настоящим фоном', async ({ page, plan, createdDecks }) => {
@@ -44,6 +44,7 @@ test('изменить текст и передвинуть shape, дождат�
   const third = listShape(page).locator('[data-paragraph-index="2"]')
   await third.dblclick()
   await page.getByRole('textbox', { name: 'Текст', exact: true }).fill('Кузов после E2E-редактирования')
+  await page.keyboard.press('Escape')
   const before = await listShape(page).boundingBox()
   expect(before).not.toBeNull()
   await page.mouse.move(before!.x + before!.width / 2, before!.y + before!.height / 2)
@@ -79,8 +80,8 @@ test('вставить изображение, сохранить и восст�
     name: 'e2e-pixel.png', mimeType: 'image/png',
     buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==', 'base64'),
   })
-  await expect(page.getByRole('textbox', { name: 'Описание', exact: true })).toBeVisible()
-  await page.getByRole('textbox', { name: 'Описание', exact: true }).fill('Изображение E2E')
+  await expect(page.getByRole('textbox', { name: 'Описание изображения', exact: true })).toBeVisible()
+  await page.getByRole('textbox', { name: 'Описание изображения', exact: true }).fill('Изображение E2E')
   await saved(page)
   const state = await editorState(page, deckId)
   expect(state.slides[1].images).toHaveLength(1)
@@ -111,13 +112,17 @@ test('экспортировать PPTX с изменённым текстом, 
   await openList(page, deckId)
   await listShape(page).locator('[data-paragraph-index="2"]').dblclick()
   await page.getByRole('textbox', { name: 'Текст', exact: true }).fill('Третий пункт для экспорта')
-  await page.getByRole('spinbutton', { name: 'Позиция X', exact: true }).fill('55')
-  await page.getByRole('spinbutton', { name: 'Позиция Y', exact: true }).fill('15')
+  await moveListShapeTo(page, 55, 15)
   await page.getByRole('button', { name: 'Скрыть из показа', exact: true }).click()
   const rail = page.getByRole('navigation', { name: 'Слайды', exact: true })
   await rail.getByRole('listitem').nth(1).hover()
   await rail.getByRole('listitem').nth(1).getByRole('button', { name: 'Переместить слайд выше' }).click()
   await saved(page)
+  const savedDeck = await editorState(page, deckId)
+  const moved = savedDeck.slides[0].blocks.find((block: { field_key: string }) => block.field_key === 'LIST_3')
+  // Pointer coordinates have browser-specific subpixel rounding. Export must match the saved shape.
+  expect(Math.abs(moved.x - 55)).toBeLessThan(0.2)
+  expect(Math.abs(moved.y - 15)).toBeLessThan(0.2)
   const zip = await downloadPptx(page)
   const exported = await inspectSlide(page, zip)
   expect(exported.unresolvedMarkers).toBe(false)
@@ -127,8 +132,8 @@ test('экспортировать PPTX с изменённым текстом, 
   const shape = exported.shapes.find((shape) => shape.paragraphs.includes('Третий пункт для экспорта'))!
   expect(shape.paragraphs).toEqual([plan.fields.LIST_1, plan.fields.LIST_2, 'Третий пункт для экспорта', plan.fields.LIST_4, plan.fields.LIST_5])
   expect(shape.bullets).toEqual(Array(5).fill('—'))
-  expect(shape.x).toBeCloseTo(12_191_695 * 0.55, -3)
-  expect(shape.y).toBeCloseTo(6_858_000 * 0.15, -3)
+  expect(shape.x).toBeCloseTo(12_191_695 * moved.x / 100, -3)
+  expect(shape.y).toBeCloseTo(6_858_000 * moved.y / 100, -3)
   expect(exported.hidden).toBe(true)
   expect(await inspectPresentationOrder(page, zip)).toEqual(['slide9.xml', 'slide1.xml', 'slide13.xml'])
   const state = await editorState(page, deckId)

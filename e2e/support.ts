@@ -102,6 +102,17 @@ export const editorApi = (id: string) => `/api/generation/v1/presentations/${id}
 export const canvas = (page: Page) => page.locator('main [data-slide-surface]')
 export const listShape = (page: Page) => canvas(page).locator('[data-text-shape-id="layout:slide-9-layout-3"]')
 
+/** Move the real canvas shape, not an inspector input or an API shortcut. */
+export async function moveListShapeTo(page: Page, x: number, y: number) {
+  await page.keyboard.press('Escape')
+  const frame = (await canvas(page).boundingBox())!
+  const shape = (await listShape(page).boundingBox())!
+  await page.mouse.move(shape.x + 4, shape.y + 4)
+  await page.mouse.down()
+  await page.mouse.move(frame.x + frame.width * x / 100 + 4, frame.y + frame.height * y / 100 + 4, { steps: 5 })
+  await page.mouse.up()
+}
+
 export async function openList(page: Page, id: string) {
   await page.goto(editorUrl(id))
   // The thumbnail's upper-right toolbar can cover its center on narrow screens.

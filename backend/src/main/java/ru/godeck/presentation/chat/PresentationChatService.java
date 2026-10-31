@@ -133,6 +133,9 @@ public class PresentationChatService {
                                                 bySlide.containsKey(slide.slide())
                                                         ? bySlide.get(slide.slide())
                                                                 .imageBlocksOrEmpty()
+                                                        : List.of(),
+                                                bySlide.containsKey(slide.slide())
+                                                        ? bySlide.get(slide.slide()).textLayoutsOrEmpty()
                                                         : List.of()))
                         .toList());
     }

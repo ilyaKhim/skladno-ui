@@ -6,6 +6,7 @@ import ru.godeck.presentation.editor.dto.SaveEditorDraftRequest;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.model.PresentationContent;
+import ru.godeck.presentation.model.TextStyle;
 import ru.godeck.presentation.storage.PresentationFiles;
 import ru.godeck.presentation.template.PresentationTemplateService;
 
@@ -90,7 +91,8 @@ public class EditorDraftAssembler {
                                                     block.fontSize(),
                                                     block.weight(),
                                                     block.align(),
-                                                    block.color()))
+                                                    block.color(),
+                                                    customTextStyle(block, decision)))
                             .toList();
             List<PresentationContent.ImageBlock> imageBlocks =
                     inputSlide.imagesOrEmpty().stream()
@@ -180,11 +182,31 @@ public class EditorDraftAssembler {
                                             layout.x(),
                                             layout.y(),
                                             layout.width(),
-                                            layout.height());
+                                            layout.height(),
+                                            templateTextStyle(layout, current));
                                 })
                         .toList();
         if (!actual.equals(expected)) invalid();
         return layouts;
+    }
+
+    /** Older clients omit formatting, so an unrelated autosave must retain the current style. */
+    private static TextStyle customTextStyle(
+            SaveEditorDraftRequest.CustomTextBlock input, PresentationContent.Slide current) {
+        if (input.textStyle() != null) return input.textStyle();
+        for (var block : current.textBlocksOrEmpty()) {
+            if (block.id().equals(input.id())) return block.textStyle();
+        }
+        return null;
+    }
+
+    private static TextStyle templateTextStyle(
+            SaveEditorDraftRequest.TextLayout input, PresentationContent.Slide current) {
+        if (input.textStyle() != null) return input.textStyle();
+        for (var layout : current.textLayoutsOrEmpty()) {
+            if (layout.id().equals(input.id())) return layout.textStyle();
+        }
+        return null;
     }
 
     /** Throws the stable public error used for malformed editor snapshots. */

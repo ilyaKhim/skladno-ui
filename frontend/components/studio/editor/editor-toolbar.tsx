@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, CircleDot, Download, ImagePlus, LoaderCircle, PanelRight, Redo2, Type, Undo2 } from 'lucide-react'
+import { ArrowLeft, Check, CircleDot, Download, ImagePlus, LoaderCircle, Sparkles, Redo2, Type, Undo2 } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -14,8 +14,8 @@ interface EditorToolbarProps {
   saveStatus: SaveStatus
   canUndo: boolean
   canRedo: boolean
-  panelToggleVisible: boolean
-  panelOpen: boolean
+  chatAvailable: boolean
+  chatOpen: boolean
   onRename: (title: string) => void
   onCommitTitle: () => void
   onUndo: () => void
@@ -25,7 +25,7 @@ interface EditorToolbarProps {
   onAddImage?: (file: File) => void
   imageUploading?: boolean
   onExport?: () => Promise<void>
-  onTogglePanel: () => void
+  onToggleChat: () => void
   titleEditable?: boolean
   firstPublication?: boolean
   onBack?: () => void
@@ -38,8 +38,8 @@ export function EditorToolbar({
   saveStatus,
   canUndo,
   canRedo,
-  panelToggleVisible,
-  panelOpen,
+  chatAvailable,
+  chatOpen,
   onRename,
   onCommitTitle,
   onUndo,
@@ -49,14 +49,14 @@ export function EditorToolbar({
   onAddImage,
   imageUploading = false,
   onExport,
-  onTogglePanel,
+  onToggleChat,
   titleEditable = true,
   firstPublication = false,
   onBack,
 }: EditorToolbarProps) {
   const imageInput = useRef<HTMLInputElement>(null)
   return (
-    <header className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border bg-card px-2 sm:px-3">
+    <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-card px-2 py-1 sm:h-12 sm:flex-nowrap sm:px-3 sm:py-0">
       <a
         href="/studio"
         onClick={(event) => {
@@ -95,7 +95,7 @@ export function EditorToolbar({
         {slideCount} слайдов{hiddenCount > 0 && `, ${hiddenCount} скрыт`}
       </span>
 
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+      <div className="ml-auto flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto">
         <SaveIndicator status={saveStatus} onSave={onSave} />
         <span aria-hidden className="mx-1 hidden h-5 w-px bg-border sm:block" />
         {onAddText && (
@@ -143,16 +143,17 @@ export function EditorToolbar({
         >
           <Redo2 />
         </Button>
-        {panelToggleVisible && (
+        {chatAvailable && (
           <Button
-            variant={panelOpen ? 'secondary' : 'ghost'}
+            variant={chatOpen ? 'secondary' : 'ghost'}
             size="icon-sm"
-            onClick={onTogglePanel}
-            aria-pressed={panelOpen}
-            aria-label="Панель свойств"
-            title="Панель свойств"
+            onClick={onToggleChat}
+            aria-pressed={chatOpen}
+            aria-controls="editor-ai-chat"
+            aria-label="AI-чат"
+            title="AI-чат (Ctrl+J)"
           >
-            <PanelRight />
+            <Sparkles />
           </Button>
         )}
         <ExportMenu title={title} hiddenCount={hiddenCount} onExport={onExport} firstPublication={firstPublication} />

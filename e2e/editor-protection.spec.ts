@@ -216,7 +216,7 @@ test('запрет browser storage оставляет редактор рабо�
   await page.setViewportSize({ width: 390, height: 844 })
   await edit(page, 'Работа при недоступном локальном хранилище')
   await expect(field(page)).toHaveValue('Работа при недоступном локальном хранилище')
-  await page.getByRole('button', { name: 'Закрыть панель свойств', exact: true }).click()
+  await page.keyboard.press('Escape')
   const warning = page.getByRole('alert', { name: 'Локальная копия недоступна' })
   await expect(warning).toBeVisible()
   await expect(page.getByRole('alert', { name: 'Ошибка редактора' })).toBeVisible()

@@ -1,4 +1,5 @@
 import type { Deck, Slide, TextBlock, ImageBlock } from './editor-types'
+import { validTextStyle } from './text-style.ts'
 import { serialize } from './editor-document.ts'
 
 export interface EditorVersion { base: number; draft: number }
@@ -25,6 +26,7 @@ function validText(value: unknown): value is TextBlock {
     && ['left', 'center', 'right'].includes(String(value.align)) && ['ink', 'muted', 'brand'].includes(String(value.color))
     && (value.fieldKey === undefined || text(value.fieldKey, 200))
     && (value.layoutKey === undefined || text(value.layoutKey, 200))
+    && validTextStyle(value.textStyle)
 }
 
 function validImage(value: unknown): value is ImageBlock {
@@ -74,11 +76,13 @@ export function restoreRecovery(copy: RecoveryCopy, server: Deck): Deck | null {
     for (const block of templateBlocks) {
       const trusted = originals.find((candidate) => candidate.id === block.id && candidate.fieldKey === block.fieldKey && candidate.layoutKey === block.layoutKey)
       if (!trusted) return null
-      blocks.push({ ...trusted, text: block.text, x: block.x, y: block.y, width: block.width, height: block.height })
+      blocks.push({ ...trusted, text: block.text, x: block.x, y: block.y, width: block.width, height: block.height,
+        ...(block.textStyle ? { textStyle: block.textStyle } : {}) })
     }
     for (const block of local.blocks.filter((block) => !block.fieldKey)) {
       blocks.push({ id: block.id, role: block.role, text: block.text, x: block.x, y: block.y, width: block.width,
-        height: block.height, fontSize: block.fontSize, weight: block.weight, align: block.align, color: block.color })
+        height: block.height, fontSize: block.fontSize, weight: block.weight, align: block.align, color: block.color,
+        ...(block.textStyle ? { textStyle: block.textStyle } : {}) })
     }
     slides.push({ ...original, name: local.name, hidden: local.hidden, blocks,
       images: local.images.map((image) => ({ id: image.id, assetId: image.assetId, alt: image.alt,
@@ -105,7 +109,11 @@ export function createRecoveryStore(storage: StorageAccess, ownerId: string, dec
   return {
     write(deck: Deck, version: EditorVersion) {
       lastTimestamp = Math.max(Date.now(), lastTimestamp + 1)
-      const raw = JSON.stringify({ schema: 1, ownerId, savedAt: lastTimestamp, version, deck } satisfies RecoveryCopy)
+      // Explicit empty styles preserve an undo/reset even when the server still has the old style.
+      const snapshot = { ...deck, slides: deck.slides.map((slide) => ({ ...slide,
+        blocks: slide.blocks.map((block) => ({ ...block, textStyle: block.textStyle ?? {} })),
+      })) }
+      const raw = JSON.stringify({ schema: 1, ownerId, savedAt: lastTimestamp, version, deck: snapshot } satisfies RecoveryCopy)
       if (raw.length > MAX_COPY_LENGTH) throw new Error('Recovery copy is too large')
       storage.setItem(ownKey, raw)
     },

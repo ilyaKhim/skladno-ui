@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-31T07:29:04Z",
+  "title": "Design System: GoDeck",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Page canvas"
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Dark ink"
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "White surface"
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Action blue"
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Darker action blue"
+      },
+      "secondary": {
+        "role": "secondary",
+        "displayName": "Soft blue"
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted surface"
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Secondary text"
+      },
+      "accent": {
+        "role": "secondary",
+        "displayName": "Lime marker"
+      },
+      "destructive": {
+        "role": "destructive",
+        "displayName": "Destructive red"
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Neutral border"
+      },
+      "navy": {
+        "role": "neutral",
+        "displayName": "Dark section"
+      },
+      "navy-foreground": {
+        "role": "neutral",
+        "displayName": "Dark-section text"
+      },
+      "tint-sage": {
+        "role": "secondary",
+        "displayName": "Sage mockup tint"
+      },
+      "tint-apricot": {
+        "role": "secondary",
+        "displayName": "Apricot mockup tint"
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Section headline",
+        "purpose": "Observed base example-section heading; responsive overrides stay in the component."
+      },
+      "title": {
+        "displayName": "Auth title",
+        "purpose": "Existing auth heading."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Base interface text."
+      },
+      "label": {
+        "displayName": "Control label",
+        "purpose": "Default shared Button label."
+      }
+    },
+    "shadows": [
+      {
+        "name": "sm",
+        "value": "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
+        "purpose": "Existing auth and presentation cards; scrolled header."
+      },
+      {
+        "name": "md",
+        "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+        "purpose": "Existing template-card hover and mobile menu."
+      },
+      {
+        "name": "lg",
+        "value": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+        "purpose": "Existing popovers."
+      },
+      {
+        "name": "slide-shadow",
+        "value": "0 1px 2px oklch(0.25 0.045 255 / 6%), 0 12px 28px -12px oklch(0.25 0.045 255 / 14%)",
+        "purpose": "Named slide-shadow utility from app/globals.css."
+      }
+    ],
+    "motion": [
+      {
+        "name": "utility-transition",
+        "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Installed Tailwind default used by shared control transitions."
+      },
+      {
+        "name": "header-and-gallery-transition",
+        "value": "300ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Explicit duration on public header, template cards, and category controls."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0.001ms",
+        "purpose": "Global reduced-motion transition and animation duration; smooth scrolling becomes auto."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Default button variant; only its anchor form has the source-defined hover fill.",
+      "html": "<button type=\"button\" class=\"ds-button-primary\">Сохранить</button>",
+      "css": ".ds-button-primary { display:inline-flex; flex-shrink:0; align-items:center; justify-content:center; height:2rem; gap:0.375rem; padding:0 0.625rem; border:1px solid transparent; border-radius:var(--radius, 0.625rem); background:transparent; color:var(--foreground, #142033); font-family:'Inter Variable', ui-sans-serif, system-ui, sans-serif; font-size:0.875rem; font-weight:500; line-height:1.25rem; white-space:nowrap; outline:none; user-select:none; transition:all 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-button-primary:focus-visible { border-color:var(--primary, #335cc5); box-shadow:0 0 0 3px color-mix(in oklab, var(--primary, #335cc5) 50%, transparent); } .ds-button-primary:active:not([aria-haspopup]) { transform:translateY(1px); } .ds-button-primary:disabled { pointer-events:none; opacity:0.5; } .ds-button-primary[aria-invalid=\"true\"] { border-color:var(--destructive, oklch(0.577 0.245 27.325)); box-shadow:0 0 0 3px color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 20%, transparent); } @media(prefers-reduced-motion:reduce) { .ds-button-primary { transition-duration:0.001ms; } } .ds-button-primary { background:var(--primary, #335cc5); color:var(--primary-foreground, #ffffff); } .ds-button-primary[href]:hover { background:color-mix(in oklab, var(--primary, #335cc5) 80%, transparent); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Bordered secondary action, as used in the editor toolbar.",
+      "html": "<button type=\"button\" class=\"ds-button-outline\">Текст</button>",
+      "css": ".ds-button-outline { display:inline-flex; flex-shrink:0; align-items:center; justify-content:center; height:2rem; gap:0.375rem; padding:0 0.625rem; border:1px solid transparent; border-radius:var(--radius, 0.625rem); background:transparent; color:var(--foreground, #142033); font-family:'Inter Variable', ui-sans-serif, system-ui, sans-serif; font-size:0.875rem; font-weight:500; line-height:1.25rem; white-space:nowrap; outline:none; user-select:none; transition:all 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-button-outline:focus-visible { border-color:var(--primary, #335cc5); box-shadow:0 0 0 3px color-mix(in oklab, var(--primary, #335cc5) 50%, transparent); } .ds-button-outline:active:not([aria-haspopup]) { transform:translateY(1px); } .ds-button-outline:disabled { pointer-events:none; opacity:0.5; } .ds-button-outline[aria-invalid=\"true\"] { border-color:var(--destructive, oklch(0.577 0.245 27.325)); box-shadow:0 0 0 3px color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 20%, transparent); } @media(prefers-reduced-motion:reduce) { .ds-button-outline { transition-duration:0.001ms; } } .ds-button-outline { border-color:var(--border, #d9dee7); background:var(--background, #f7f7f5); } .ds-button-outline:hover, .ds-button-outline[aria-expanded=\"true\"] { background:var(--muted, #eef0f2); color:var(--foreground, #142033); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Soft blue secondary or selected-control variant.",
+      "html": "<button type=\"button\" class=\"ds-button-secondary\">AI-чат</button>",
+      "css": ".ds-button-secondary { display:inline-flex; flex-shrink:0; align-items:center; justify-content:center; height:2rem; gap:0.375rem; padding:0 0.625rem; border:1px solid transparent; border-radius:var(--radius, 0.625rem); background:transparent; color:var(--foreground, #142033); font-family:'Inter Variable', ui-sans-serif, system-ui, sans-serif; font-size:0.875rem; font-weight:500; line-height:1.25rem; white-space:nowrap; outline:none; user-select:none; transition:all 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-button-secondary:focus-visible { border-color:var(--primary, #335cc5); box-shadow:0 0 0 3px color-mix(in oklab, var(--primary, #335cc5) 50%, transparent); } .ds-button-secondary:active:not([aria-haspopup]) { transform:translateY(1px); } .ds-button-secondary:disabled { pointer-events:none; opacity:0.5; } .ds-button-secondary[aria-invalid=\"true\"] { border-color:var(--destructive, oklch(0.577 0.245 27.325)); box-shadow:0 0 0 3px color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 20%, transparent); } @media(prefers-reduced-motion:reduce) { .ds-button-secondary { transition-duration:0.001ms; } } .ds-button-secondary { background:var(--secondary, #e6edf8); color:var(--secondary-foreground, #142033); } .ds-button-secondary:hover { background:color-mix(in oklab, var(--secondary, #e6edf8) 80%, transparent); } .ds-button-secondary[aria-expanded=\"true\"] { background:var(--secondary, #e6edf8); color:var(--secondary-foreground, #142033); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Unfilled toolbar or secondary action.",
+      "html": "<button type=\"button\" class=\"ds-button-ghost\">Отменить</button>",
+      "css": ".ds-button-ghost { display:inline-flex; flex-shrink:0; align-items:center; justify-content:center; height:2rem; gap:0.375rem; padding:0 0.625rem; border:1px solid transparent; border-radius:var(--radius, 0.625rem); background:transparent; color:var(--foreground, #142033); font-family:'Inter Variable', ui-sans-serif, system-ui, sans-serif; font-size:0.875rem; font-weight:500; line-height:1.25rem; white-space:nowrap; outline:none; user-select:none; transition:all 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-button-ghost:focus-visible { border-color:var(--primary, #335cc5); box-shadow:0 0 0 3px color-mix(in oklab, var(--primary, #335cc5) 50%, transparent); } .ds-button-ghost:active:not([aria-haspopup]) { transform:translateY(1px); } .ds-button-ghost:disabled { pointer-events:none; opacity:0.5; } .ds-button-ghost[aria-invalid=\"true\"] { border-color:var(--destructive, oklch(0.577 0.245 27.325)); box-shadow:0 0 0 3px color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 20%, transparent); } @media(prefers-reduced-motion:reduce) { .ds-button-ghost { transition-duration:0.001ms; } } .ds-button-ghost { background:transparent; } .ds-button-ghost:hover, .ds-button-ghost[aria-expanded=\"true\"] { background:var(--muted, #eef0f2); color:var(--foreground, #142033); }"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Existing destructive variant with translucent red fill.",
+      "html": "<button type=\"button\" class=\"ds-button-destructive\">Удалить</button>",
+      "css": ".ds-button-destructive { display:inline-flex; flex-shrink:0; align-items:center; justify-content:center; height:2rem; gap:0.375rem; padding:0 0.625rem; border:1px solid transparent; border-radius:var(--radius, 0.625rem); background:transparent; color:var(--foreground, #142033); font-family:'Inter Variable', ui-sans-serif, system-ui, sans-serif; font-size:0.875rem; font-weight:500; line-height:1.25rem; white-space:nowrap; outline:none; user-select:none; transition:all 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-button-destructive:focus-visible { border-color:var(--primary, #335cc5); box-shadow:0 0 0 3px color-mix(in oklab, var(--primary, #335cc5) 50%, transparent); } .ds-button-destructive:active:not([aria-haspopup]) { transform:translateY(1px); } .ds-button-destructive:disabled { pointer-events:none; opacity:0.5; } .ds-button-destructive[aria-invalid=\"true\"] { border-color:var(--destructive, oklch(0.577 0.245 27.325)); box-shadow:0 0 0 3px color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 20%, transparent); } @media(prefers-reduced-motion:reduce) { .ds-button-destructive { transition-duration:0.001ms; } } .ds-button-destructive { background:color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 10%, transparent); color:var(--destructive, oklch(0.577 0.245 27.325)); } .ds-button-destructive:hover { background:color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 20%, transparent); } .ds-button-destructive:focus-visible { border-color:color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 40%, transparent); box-shadow:0 0 0 3px color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 20%, transparent); }"
+    },
+    {
+      "name": "Link Button",
+      "kind": "button",
+      "refersTo": "button-link",
+      "description": "Link-styled action, as used for explicit save.",
+      "html": "<button type=\"button\" class=\"ds-button-link\">Сохранить</button>",
+      "css": ".ds-button-link { display:inline-flex; flex-shrink:0; align-items:center; justify-content:center; height:2rem; gap:0.375rem; padding:0 0.625rem; border:1px solid transparent; border-radius:var(--radius, 0.625rem); background:transparent; color:var(--foreground, #142033); font-family:'Inter Variable', ui-sans-serif, system-ui, sans-serif; font-size:0.875rem; font-weight:500; line-height:1.25rem; white-space:nowrap; outline:none; user-select:none; transition:all 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-button-link:focus-visible { border-color:var(--primary, #335cc5); box-shadow:0 0 0 3px color-mix(in oklab, var(--primary, #335cc5) 50%, transparent); } .ds-button-link:active:not([aria-haspopup]) { transform:translateY(1px); } .ds-button-link:disabled { pointer-events:none; opacity:0.5; } .ds-button-link[aria-invalid=\"true\"] { border-color:var(--destructive, oklch(0.577 0.245 27.325)); box-shadow:0 0 0 3px color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 20%, transparent); } @media(prefers-reduced-motion:reduce) { .ds-button-link { transition-duration:0.001ms; } } .ds-button-link { color:var(--primary, #335cc5); text-underline-offset:4px; } .ds-button-link:hover { text-decoration:underline; }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Shared light-theme field, including focus, disabled, invalid, and medium-screen text sizing.",
+      "html": "<input class=\"ds-input\" aria-label=\"Электронная почта\" placeholder=\"Электронная почта\" />",
+      "css": ".ds-input { width:100%; min-width:0; height:2rem; padding:0.25rem 0.625rem; border:1px solid var(--input, #d9dee7); border-radius:var(--radius, 0.625rem); background:transparent; color:var(--foreground, #142033); font-family:'Inter Variable', ui-sans-serif, system-ui, sans-serif; font-size:1rem; line-height:1.5rem; outline:none; transition:color 150ms cubic-bezier(0.4, 0, 0.2, 1), background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-input::placeholder { color:var(--muted-foreground, #5b6675); } .ds-input:focus-visible { border-color:var(--primary, #335cc5); box-shadow:0 0 0 3px color-mix(in oklab, var(--primary, #335cc5) 50%, transparent); } .ds-input:disabled { pointer-events:none; cursor:not-allowed; background:color-mix(in oklab, var(--input, #d9dee7) 50%, transparent); opacity:0.5; } .ds-input[aria-invalid=\"true\"] { border-color:var(--destructive, oklch(0.577 0.245 27.325)); box-shadow:0 0 0 3px color-mix(in oklab, var(--destructive, oklch(0.577 0.245 27.325)) 20%, transparent); } @media(min-width:768px) { .ds-input { font-size:0.875rem; line-height:1.25rem; } } @media(prefers-reduced-motion:reduce) { .ds-input { transition-duration:0.001ms; } }"
+    },
+    {
+      "name": "Header Navigation",
+      "kind": "nav",
+      "refersTo": "navigation-link",
+      "description": "Desktop header links with the existing template-route current state and shared offset focus ring.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Основная навигация\"><a class=\"ds-nav-link\" href=\"/#how\">Как работает</a><a class=\"ds-nav-link\" href=\"/templates\" aria-current=\"page\">Шаблоны</a></nav>",
+      "css": ".ds-nav { display:flex; align-items:center; gap:1.5rem; } .ds-nav-link { border-radius:calc(var(--radius, 0.625rem) * 0.6); color:var(--muted-foreground, #5b6675); font-family:'Inter Variable', ui-sans-serif, system-ui, sans-serif; font-size:0.875rem; line-height:1.25rem; white-space:nowrap; text-decoration:none; outline:none; transition:color 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-nav-link:hover { color:var(--foreground, #142033); } .ds-nav-link[aria-current=\"page\"] { color:var(--foreground, #142033); font-weight:500; text-decoration:underline; text-decoration-color:color-mix(in oklab, var(--foreground, #142033) 70%, transparent); text-decoration-thickness:1.5px; text-underline-offset:10px; } .ds-nav-link:focus-visible { box-shadow:0 0 0 2px var(--background, #f7f7f5), 0 0 0 4px var(--primary, #335cc5); } @media(prefers-reduced-motion:reduce) { .ds-nav-link { transition-duration:0.001ms; } }"
+    },
+    {
+      "name": "Gallery Category Chip",
+      "kind": "chip",
+      "refersTo": "category-chip",
+      "description": "Mobile category control shown in its existing navy section, with inactive and current states.",
+      "html": "<nav class=\"ds-chip-surface\" aria-label=\"Категории презентаций\"><button type=\"button\" class=\"ds-chip\" aria-current=\"true\">ОТЧЁТЫ И АНАЛИТИКА</button><button type=\"button\" class=\"ds-chip\">ИССЛЕДОВАНИЯ</button></nav>",
+      "css": ".ds-chip-surface { display:flex; gap:0.5rem; overflow-x:auto; background:var(--navy, #162d4e); } .ds-chip { flex-shrink:0; white-space:nowrap; border:1px solid color-mix(in oklab, var(--navy-foreground, #f5f7fb) 15%, transparent); border-radius:calc(infinity * 1px); background:color-mix(in oklab, var(--navy-foreground, #f5f7fb) 5%, transparent); color:color-mix(in oklab, var(--navy-foreground, #f5f7fb) 75%, transparent); padding:0.5rem 1rem; font-family:'Inter Variable', ui-sans-serif, system-ui, sans-serif; font-size:0.75rem; font-weight:600; line-height:1rem; letter-spacing:0.025em; text-transform:uppercase; outline:none; transition:color 300ms cubic-bezier(0.4, 0, 0.2, 1), background-color 300ms cubic-bezier(0.4, 0, 0.2, 1), border-color 300ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-chip:not([aria-current=\"true\"]):hover { color:color-mix(in oklab, var(--navy-foreground, #f5f7fb) 90%, transparent); } .ds-chip[aria-current=\"true\"] { border-color:var(--primary, #335cc5); background:var(--primary, #335cc5); color:var(--primary-foreground, #ffffff); } .ds-chip:focus-visible { box-shadow:0 0 0 2px var(--navy, #162d4e), 0 0 0 4px color-mix(in oklab, var(--primary, #335cc5) 50%, transparent); } @media(prefers-reduced-motion:reduce) { .ds-chip { transition-duration:0.001ms; } }"
+    },
+    {
+      "name": "Auth Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Existing static auth container and heading; no hover or focus state is added to the non-interactive card.",
+      "html": "<div class=\"ds-card\"><h2 class=\"ds-card-title\">Продолжить в GoDeck</h2><p class=\"ds-card-description\">Войдите в аккаунт или создайте новый</p></div>",
+      "css": ".ds-card { width:100%; border:1px solid var(--border, #d9dee7); border-radius:calc(var(--radius, 0.625rem) * 1.8); background:var(--card, #ffffff); color:var(--card-foreground, #142033); padding:1.25rem; box-shadow:0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1); font-family:'Inter Variable', ui-sans-serif, system-ui, sans-serif; } .ds-card-title { margin:0; font-family:'Manrope Variable', ui-sans-serif, system-ui, sans-serif; font-size:1.5rem; font-weight:700; line-height:2rem; letter-spacing:-0.025em; text-wrap:balance; } .ds-card-description { margin:0.375rem 0 0; color:var(--muted-foreground, #5b6675); font-size:0.875rem; line-height:1.25rem; } @media(min-width:640px) { .ds-card { padding:1.75rem; } }"
+    }
+  ],
+  "narrative": {
+    "overview": "This is a scan of the existing GoDeck interface, not a replacement identity. Blue primary actions, dark ink, light neutral surfaces, small lime markers, and locally hosted Inter and Manrope are established in the application source. No new brand metaphor or qualitative direction is specified here.\n\nThe shared system covers application chrome and reusable controls. Presentation artwork and slide typography remain template-owned. Editor composition and formatting limits are recorded in `.impeccable/surfaces/frontend-components-studio-editor-editor-shell-tsx.md`, not generalized into rules for every route.",
+    "keyCharacteristics": [
+      "Blue actions and selection feedback over light neutral surfaces.",
+      "Inter interface text with Manrope headings and wordmark.",
+      "Bordered, rounded controls; white content surfaces; limited shadows."
+    ],
+    "rules": [],
+    "dos": [
+      "Do reuse the existing semantic colors, radius scale, local fonts, and component variants.",
+      "Do retain keyboard focus, disabled, invalid, current-page, and reduced-motion states.",
+      "Do keep presentation artwork and fonts independent of application chrome.",
+      "Do consult the existing surface brief for editor-only composition and formatting constraints."
+    ],
+    "donts": [
+      "Don't replace GoDeck branding or introduce a new identity through a component refinement.",
+      "Don't turn the lime marker into a replacement primary-action color.",
+      "Don't remove established state feedback when translating a component to another surface."
+    ]
+  }
+}
