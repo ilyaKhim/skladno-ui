@@ -21,11 +21,12 @@ public final class DocumentWorker {
     private DocumentWorker() {}
 
     public static void main(String[] args) throws Exception {
+        var settings = WorkerSettings.fromEnvironment(System.getenv());
         var credentials = new Properties();
         credentials.setProperty("user", env("DATABASE_USER", "godeck"));
         credentials.setProperty("password", env("DATABASE_PASSWORD", "godeck-local-only"));
-        credentials.setProperty("connectTimeout", "5");
-        credentials.setProperty("socketTimeout", "5");
+        credentials.setProperty("connectTimeout", Integer.toString(settings.connectTimeoutSeconds()));
+        credentials.setProperty("socketTimeout", Integer.toString(settings.socketTimeoutSeconds()));
         var watchdog =
                 Executors.newSingleThreadScheduledExecutor(
                         runnable -> {
@@ -39,15 +40,18 @@ public final class DocumentWorker {
                     DriverManager.getConnection(
                             env("DATABASE_URL", "jdbc:postgresql://127.0.0.1:5433/godeck"),
                             credentials)) {
-                var job = claim(connection);
+                var job = claim(connection, settings.claimLeaseSeconds());
                 if (job == null) {
-                    Thread.sleep(500);
+                    Thread.sleep(settings.pollMillis());
                     continue;
                 }
                 // Interrupting a Future cannot reliably stop a document library. Exit the isolated
                 // worker instead; expired claims cannot accept a late result.
                 var deadline =
-                        watchdog.schedule(() -> Runtime.getRuntime().halt(2), 5, TimeUnit.SECONDS);
+                        watchdog.schedule(
+                                () -> Runtime.getRuntime().halt(2),
+                                settings.jobTimeoutSeconds(),
+                                TimeUnit.SECONDS);
                 try {
                     Object result = MaterialParser.extract(job.payload(), job.format(), job.name());
                     finish(connection, job, JSON.writeValueAsString(result), null);
@@ -61,14 +65,14 @@ public final class DocumentWorker {
             } catch (SQLException failure) {
                 System.err.println(
                         "Document queue unavailable (SQL state " + failure.getSQLState() + ")");
-                Thread.sleep(1000);
+                Thread.sleep(settings.retryMillis());
             }
         }
         watchdog.shutdownNow();
     }
 
     /** One SQL statement claims work atomically even with multiple worker processes. */
-    private static Job claim(Connection connection) throws SQLException {
+    private static Job claim(Connection connection, int leaseSeconds) throws SQLException {
         UUID token = UUID.randomUUID();
         try (var statement =
                 connection.prepareStatement(
@@ -76,10 +80,11 @@ public final class DocumentWorker {
                         WITH next AS (SELECT id FROM material_jobs
                             WHERE status='queued' AND deadline>now() AND expires_at>now()
                             ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1)
-                        UPDATE material_jobs j SET status='running',claim_id=?,deadline=now()+interval '10 seconds'
+                        UPDATE material_jobs j SET status='running',claim_id=?,deadline=now()+(? * interval '1 second')
                         FROM next WHERE j.id=next.id RETURNING j.id,j.name,j.format,j.payload
                         """)) {
             statement.setObject(1, token);
+            statement.setInt(2, leaseSeconds);
             try (var rows = statement.executeQuery()) {
                 return rows.next()
                         ? new Job(

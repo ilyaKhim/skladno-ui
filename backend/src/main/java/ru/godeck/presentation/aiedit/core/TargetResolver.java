@@ -7,18 +7,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import ru.godeck.presentation.aiedit.policy.AiEditPolicy;
+import ru.godeck.presentation.aiedit.config.TextEditPromptSettings;
 import ru.godeck.presentation.entity.Presentation;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
-import ru.godeck.presentation.mapper.PresentationEditorDraftCodec;
+import ru.godeck.presentation.editor.PresentationEditorDraftCodec;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.repository.PresentationRepository;
-import ru.godeck.presentation.template.EditorTextLimits;
+import ru.godeck.presentation.editor.EditorTextLimits;
 import ru.godeck.presentation.template.PresentationTemplateService;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -42,16 +42,19 @@ public class TargetResolver {
     private final PresentationTemplateService templates;
     private final PresentationContentCodec contentCodec;
     private final PresentationEditorDraftCodec editorCodec;
+    private final TextEditPromptSettings settings;
 
     public TargetResolver(
             PresentationRepository presentations,
             PresentationTemplateService templates,
             PresentationContentCodec contentCodec,
-            PresentationEditorDraftCodec editorCodec) {
+            PresentationEditorDraftCodec editorCodec,
+            TextEditPromptSettings settings) {
         this.presentations = presentations;
         this.templates = templates;
         this.contentCodec = contentCodec;
         this.editorCodec = editorCodec;
+        this.settings = settings;
     }
 
     /**
@@ -78,8 +81,8 @@ public class TargetResolver {
         return resolve(presentation.getTemplateId(), presentationId, document(presentation), target, text);
     }
 
-    /** Pure resolution against an already loaded document; separated for unit tests. */
-    public ResolvedTextTarget resolve(
+    /** Resolves an already loaded snapshot without another database lookup. */
+    ResolvedTextTarget resolve(
             String templateId,
             UUID presentationId,
             PresentationContent content,
@@ -91,7 +94,7 @@ public class TargetResolver {
                         .filter(candidate -> Boolean.TRUE.equals(candidate.include()))
                         .findFirst()
                         .orElseThrow(TargetResolver::invalidTarget);
-        List<String> slideFields = manifest(templateId).getOrDefault(slide.slide(), List.of());
+        List<String> slideFields = templates.fieldsBySlide(templateId).getOrDefault(slide.slide(), List.of());
         ResolvedTextTarget resolved =
                 switch (target) {
                     case AiEditTarget.TemplateFieldTarget field -> {
@@ -155,18 +158,18 @@ public class TargetResolver {
     private String role(String templateId, String field) {
         var description =
                 templates.description(templateId).path("field_hints").path(field).path("description");
-        return description.isString() ? context(description.asText(), AiEditPolicy.ROLE_MAX) : null;
+        return description.isString() ? context(description.asText(), settings.roleMaxChars()) : null;
     }
 
-    private static String deckTitle(PresentationContent content) {
-        return context(content.fields().get(TITLE_FIELD), AiEditPolicy.CONTEXT_TITLE_MAX);
+    private String deckTitle(PresentationContent content) {
+        return context(content.fields().get(TITLE_FIELD), settings.titleMaxChars());
     }
 
     /**
      * First title-like field of the slide manifest (else the first field), or {@code null} when it
      * is the target itself.
      */
-    private static String slideTitle(
+    private String slideTitle(
             PresentationContent content, List<String> slideFields, String targetField) {
         String field =
                 slideFields.stream()
@@ -174,7 +177,7 @@ public class TargetResolver {
                         .findFirst()
                         .orElse(slideFields.isEmpty() ? null : slideFields.getFirst());
         if (field == null || field.equals(targetField)) return null;
-        return context(content.fields().get(field), AiEditPolicy.CONTEXT_TITLE_MAX);
+        return context(content.fields().get(field), settings.titleMaxChars());
     }
 
     /** Shortens model context without splitting a surrogate pair; blank values become null. */
@@ -188,14 +191,6 @@ public class TargetResolver {
             text = text.substring(0, end).strip();
         }
         return text.isEmpty() ? null : text;
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<Integer, List<String>> manifest(String templateId) {
-        Map<Integer, List<String>> result = new java.util.LinkedHashMap<>();
-        for (var slide : templates.slideManifest(templateId))
-            result.put((Integer) slide.get("slide"), (List<String>) slide.get("fields"));
-        return result;
     }
 
     private static GenerationException invalidTarget() {

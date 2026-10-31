@@ -1,5 +1,7 @@
 package ru.godeck.presentation.template;
 
+import ru.godeck.presentation.editor.EditorTextLimits;
+
 /**
  * Selects how template field text longer than its layout limit is handled.
  *

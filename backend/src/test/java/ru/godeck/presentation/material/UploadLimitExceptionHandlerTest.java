@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
-import ru.godeck.presentation.controller.UploadLimitExceptionHandler;
+import ru.godeck.presentation.exception.UploadLimitExceptionHandler;
 
 import java.util.Map;
 

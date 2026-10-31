@@ -1,5 +1,7 @@
 package ru.godeck.presentation.template;
 
+import ru.godeck.presentation.editor.EditorTextLimits;
+
 import org.springframework.stereotype.Component;
 
 import ru.godeck.presentation.exception.GenerationError;

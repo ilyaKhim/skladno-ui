@@ -116,7 +116,10 @@ API авторизации, каталог шаблонов, очередь, в�
 
 ## Структура backend
 
-Backend разделён по функциям: `ru.godeck.auth`, `ru.godeck.presentation` и `ru.godeck.config`. Внутри функций выделены пакеты `controller`, `dto`, `service`, `entity`, `repository`, `exception` и `policy`. Контроллеры принимают DTO, сервисы выполняют сценарии, Spring Data JPA-репозитории работают с сущностями. Лимиты собраны в политиках, тексты писем и ошибок — в `messages.properties`, промпты — в `resources/prompts/`. Flyway управляет схемой, Hibernate только проверяет её; Open Session in View отключён. Подробности слоёв, транзакций и оставшихся PostgreSQL-запросов — в [docs/backend-architecture.md](docs/backend-architecture.md), а сквозные UML-диаграммы — в [docs/application-processes-uml.md](docs/application-processes-uml.md).
+Эксплуатационные квоты, таймауты, retention и очередь документов описаны в
+[настройках backend](docs/backend-configuration.md). Они отделены от фиксированных API/DB-ограничений.
+
+Backend сгруппирован по функциональности: `auth`, а внутри `presentation` — `generation`, `editor`, `chat`, `material`, `template` и `aiedit`. Контроллеры, прикладные классы и DTO находятся рядом со своим сценарием. Общая модель презентации, сущности/репозитории, публичный фасад и транзакции агрегата не дублируются между функциями. Эксплуатационные параметры задаются настройками приложения; фиксированные API/DB-ограничения остаются в политиках. Тексты писем и ошибок — в `messages.properties`, промпты — в `resources/prompts/`. Flyway управляет схемой, Hibernate только проверяет её; Open Session in View отключён. Карта пакетов и транзакций — в [docs/backend-architecture.md](docs/backend-architecture.md), сквозные UML — в [docs/application-processes-uml.md](docs/application-processes-uml.md).
 
 ## Проверки
 
@@ -130,7 +133,7 @@ pnpm test:bridge
 pnpm test:auth
 ```
 
-- `backend:test:unit` запускает изолированные unit-тесты без Spring и БД. `backend:test:integration` запускает сценарии Spring/PostgreSQL. Устройство тестов и команды — в [docs/backend-testing.md](docs/backend-testing.md).
+- `backend:test:unit` запускает изолированные тесты без веб-сервера и БД; settings используют лёгкий Spring-контекст. `backend:test:integration` запускает сценарии Spring/PostgreSQL. Устройство тестов и команды — в [docs/backend-testing.md](docs/backend-testing.md).
 - `backend:test` выполняет весь набор и требует PostgreSQL из Compose, использует отдельную схему `auth_test` и тестовую отправку писем.
 - Тесты генерации используют отдельную схему `generation_test` и временный каталог PPTX. Они проверяют ручную сборку и скачивание, выбор слайдов, историю версий, отказ при одновременной правке, сохранность файла при ошибке и изоляцию пользователей. Вызовы AI заменены тестовым генератором или тестовым HTTP-провайдером; реальные платные запросы не выполняются. Проверяются также сохранение запросов и исходных ответов, ошибки провайдера и изоляция истории пользователей.
 - `test:auth` требует работающих фронтенда, API и Mailpit; запустите backend с `AUTH_BYPASS=false`, чтобы пройти регистрацию и вход через Next.js proxy. Проверка создаёт один тестовый аккаунт и два письма, не обращается к внешним адресам.

@@ -1,56 +1,67 @@
 package ru.godeck.presentation.aiedit.action;
 
-import ru.godeck.presentation.aiedit.core.AiEditContext;
 import ru.godeck.presentation.aiedit.core.ResolvedTextTarget;
-import ru.godeck.presentation.aiedit.core.TargetKind;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-/**
- * Action over the text of one block. Every implementation is a {@code @Component}; {@link
- * TextEditActionRegistry} collects them, so a new action needs no change to the catalog,
- * validation, prompt or UI. Catalog order follows {@code @Order}.
- */
-public interface TextEditAction {
-    /** Stable id in the API and the journal, for example {@code shorten}. */
-    String id();
+/** The three supported text operations; no plugin discovery or unused parameter language. */
+public enum TextEditAction {
+    SHORTEN("shorten", "Сократи текст, сохранив главную мысль."),
+    REPHRASE(
+            "rephrase",
+            "Переформулируй текст другими словами, сохранив смысл и примерно ту же длину."),
+    CUSTOM("custom", "Измени текст по просьбе пользователя из поля request.");
 
-    /** {@code messages.properties} key of the button label. */
-    String labelKey();
+    public static final String INSTRUCTION = "instruction";
+    private final String id;
+    private final String task;
 
-    String descriptionKey();
-
-    ActionUi ui();
-
-    /** Parameters for the catalog and validation. */
-    List<ActionParam> params();
-
-    Set<TargetKind> targets();
-
-    /** Extension point for feature flags, plans or template-specific actions. */
-    default boolean available(AiEditContext context) {
-        return true;
+    TextEditAction(String id, String task) {
+        this.id = id;
+        this.task = task;
     }
 
-    /** Short task for the model (at most 300 characters); parameters are already validated. */
-    String task(Map<String, String> params, ResolvedTextTarget target);
-
-    /**
-     * Free-form user request passed to the model as {@code request}, or {@code null}. The request
-     * also sets the tone: there is no fixed list of tones.
-     */
-    default String request(Map<String, String> params) {
-        return null;
+    /** Stable API and journal identifier, independent of the enum's Java name. */
+    public String id() {
+        return id;
     }
 
-    default int targetLength(ResolvedTextTarget target, String source) {
-        return target.maxChars();
+    public String labelKey() {
+        return "presentation.ai-edit.action." + id + ".label";
     }
 
-    /** Action-specific warnings about a sanitized result, for example {@code not_shorter}. */
-    default List<String> warnings(String source, String result, ResolvedTextTarget target) {
-        return List.of();
+    public String descriptionKey() {
+        return "presentation.ai-edit.action." + id + ".description";
+    }
+
+    public ActionUi ui() {
+        return this == CUSTOM ? ActionUi.INPUT : ActionUi.QUICK;
+    }
+
+    public String task() {
+        return task;
+    }
+
+    /** Parameters have already been validated; only CUSTOM carries a user instruction. */
+    public String request(Map<String, String> params) {
+        return this == CUSTOM ? params.get(INSTRUCTION) : null;
+    }
+
+    /** Keep the existing length guidance; it is not a license to truncate the AI answer. */
+    public int targetLength(ResolvedTextTarget target, String source, double shortenRatio) {
+        int length =
+                switch (this) {
+                    case SHORTEN -> (int) Math.ceil(source.length() * shortenRatio);
+                    case REPHRASE -> source.length();
+                    case CUSTOM -> target.maxChars();
+                };
+        return Math.max(1, Math.min(target.maxChars(), length));
+    }
+
+    public List<String> warnings(String source, String result) {
+        return this == SHORTEN && result.length() >= source.length()
+                ? List.of("not_shorter")
+                : List.of();
     }
 }

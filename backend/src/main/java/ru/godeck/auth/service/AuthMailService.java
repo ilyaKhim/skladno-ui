@@ -5,7 +5,7 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
-import ru.godeck.auth.policy.AuthPolicy;
+import ru.godeck.auth.config.AuthSettings;
 import ru.godeck.common.text.BackendMessages;
 
 /**
@@ -18,14 +18,17 @@ public class AuthMailService {
     private final JavaMailSender sender;
     private final String from;
     private final String frontendUrl;
+    private final AuthSettings settings;
 
     public AuthMailService(
             JavaMailSender sender,
             @Value("${godeck.mail-from}") String from,
-            @Value("${godeck.frontend-url}") String frontendUrl) {
+            @Value("${godeck.frontend-url}") String frontendUrl,
+            AuthSettings settings) {
         this.sender = sender;
         this.from = from;
         this.frontendUrl = frontendUrl.replaceAll("/+$", "");
+        this.settings = settings;
     }
 
     private static final String RESET_PATH = "/auth/reset/#token=";
@@ -36,7 +39,7 @@ public class AuthMailService {
                 email,
                 BackendMessages.text("auth.mail.verification.subject"),
                 BackendMessages.text(
-                        "auth.mail.verification.body", code, AuthPolicy.CODE_VALIDITY_MINUTES));
+                        "auth.mail.verification.body", code, settings.codeTtl().toMinutes()));
     }
 
     /**
@@ -50,7 +53,7 @@ public class AuthMailService {
                 BackendMessages.text(
                         "auth.mail.reset.body",
                         frontendUrl + RESET_PATH + token,
-                        AuthPolicy.RESET_VALIDITY_MINUTES));
+                        settings.resetTtl().toMinutes()));
     }
 
     /** Constructs the minimal SMTP message and delegates delivery to the configured sender. */

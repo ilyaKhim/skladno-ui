@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import ru.godeck.auth.entity.EmailVerification;
+import ru.godeck.auth.config.AuthSettings;
 import ru.godeck.auth.exception.AuthError;
 import ru.godeck.auth.exception.AuthException;
 import ru.godeck.auth.repository.EmailVerificationRepository;
@@ -30,6 +31,7 @@ public class RegistrationService {
     private final PasswordEncoder passwords;
     private final AuthMailService mail;
     private final Clock clock;
+    private final AuthSettings settings;
     private final SecureRandom random = new SecureRandom();
 
     public RegistrationService(
@@ -37,12 +39,14 @@ public class RegistrationService {
             UserAccountRepository users,
             PasswordEncoder passwords,
             AuthMailService mail,
-            Clock clock) {
+            Clock clock,
+            AuthSettings settings) {
         this.verifications = verifications;
         this.users = users;
         this.passwords = passwords;
         this.mail = mail;
         this.clock = clock;
+        this.settings = settings;
     }
 
     /**
@@ -59,8 +63,8 @@ public class RegistrationService {
         if (users.existsByEmail(email)) throw new AuthException(AuthError.EMAIL_ALREADY_REGISTERED);
         Instant now = clock.instant();
         if (pending != null
-                && pending.getSentAt().plusSeconds(RESEND_COOLDOWN_SECONDS).isAfter(now)) {
-            throw new AuthException(AuthError.RATE_LIMITED, RESEND_COOLDOWN_SECONDS);
+                && pending.getSentAt().plus(settings.resendCooldown()).isAfter(now)) {
+            throw new AuthException(AuthError.RATE_LIMITED, settings.resendAfterSeconds());
         }
         UUID challenge = UUID.randomUUID();
         String code =
@@ -74,7 +78,7 @@ public class RegistrationService {
                 passwords.encode(password),
                 passwords.encode(code),
                 now,
-                now.plus(CODE_TTL));
+                now.plus(settings.codeTtl()));
         // Flush before SMTP: a losing concurrent insert must not send a second code.
         verifications.saveAndFlush(pending);
         mail.sendCode(email, code);

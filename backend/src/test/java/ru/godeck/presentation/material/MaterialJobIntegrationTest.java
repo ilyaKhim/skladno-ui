@@ -33,6 +33,10 @@ import java.util.UUID;
         properties = {
             "godeck.auth.dev-bypass=false",
             "godeck.generation.poll-ms=86400000",
+            "godeck.materials.jobs.max-active=3",
+            "godeck.materials.jobs.max-active-per-user=2",
+            "godeck.materials.jobs.queue-timeout=45s",
+            "godeck.materials.jobs.result-ttl=2h",
             "spring.datasource.hikari.schema=material_test",
             "spring.flyway.default-schema=material_test",
             "spring.flyway.schemas=material_test"
@@ -68,6 +72,22 @@ class MaterialJobIntegrationTest {
                             + " VALUES(?,?,'test-only',now(),now()) ON CONFLICT(id) DO NOTHING",
                     id,
                     id + "@example.test");
+    }
+
+    @Test
+    void configuredQueueLimitsAndDeadlinesAreWrittenToTheDatabase() {
+        var first = service.submit(OWNER, file());
+        service.submit(OWNER, file());
+        service.submit(OTHER, file());
+        assertThatThrownBy(() -> service.submit(OTHER, file()))
+                .isInstanceOfSatisfying(GenerationException.class,
+                        error -> assertThat(error.code()).isEqualTo("source_busy"));
+        assertThat(db.queryForObject(
+                "SELECT extract(epoch from deadline-created_at)::integer FROM material_jobs WHERE id=?",
+                Integer.class, first.id())).isEqualTo(45);
+        assertThat(db.queryForObject(
+                "SELECT extract(epoch from expires_at-created_at)::integer FROM material_jobs WHERE id=?",
+                Integer.class, first.id())).isEqualTo(7200);
     }
 
     @Test

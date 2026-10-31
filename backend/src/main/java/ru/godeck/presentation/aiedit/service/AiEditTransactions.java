@@ -9,7 +9,7 @@ import ru.godeck.presentation.aiedit.core.AiEditStatus;
 import ru.godeck.presentation.aiedit.dto.AiQuotaView;
 import ru.godeck.presentation.aiedit.dto.TextEditView;
 import ru.godeck.presentation.aiedit.entity.PresentationAiEdit;
-import ru.godeck.presentation.aiedit.policy.AiEditPolicy;
+import ru.godeck.presentation.aiedit.config.AiEditSettings;
 import ru.godeck.presentation.aiedit.repository.PresentationAiEditRepository;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
@@ -38,11 +38,17 @@ public class AiEditTransactions {
     private final PresentationAiEditRepository edits;
     private final ObjectMapper json;
     private final Clock clock;
+    private final AiEditSettings settings;
 
-    public AiEditTransactions(PresentationAiEditRepository edits, ObjectMapper json, Clock clock) {
+    public AiEditTransactions(
+            PresentationAiEditRepository edits,
+            ObjectMapper json,
+            Clock clock,
+            AiEditSettings settings) {
         this.edits = edits;
         this.json = json;
         this.clock = clock;
+        this.settings = settings;
     }
 
     /**
@@ -50,14 +56,14 @@ public class AiEditTransactions {
      *
      * <ul>
      *   <li>same request id with another hash: {@code idempotency_conflict};
-     *   <li>still running and younger than {@link AiEditPolicy#STALE_AFTER}: {@code
+     *   <li>still running and younger than the configured stale deadline: {@code
      *       ai_edit_in_progress};
      *   <li>running but stale: marked failed, {@code ai_edit_failed};
      *   <li>completed: the stored response with {@code replayed: true}, no quota spent;
      *   <li>failed: {@code ai_edit_failed} again.
      * </ul>
      *
-     * Otherwise {@link AiEditPolicy#MAX_TEXT_EDITS_PER_DAY} rows in the window give {@code
+     * Otherwise reaching the configured quota in the window gives {@code
      * ai_edit_limit}. Two concurrent first requests race on {@code UNIQUE (user_id, request_id)};
      * the loser's insert fails and the caller retries after rollback, then sees the winner's row.
      */
@@ -67,8 +73,8 @@ public class AiEditTransactions {
         if (existing.isPresent()) return existing(existing.get(), candidate.getRequestHash());
         Instant now = clock.instant();
         if (edits.countByUserIdAndCreatedAtAfter(
-                        candidate.getUserId(), now.minus(AiEditPolicy.QUOTA_WINDOW))
-                >= AiEditPolicy.MAX_TEXT_EDITS_PER_DAY)
+                        candidate.getUserId(), now.minus(settings.quotaWindow()))
+                >= settings.maxEditsPerWindow())
             throw limitReached(quota(candidate.getUserId(), now).resetsAt());
         edits.saveAndFlush(candidate);
         return new Start(candidate.getId(), null);
@@ -80,7 +86,7 @@ public class AiEditTransactions {
         switch (edit.getStatus()) {
             case RUNNING -> {
                 Instant now = clock.instant();
-                if (edit.getCreatedAt().isAfter(now.minus(AiEditPolicy.STALE_AFTER)))
+                if (edit.getCreatedAt().isAfter(now.minus(settings.staleAfter())))
                     throw new GenerationException(GenerationError.AI_EDIT_IN_PROGRESS);
                 edit.fail(GenerationError.AI_EDIT_FAILED.code(), null, now);
                 throw new GenerationException(GenerationError.AI_EDIT_FAILED);
@@ -121,24 +127,24 @@ public class AiEditTransactions {
      * The 429 body has only {@code code} and {@code message}, so the message carries the reset time:
      * Moscow time for people and ISO-8601 UTC for the client.
      */
-    static GenerationException limitReached(Instant resetsAt) {
+    private GenerationException limitReached(Instant resetsAt) {
         return new GenerationException(
                 GenerationError.AI_EDIT_LIMIT,
                 BackendMessages.text(
                         "presentation.error.ai-edit-limit-reset",
-                        AiEditPolicy.MAX_TEXT_EDITS_PER_DAY,
+                        settings.maxEditsPerWindow(),
                         RESET_TIME.format(resetsAt),
                         resetsAt.toString()));
     }
 
     private AiQuotaView quota(UUID userId, Instant now) {
-        Instant since = now.minus(AiEditPolicy.QUOTA_WINDOW);
+        Instant since = now.minus(settings.quotaWindow());
         long used = edits.countByUserIdAndCreatedAtAfter(userId, since);
         Instant oldest = edits.findOldestCreatedAtAfter(userId, since).orElse(now);
         return new AiQuotaView(
-                AiEditPolicy.MAX_TEXT_EDITS_PER_DAY,
-                (int) Math.max(0, AiEditPolicy.MAX_TEXT_EDITS_PER_DAY - used),
-                oldest.plus(AiEditPolicy.QUOTA_WINDOW).truncatedTo(ChronoUnit.SECONDS));
+                settings.maxEditsPerWindow(),
+                (int) Math.max(0, settings.maxEditsPerWindow() - used),
+                oldest.plus(settings.quotaWindow()).truncatedTo(ChronoUnit.SECONDS));
     }
 
     /**

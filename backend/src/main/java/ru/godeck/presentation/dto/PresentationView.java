@@ -1,7 +1,7 @@
 package ru.godeck.presentation.dto;
 
 import ru.godeck.presentation.entity.Presentation;
-import ru.godeck.presentation.model.GenerationMode;
+import ru.godeck.presentation.generation.GenerationMode;
 import ru.godeck.presentation.model.PresentationStatus;
 
 import tools.jackson.databind.PropertyNamingStrategies;

@@ -1,5 +1,12 @@
 package ru.godeck.presentation.ai;
 
+import ru.godeck.presentation.generation.OpenAiResponseReader;
+import ru.godeck.presentation.generation.PresentationContentGenerator;
+import ru.godeck.presentation.generation.PresentationRequestFactory;
+
+import static ru.godeck.support.TestSettings.defaults;
+import ru.godeck.presentation.generation.GenerationSettings;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
@@ -20,12 +27,12 @@ class PresentationModelCatalogTest {
                 new PresentationContentGenerator(
                         org.springframework.web.client.RestClient.create(),
                         new ObjectMapper(),
-                        new PresentationRequestFactory(),
+                        new PresentationRequestFactory(defaults(GenerationSettings.class)),
                         new OpenAiResponseReader(
                                 new ObjectMapper(),
                                 new PresentationContentCodec(new ObjectMapper())),
                         org.mockito.Mockito.mock(
-                                ru.godeck.presentation.service.PresentationAiCallHistory.class),
+                                ru.godeck.presentation.ai.PresentationAiCallHistory.class),
                         "",
                         false);
         assertThat(generator.enabled()).isFalse();

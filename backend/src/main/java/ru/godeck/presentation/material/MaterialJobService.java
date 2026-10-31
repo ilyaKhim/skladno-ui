@@ -6,10 +6,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import ru.godeck.presentation.dto.ExtractedMaterial;
+import ru.godeck.presentation.material.ExtractedMaterial;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
-import ru.godeck.presentation.model.GenerationInput;
+import ru.godeck.presentation.generation.GenerationInput;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -23,10 +23,12 @@ import java.util.UUID;
 public class MaterialJobService {
     private final JdbcClient db;
     private final ObjectMapper json;
+    private final MaterialJobSettings settings;
 
-    public MaterialJobService(JdbcClient db, ObjectMapper json) {
+    public MaterialJobService(JdbcClient db, ObjectMapper json, MaterialJobSettings settings) {
         this.db = db;
         this.json = json;
+        this.settings = settings;
     }
 
     /**
@@ -65,17 +67,21 @@ public class MaterialJobService {
                         .param("owner", owner)
                         .query(Long.class)
                         .single();
-        if (global >= 20 || own >= 2) throw new GenerationException(GenerationError.SOURCE_BUSY);
+        if (global >= settings.maxActive() || own >= settings.maxActivePerUser())
+            throw new GenerationException(GenerationError.SOURCE_BUSY);
         UUID id = UUID.randomUUID();
         db.sql(
-                        "INSERT INTO material_jobs(id,user_id,name,format,status,payload,deadline)"
-                            + " VALUES(:id,:owner,:name,:format,'queued',:payload,now()+interval"
-                            + " '60 seconds')")
+                        "INSERT INTO material_jobs(id,user_id,name,format,status,payload,deadline,expires_at)"
+                            + " VALUES(:id,:owner,:name,:format,'queued',:payload,"
+                            + " now()+:queueMillis * interval '1 millisecond',"
+                            + " now()+:resultMillis * interval '1 millisecond')")
                 .param("id", id)
                 .param("owner", owner)
                 .param("name", name)
                 .param("format", format)
                 .param("payload", bytes)
+                .param("queueMillis", settings.queueTimeout().toMillis())
+                .param("resultMillis", settings.resultTtl().toMillis())
                 .update();
         return new Job(id, "queued", null, null);
     }
@@ -120,7 +126,7 @@ public class MaterialJobService {
      * Clear raw input on any terminal outcome; also bound abandoned queued jobs and result
      * lifetime.
      */
-    @Scheduled(fixedDelay = 60000)
+    @Scheduled(fixedDelayString = "${godeck.materials.jobs.cleanup-interval:60s}")
     public void cleanup() {
         db.sql(
                         "UPDATE material_jobs SET"

@@ -3,9 +3,8 @@ package ru.godeck.presentation.aiedit.text;
 import static org.assertj.core.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
+import ru.godeck.presentation.aiedit.action.TextEditAction;
 
-import ru.godeck.presentation.aiedit.action.builtin.RephraseAction;
-import ru.godeck.presentation.aiedit.action.builtin.ShortenAction;
 import ru.godeck.presentation.aiedit.core.AiEditTarget;
 import ru.godeck.presentation.aiedit.core.ResolvedTextTarget;
 
@@ -85,7 +84,7 @@ class TextResultSanitizerTest {
                         List.of("Совсем не короче исходного", "Коротко"),
                         "Не короче исходного",
                         field,
-                        new ShortenAction());
+                        TextEditAction.SHORTEN);
         assertThat(result.variants().get(0).warnings()).containsExactly("not_shorter");
         assertThat(result.variants().get(1).warnings()).isEmpty();
     }
@@ -105,7 +104,7 @@ class TextResultSanitizerTest {
     }
 
     private TextResultSanitizer.Result sanitize(List<String> variants, String source) {
-        return sanitizer.sanitize(variants, source, field, new RephraseAction());
+        return sanitizer.sanitize(variants, source, field, TextEditAction.REPHRASE);
     }
 
     private static List<String> texts(TextResultSanitizer.Result result) {

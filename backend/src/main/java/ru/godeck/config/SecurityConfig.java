@@ -16,6 +16,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 
 import ru.godeck.auth.exception.AuthError;
+import ru.godeck.auth.config.AuthSettings;
 import ru.godeck.auth.service.AuthService;
 
 import java.io.IOException;
@@ -55,6 +56,7 @@ class SecurityConfig {
             HttpSecurity http,
             AuthService service,
             Clock clock,
+            AuthSettings settings,
             @Value("${godeck.auth.dev-bypass:false}") boolean devBypass,
             @Value("${server.address:127.0.0.1}") String address)
             throws Exception {
@@ -96,7 +98,7 @@ class SecurityConfig {
                                                                 HttpStatus.FORBIDDEN,
                                                                 AuthError.INVALID_INPUT)))
                 .addFilterBefore(
-                        new SessionSecurityFilter(service, clock, devBypass),
+                        new SessionSecurityFilter(service, clock, devBypass, settings.ip()),
                         AuthorizationFilter.class)
                 .build();
     }

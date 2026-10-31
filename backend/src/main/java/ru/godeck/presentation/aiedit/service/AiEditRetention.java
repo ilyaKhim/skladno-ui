@@ -6,10 +6,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import ru.godeck.presentation.aiedit.policy.AiEditPolicy;
+import ru.godeck.presentation.aiedit.config.AiEditSettings;
 import ru.godeck.presentation.aiedit.repository.PresentationAiEditRepository;
-import ru.godeck.presentation.model.AiOperation;
-import ru.godeck.presentation.repository.PresentationAiCallRepository;
+import ru.godeck.presentation.ai.AiOperation;
+import ru.godeck.presentation.ai.PresentationAiCallRepository;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -19,7 +19,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Daily removal of AI text-edit data older than {@link AiEditPolicy#RETENTION}.
+ * Scheduled removal of AI text-edit data older than the configured retention period.
  *
  * <p>Deletes journal rows of {@code presentation_ai_edits} and {@code presentation_ai_calls} rows
  * with operation {@code TEXT_EDIT}. Generation and studio chat records are not touched: their
@@ -32,12 +32,17 @@ public class AiEditRetention {
     private final PresentationAiEditRepository edits;
     private final PresentationAiCallRepository calls;
     private final Clock clock;
+    private final AiEditSettings settings;
 
     public AiEditRetention(
-            PresentationAiEditRepository edits, PresentationAiCallRepository calls, Clock clock) {
+            PresentationAiEditRepository edits,
+            PresentationAiCallRepository calls,
+            Clock clock,
+            AiEditSettings settings) {
         this.edits = edits;
         this.calls = calls;
         this.clock = clock;
+        this.settings = settings;
     }
 
     @Scheduled(cron = "${godeck.ai-edit.retention-cron:0 17 3 * * *}", zone = "UTC")
@@ -46,13 +51,13 @@ public class AiEditRetention {
     }
 
     /**
-     * Deletes expired text-edit data in batches of {@link AiEditPolicy#RETENTION_BATCH_SIZE}.
+     * Deletes expired text-edit data in bounded batches, each in its own repository transaction.
      *
      * @return number of deleted edit rows and provider-call rows
      */
     public long purge() {
-        Instant cutoff = clock.instant().minus(AiEditPolicy.RETENTION);
-        Pageable batch = Pageable.ofSize(AiEditPolicy.RETENTION_BATCH_SIZE);
+        Instant cutoff = clock.instant().minus(settings.retention());
+        Pageable batch = Pageable.ofSize(settings.retentionBatchSize());
         long deletedEdits =
                 deleteInBatches(
                         () -> edits.findIdsCreatedBefore(cutoff, batch), edits::deleteAllByIdInBatch);
@@ -69,7 +74,7 @@ public class AiEditRetention {
         return deletedEdits + deletedCalls;
     }
 
-    private static long deleteInBatches(
+    private long deleteInBatches(
             Supplier<List<UUID>> nextBatch, Consumer<List<UUID>> delete) {
         long deleted = 0;
         while (true) {
@@ -77,7 +82,7 @@ public class AiEditRetention {
             if (ids.isEmpty()) return deleted;
             delete.accept(ids);
             deleted += ids.size();
-            if (ids.size() < AiEditPolicy.RETENTION_BATCH_SIZE) return deleted;
+            if (ids.size() < settings.retentionBatchSize()) return deleted;
         }
     }
 }

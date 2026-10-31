@@ -21,19 +21,22 @@ ru.godeck
 │   ├── policy          AuthPolicy
 │   └── security        AuthPrincipal
 ├── presentation
-│   ├── controller      HTTP-контроллер и обработчик ошибок
-│   ├── dto             отдельные request/response records
-│   ├── service         PresentationService, PresentationTransactions
+│   ├── PresentationService       общий фасад создания, списка, версий и скачивания
+│   ├── PresentationTransactions  общая транзакционная координация агрегата
+│   ├── generation      очередь, worker, AI-генерация, настройки и generation/dto
+│   ├── editor          controller, сервис, сборщик/codec черновика и editor/dto
+│   ├── chat            старый whole-deck AI-чат и chat/dto
+│   ├── material        загрузка исходников, очередь извлечения и DTO материалов
+│   ├── dto             общие ответы о презентации, списке и версиях
 │   ├── entity          Presentation, PresentationRevision
 │   ├── repository      репозитории, пагинация и JPA-конвертеры
-│   ├── model           PresentationContent, GenerationMode, PresentationStatus
+│   ├── model           общие PresentationContent и PresentationStatus
 │   ├── exception       GenerationError, GenerationException
 │   ├── policy          PresentationPolicy
-│   ├── ai              HTTP-вызов AI, фабрика запроса, чтение ответа, модели и промпты
-│   ├── template        чтение/заполнение PPTX, валидация плана и политика текста
+│   ├── ai              общий каталог моделей и аудит запросов/ответов AI
+│   ├── template        каталог, PPTX-renderer, editor projection, фоны и валидация плана
 │   ├── storage         PresentationFiles
 │   ├── mapper          PresentationContentCodec
-│   ├── worker          PresentationWorker
 │   └── aiedit          AI-правка текста в редакторе (см. ниже)
 ├── common
 │   ├── security        Hashing, SecurityPolicy
@@ -43,32 +46,60 @@ ru.godeck
 
 Контроллер читает и валидирует запрос, определяет пользователя из Spring Security и возвращает DTO. JPA-сущности не передаются в HTTP-ответы: хеши паролей, коды, внутренние пути файлов и ключи повторных запросов остаются внутри backend. В одном Java-файле находится один публичный DTO; контроллеры не содержат вложенных DTO.
 
-Сервис реализует сценарий и обращается к репозиториям. Изменение загруженной в транзакции сущности выполняется её методами; Hibernate сохраняет изменения при commit. Репозиторий описывает выборки и блокировки. В production-коде нет `JdbcClient`, `JdbcTemplate` или `TransactionTemplate`; в тестах JDBC используется для независимой проверки реального состояния PostgreSQL.
+Сервис реализует сценарий и обращается к репозиториям. Изменение загруженной в транзакции сущности выполняется её методами; Hibernate сохраняет изменения при commit. Репозиторий описывает выборки и блокировки. Очередь документов — отдельный небольшой путь: `MaterialJobService` использует `JdbcClient`, а изолированный document-worker — JDBC для атомарного claim/finish. В тестах JDBC также независимо проверяет реальное состояние PostgreSQL.
 
 `PresentationWorker` забирает задачи и запускает генерацию. Проверка доступности выбранной модели выполняется после claim: устаревшая модель завершает свою задачу ошибкой и не задерживает очередь. Ручная сборка не требует доступной AI-модели. `PresentationFiles` отвечает за безопасные пути, атомарную запись и удаление неиспользуемого результата. `PresentationTemplateService` загружает ресурсы, один раз строит неизменяемый манифест макетов и подставляет значения в PPTX. `PresentationContentValidator` отдельно проверяет поля/решения по слайдам и применяет лимиты текста без чтения PPTX. `PresentationRequestFactory` строит единый запрос для предпросмотра и генерации; `PresentationContentGenerator` отвечает за HTTP-вызов и запись диагностики; `OpenAiResponseReader` проверяет завершение ответа и объединяет все части `output_text`. `PresentationContentCodec` преобразует JSON в типизированный план и обратно. Внутренние ошибки провайдера представлены `AiGenerationException` с `GenerationError`: очередь не распознаёт ошибки по тексту исключения.
 
 Связи сущностей представлены UUID: сценариям не требуется загружать граф пользователей, презентаций и версий. Связь версии с презентацией дополнительно защищена внешним ключом PostgreSQL. Пагинация сохраняет HTTP-контракт с произвольными `limit` и `offset`.
 
-## AI-правка текста: пакет `aiedit`
+## Разделение обязанностей после рефакторинга
+
+`PresentationTemplateService` — совместимый публичный фасад. Внутри него используются конкретные
+package-private классы, не новые сервисы/микросервисы и не интерфейсы плагинов:
+
+- `TemplateCatalog` загружает исходники/sidecar, проверяет и кэширует поля, manifests и версии;
+- `TemplateRenderer` изменяет свежую копию PPTX и добавляет пользовательские shapes;
+- `TemplateEditorMapper` переводит исходные shapes в браузерные блоки и paragraph metrics;
+- `TemplateShapes` задаёт общие marker recognition, порядок обхода group shapes, layout ID и EMU.
+
+`fieldsBySlide` возвращает неизменяемый typed manifest; editor и AI target resolver не приводят
+`Object` из JSON-каталога к спискам. Внешние routes и прежние overloads фасада сохранены.
+
+`PresentationChatService` выполняет старую AI-пересборку всей опубликованной презентации.
+`EditorDraftAssembler` проверяет полный снимок браузера и строит semantic draft, не публикуя его.
+`PresentationEditorService` сохраняет ответственность за ownership, draft/version/lease и commit.
+`PresentationTransactions` оставлен общей границей переходов агрегата: его разделение только ради
+числа строк затруднило бы проверку единого протокола резервирования и завершения публикации.
+
+Настройки сгруппированы по назначению в `auth/config`, `presentation/generation`, `aiedit/config`
+и `storage`. JPA-сущности не получают Spring beans: срок хранения передаётся явно в terminal-переход.
+Контроллеры, DTO и прикладные классы лежат рядом со своей функциональностью. Общая модель,
+основные сущности/репозитории и транзакции агрегата остаются общими: мы не дублируем их между
+редактором и генерацией. Тесты генерации, редактора и codecs перенесены вслед за функциональностью.
+
+## AI-правка текста: пакет `aiedit` (структура)
 
 ```text
 ru.godeck.presentation.aiedit
 ├── controller   AiEditController (каталог, text-edits)
 ├── dto          TextEditRequest, TextEditView и вложенные view
 ├── core         AiEditTarget (sealed), TargetKind, ResolvedTextTarget, TargetResolver, AiEditStatus
-├── action       TextEditAction, TextEditActionRegistry, ActionParam, ActionUi; builtin/*
+├── action       TextEditAction (enum), TextEditActionCatalog, ActionUi
 ├── ai           AiResponsesClient, TextEditRequestFactory, TextEditResponseParser,
 │                TextEditLlm + OpenAiTextEditLlm / ScriptedTextEditLlm, ResponsesUsage
 ├── text         TextResultSanitizer
 ├── service      AiTextEditService, AiEditTransactions, AiEditRetention
 ├── entity       PresentationAiEdit
 ├── repository   PresentationAiEditRepository
-├── config       AiEditClientConfig (RestClient openAiTextEditClient, чтение 30 с)
+├── config       AiEditSettings, AiEditClientConfig (отдельный RestClient)
 └── policy       AiEditPolicy
 ```
 
-Новое действие — один `@Component`, реализующий `TextEditAction`, и строки в `messages.properties`;
-каталог, валидация параметров и промпт подхватывают его автоматически. Порядок в каталоге — `@Order`.
+Три поддерживаемых действия перечислены в `TextEditAction`: shorten, rephrase, custom.
+`TextEditActionCatalog` отдаёт их в этом порядке и проверяет единственный параметр custom —
+instruction. Механизм плагинов, будущие enum-параметры и неиспользуемый контекст тарифов удалены.
+При добавлении нового действия меняются enum и явная валидация/каталог, а не Spring discovery.
+Это намеренное ограничение текущего MVP, а не универсальный фреймворк действий.
 `AiTextEditService` проверяет запрос без записи, затем короткой транзакцией (`AiEditTransactions`)
 решает идемпотентность и квоту, вызывает модель без открытой транзакции и второй короткой
 транзакцией сохраняет результат. Документ презентации не меняется. `openAiTextEditClient` объявлен с

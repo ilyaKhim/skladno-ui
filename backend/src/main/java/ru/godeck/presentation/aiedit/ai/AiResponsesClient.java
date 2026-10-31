@@ -12,8 +12,8 @@ import org.springframework.web.client.RestClientResponseException;
 import ru.godeck.presentation.aiedit.config.AiEditClientConfig;
 import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.exception.GenerationError;
-import ru.godeck.presentation.model.AiCallContext;
-import ru.godeck.presentation.service.PresentationAiCallHistory;
+import ru.godeck.presentation.ai.AiCallContext;
+import ru.godeck.presentation.ai.PresentationAiCallHistory;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -33,7 +33,6 @@ import java.util.function.Function;
  */
 @Component
 public class AiResponsesClient {
-    private static final String RESPONSES_URL = "https://api.openai.com/v1/responses";
     private static final String REDACTED_KEY = "[REDACTED]";
     private static final String HISTORY_FAILURE_LOG =
             "Could not persist AI edit response: call={} failure={}";
@@ -43,18 +42,22 @@ public class AiResponsesClient {
     private final PresentationAiCallHistory history;
     private final String apiKey;
     private final boolean enabled;
+    private final String responsesUrl;
 
     public AiResponsesClient(
             @Qualifier(AiEditClientConfig.CLIENT) RestClient client,
             ObjectMapper json,
             PresentationAiCallHistory history,
             @Value("${godeck.generation.api-key:}") String apiKey,
-            @Value("${godeck.generation.enabled:false}") boolean enabled) {
+            @Value("${godeck.generation.enabled:false}") boolean enabled,
+            @Value("${godeck.generation.responses-url:https://api.openai.com/v1/responses}")
+                    String responsesUrl) {
         this.client = client;
         this.json = json;
         this.history = history;
         this.apiKey = apiKey;
         this.enabled = enabled;
+        this.responsesUrl = responsesUrl;
     }
 
     /** True only when AI is enabled and a nonblank provider key is configured. */
@@ -85,7 +88,7 @@ public class AiResponsesClient {
         try {
             var response =
                     client.post()
-                            .uri(RESPONSES_URL)
+                            .uri(responsesUrl)
                             .contentType(MediaType.APPLICATION_JSON)
                             .header("Authorization", "Bearer " + apiKey)
                             .body(body)

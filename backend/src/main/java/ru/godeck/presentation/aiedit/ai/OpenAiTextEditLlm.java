@@ -3,8 +3,8 @@ package ru.godeck.presentation.aiedit.ai;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
-import ru.godeck.presentation.model.AiCallContext;
-import ru.godeck.presentation.model.AiOperation;
+import ru.godeck.presentation.ai.AiCallContext;
+import ru.godeck.presentation.ai.AiOperation;
 
 /** Production model: one strict-schema Responses API call per edit. */
 @Component

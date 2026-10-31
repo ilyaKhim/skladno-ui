@@ -22,7 +22,7 @@ import ru.godeck.auth.dto.RegisterInput;
 import ru.godeck.auth.dto.ResetInput;
 import ru.godeck.auth.dto.VerificationChallenge;
 import ru.godeck.auth.dto.VerifyInput;
-import ru.godeck.auth.policy.AuthPolicy;
+import ru.godeck.auth.config.AuthSettings;
 import ru.godeck.auth.security.AuthPrincipal;
 import ru.godeck.auth.service.AuthService;
 import ru.godeck.common.security.SecurityPolicy;
@@ -42,11 +42,13 @@ import java.util.UUID;
 public class AuthController {
     private static final String REGISTRATION_CHALLENGE_SESSION_KEY = "registrationChallenge";
     private final AuthService service;
+    private final AuthSettings settings;
     private final HttpSessionSecurityContextRepository contexts =
             new HttpSessionSecurityContextRepository();
 
-    public AuthController(AuthService service) {
+    public AuthController(AuthService service, AuthSettings settings) {
         this.service = service;
+        this.settings = settings;
     }
 
     /** Supplies the session-backed CSRF token and header name required by unsafe requests. */
@@ -74,7 +76,7 @@ public class AuthController {
         return ok(
                 Map.of(
                         "challenge",
-                        VerificationChallenge.after(AuthPolicy.RESEND_COOLDOWN_SECONDS)));
+                        VerificationChallenge.after(settings.resendAfterSeconds())));
     }
 
     /** Verifies the email code, rotates the session, and signs the newly created account in. */
@@ -93,7 +95,7 @@ public class AuthController {
     public Map<String, Object> resend(
             @Valid @RequestBody EmailInput input, HttpServletRequest request) {
         service.resend(input.email(), challengeId(request));
-        return ok(Map.of("resendAfterSeconds", AuthPolicy.RESEND_COOLDOWN_SECONDS));
+        return ok(Map.of("resendAfterSeconds", settings.resendAfterSeconds()));
     }
 
     /** Authenticates credentials and starts a fixation-resistant server-side session. */

@@ -1,17 +1,19 @@
 package ru.godeck.presentation.entity;
 
+import ru.godeck.presentation.editor.PresentationEditorDraft;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import ru.godeck.common.security.Hashing;
-import ru.godeck.presentation.material.MaterialPolicy;
-import ru.godeck.presentation.model.GenerationMode;
+import ru.godeck.presentation.generation.GenerationMode;
 import ru.godeck.presentation.model.PresentationStatus;
 import ru.godeck.presentation.policy.PresentationPolicy;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.UUID;
 
 /**
@@ -143,16 +145,16 @@ public class Presentation {
     }
 
     /** Records a terminal generation error while retaining diagnostic content already stored. */
-    public void fail(String code, Instant now) {
-        expireInputAfterTerminalState(now);
+    public void fail(String code, Instant now, Duration sourceRetention) {
+        expireInputAfterTerminalState(now, sourceRetention);
         status = PresentationStatus.FAILED;
         errorCode = code;
         updatedAt = now;
     }
 
     /** Cancels a presentation that has not started rendering yet. */
-    public void cancel(Instant now) {
-        expireInputAfterTerminalState(now);
+    public void cancel(Instant now, Duration sourceRetention) {
+        expireInputAfterTerminalState(now, sourceRetention);
         status = PresentationStatus.CANCELLED;
         updatedAt = now;
     }
@@ -169,8 +171,9 @@ public class Presentation {
             int slideCount,
             String model,
             int version,
-            Instant now) {
-        expireInputAfterTerminalState(now);
+            Instant now,
+            Duration sourceRetention) {
+        expireInputAfterTerminalState(now, sourceRetention);
         this.contentJson = contentJson;
         outputPath = path;
         this.slideCount = slideCount;
@@ -183,9 +186,9 @@ public class Presentation {
     }
 
     /** Later editor saves or commits must not postpone deletion of the original source copy. */
-    private void expireInputAfterTerminalState(Instant now) {
+    private void expireInputAfterTerminalState(Instant now, Duration sourceRetention) {
         if (generationInputJson != null && generationInputExpiresAt == null)
-            generationInputExpiresAt = now.plus(MaterialPolicy.RETENTION);
+            generationInputExpiresAt = now.plus(sourceRetention);
     }
 
     /**
