@@ -6,10 +6,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import ru.godeck.presentation.dto.ExtractedMaterial;
+import ru.godeck.presentation.material.ExtractedMaterial;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
-import ru.godeck.presentation.model.GenerationInput;
+import ru.godeck.presentation.generation.GenerationInput;
 
 import tools.jackson.databind.ObjectMapper;
 

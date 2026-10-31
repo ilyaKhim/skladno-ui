@@ -1,12 +1,14 @@
 package ru.godeck.presentation.entity;
 
+import ru.godeck.presentation.editor.PresentationEditorDraft;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import ru.godeck.common.security.Hashing;
-import ru.godeck.presentation.model.GenerationMode;
+import ru.godeck.presentation.generation.GenerationMode;
 import ru.godeck.presentation.model.PresentationStatus;
 import ru.godeck.presentation.policy.PresentationPolicy;
 

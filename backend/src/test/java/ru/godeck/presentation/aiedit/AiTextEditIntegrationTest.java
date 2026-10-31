@@ -36,9 +36,9 @@ import ru.godeck.presentation.aiedit.ai.TextEditPrompt;
 import ru.godeck.presentation.aiedit.service.AiEditRetention;
 import ru.godeck.presentation.aiedit.config.TextEditPromptSettings;
 import ru.godeck.presentation.model.PresentationContent;
-import ru.godeck.presentation.service.PresentationService;
+import ru.godeck.presentation.PresentationService;
 import ru.godeck.presentation.template.PresentationTemplateService;
-import ru.godeck.presentation.worker.PresentationWorker;
+import ru.godeck.presentation.generation.PresentationWorker;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;

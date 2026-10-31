@@ -1,6 +1,6 @@
 package ru.godeck.presentation.aiedit.policy;
 
-import ru.godeck.presentation.template.EditorTextLimits;
+import ru.godeck.presentation.editor.EditorTextLimits;
 
 /** Fixed API ceilings and text-generation rules; operational settings live in AiEditSettings. */
 public final class AiEditPolicy {

@@ -12,10 +12,10 @@ import ru.godeck.presentation.entity.Presentation;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
-import ru.godeck.presentation.mapper.PresentationEditorDraftCodec;
+import ru.godeck.presentation.editor.PresentationEditorDraftCodec;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.repository.PresentationRepository;
-import ru.godeck.presentation.template.EditorTextLimits;
+import ru.godeck.presentation.editor.EditorTextLimits;
 import ru.godeck.presentation.template.PresentationTemplateService;
 
 import java.util.List;

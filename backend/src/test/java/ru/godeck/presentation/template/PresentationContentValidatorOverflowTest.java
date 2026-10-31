@@ -1,5 +1,7 @@
 package ru.godeck.presentation.template;
 
+import ru.godeck.presentation.editor.EditorTextLimits;
+
 import static org.assertj.core.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;

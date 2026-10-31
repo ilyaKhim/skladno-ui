@@ -21,19 +21,22 @@ ru.godeck
 │   ├── policy          AuthPolicy
 │   └── security        AuthPrincipal
 ├── presentation
-│   ├── controller      HTTP-контроллер и обработчик ошибок
-│   ├── dto             отдельные request/response records
-│   ├── service         PresentationService, PresentationTransactions
+│   ├── PresentationService       общий фасад создания, списка, версий и скачивания
+│   ├── PresentationTransactions  общая транзакционная координация агрегата
+│   ├── generation      очередь, worker, AI-генерация, настройки и generation/dto
+│   ├── editor          controller, сервис, сборщик/codec черновика и editor/dto
+│   ├── chat            старый whole-deck AI-чат и chat/dto
+│   ├── material        загрузка исходников, очередь извлечения и DTO материалов
+│   ├── dto             общие ответы о презентации, списке и версиях
 │   ├── entity          Presentation, PresentationRevision
 │   ├── repository      репозитории, пагинация и JPA-конвертеры
-│   ├── model           PresentationContent, GenerationMode, PresentationStatus
+│   ├── model           общие PresentationContent и PresentationStatus
 │   ├── exception       GenerationError, GenerationException
 │   ├── policy          PresentationPolicy
-│   ├── ai              HTTP-вызов AI, фабрика запроса, чтение ответа, модели и промпты
-│   ├── template        чтение/заполнение PPTX, валидация плана и политика текста
+│   ├── ai              общий каталог моделей и аудит запросов/ответов AI
+│   ├── template        каталог, PPTX-renderer, editor projection, фоны и валидация плана
 │   ├── storage         PresentationFiles
 │   ├── mapper          PresentationContentCodec
-│   ├── worker          PresentationWorker
 │   └── aiedit          AI-правка текста в редакторе (см. ниже)
 ├── common
 │   ├── security        Hashing, SecurityPolicy
@@ -68,9 +71,11 @@ package-private классы, не новые сервисы/микросерв�
 `PresentationTransactions` оставлен общей границей переходов агрегата: его разделение только ради
 числа строк затруднило бы проверку единого протокола резервирования и завершения публикации.
 
-Новые настройки сгруппированы по назначению в `auth/config`, `presentation/config`, `aiedit/config`
+Настройки сгруппированы по назначению в `auth/config`, `presentation/generation`, `aiedit/config`
 и `storage`. JPA-сущности не получают Spring beans: срок хранения передаётся явно в terminal-переход.
-Не выполнялся массовый перенос DTO/контроллеров/репозиториев между пакетами.
+Контроллеры, DTO и прикладные классы лежат рядом со своей функциональностью. Общая модель,
+основные сущности/репозитории и транзакции агрегата остаются общими: мы не дублируем их между
+редактором и генерацией. Тесты генерации, редактора и codecs перенесены вслед за функциональностью.
 
 ## AI-правка текста: пакет `aiedit` (структура)
 

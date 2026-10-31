@@ -1,0 +1,129 @@
+package ru.godeck.presentation.generation;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+import ru.godeck.presentation.ai.AiCallContext;
+import ru.godeck.presentation.ai.AiOperation;
+import ru.godeck.presentation.ai.PresentationModelCatalog;
+import ru.godeck.presentation.exception.AiGenerationException;
+import ru.godeck.presentation.exception.GenerationError;
+import ru.godeck.presentation.exception.GenerationException;
+import ru.godeck.presentation.mapper.PresentationContentCodec;
+import ru.godeck.presentation.model.PresentationContent;
+import ru.godeck.presentation.PresentationTransactions;
+import ru.godeck.presentation.template.PresentationTemplateService;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Queue consumer that prepares unpublished content for the existing editor.
+ *
+ * <p>The database supplies the durable queue and row locking; {@link #processOne()} merely polls
+ * for one claim. An in-memory guard prevents overlapping scheduled invocations in this JVM, while
+ * the transaction layer protects against claims by other application instances.
+ */
+@Component
+public class PresentationWorker {
+    private static final String QUEUE_FAILURE_LOG = "Could not process presentation queue";
+    private static final String GENERATION_FAILURE_LOG = "Presentation {} failed: {}";
+
+    private static final int DEFAULT_POLL_MILLIS = 1500;
+    private static final String POLL_INTERVAL =
+            "${godeck.generation.poll-ms:" + DEFAULT_POLL_MILLIS + "}";
+    private static final Logger log = LoggerFactory.getLogger(PresentationWorker.class);
+    private final PresentationTransactions transactions;
+    private final PresentationTemplateService templates;
+    private final PresentationContentGenerator generator;
+    private final PresentationContentCodec codec;
+    private final PresentationModelCatalog models;
+    private final GenerationInputCodec inputs;
+    private final AtomicBoolean working = new AtomicBoolean();
+
+    public PresentationWorker(
+            PresentationTransactions transactions,
+            PresentationTemplateService templates,
+            PresentationContentGenerator generator,
+            PresentationContentCodec codec,
+            PresentationModelCatalog models,
+            GenerationInputCodec inputs) {
+        this.transactions = transactions;
+        this.templates = templates;
+        this.generator = generator;
+        this.codec = codec;
+        this.models = models;
+        this.inputs = inputs;
+    }
+
+    /**
+     * Claims at most one queued row and processes it.
+     *
+     * <p>The guard is always released, and an infrastructure failure is logged without disabling
+     * subsequent scheduler ticks.
+     */
+    @Scheduled(initialDelayString = POLL_INTERVAL, fixedDelayString = POLL_INTERVAL)
+    public void processOne() {
+        if (!working.compareAndSet(false, true)) return;
+        try {
+            transactions.claim().ifPresent(this::process);
+        } catch (Exception e) {
+            log.error(QUEUE_FAILURE_LOG, e);
+        } finally {
+            working.set(false);
+        }
+    }
+
+    /** Generates or decodes once and saves a draft. Only an explicit editor commit renders PPTX. */
+    private void process(PresentationTransactions.Job claimed) {
+        try {
+            var job =
+                    new PresentationTransactions.Job(
+                            claimed.id(),
+                            claimed.templateId(),
+                            claimed.topic(),
+                            claimed.mode(),
+                            claimed.mode() == GenerationMode.MANUAL
+                                    ? claimed.model()
+                                    : models.resolve(claimed.model()),
+                            claimed.contentJson(),
+                            claimed.generationInputJson());
+            PresentationContent content =
+                    job.contentJson() != null ? codec.decode(job.contentJson()) : generate(job);
+            content = templates.normalize(job.templateId(), content);
+            transactions.prepareDraft(job, codec.encode(content));
+        } catch (Exception error) {
+            String code = failureCode(error);
+            transactions.fail(claimed, code);
+            log.warn(GENERATION_FAILURE_LOG, claimed.id(), error.getClass().getSimpleName());
+        }
+    }
+
+    /** Routes legacy and source-backed jobs through the same provider/schema boundary. */
+    private PresentationContent generate(PresentationTransactions.Job job) {
+        var context = new AiCallContext(job.id(), AiOperation.GENERATION);
+        String topic = templates.withDescription(job.templateId(), job.topic());
+        var fields = templates.fields(job.templateId());
+        var slides = templates.slideManifest(job.templateId());
+        return job.generationInputJson() == null
+                ? generator.generate(context, topic, fields, slides, job.model())
+                : generator.generate(
+                        context,
+                        topic,
+                        fields,
+                        slides,
+                        job.model(),
+                        inputs.decode(job.generationInputJson()));
+    }
+
+    /** Maps internal/provider failures onto the deliberately small public generation error set. */
+    private static String failureCode(Exception error) {
+        if (error instanceof GenerationException known) return known.code();
+        if (error instanceof AiGenerationException provider
+                && provider.error() == GenerationError.OPENAI_DISABLED) {
+            return provider.error().code();
+        }
+        return GenerationError.GENERATION_FAILED.code();
+    }
+}

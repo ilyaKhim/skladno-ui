@@ -1,5 +1,7 @@
 package ru.godeck.presentation.template;
 
+import ru.godeck.presentation.editor.EditorTextLimits;
+
 import static ru.godeck.presentation.template.TemplateShapes.allShapes;
 import static ru.godeck.presentation.template.TemplateShapes.textLayoutId;
 import static ru.godeck.presentation.template.TemplateShapes.TOKEN;

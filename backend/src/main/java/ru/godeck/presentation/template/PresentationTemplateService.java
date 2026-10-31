@@ -2,7 +2,7 @@ package ru.godeck.presentation.template;
 
 import org.springframework.stereotype.Service;
 
-import ru.godeck.presentation.dto.EditorDeckView;
+import ru.godeck.presentation.editor.dto.EditorDeckView;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.model.PresentationContent;

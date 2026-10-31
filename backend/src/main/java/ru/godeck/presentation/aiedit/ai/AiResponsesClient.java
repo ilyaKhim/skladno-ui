@@ -12,8 +12,8 @@ import org.springframework.web.client.RestClientResponseException;
 import ru.godeck.presentation.aiedit.config.AiEditClientConfig;
 import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.exception.GenerationError;
-import ru.godeck.presentation.model.AiCallContext;
-import ru.godeck.presentation.service.PresentationAiCallHistory;
+import ru.godeck.presentation.ai.AiCallContext;
+import ru.godeck.presentation.ai.PresentationAiCallHistory;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;

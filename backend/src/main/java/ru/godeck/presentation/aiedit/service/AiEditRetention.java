@@ -8,8 +8,8 @@ import org.springframework.stereotype.Service;
 
 import ru.godeck.presentation.aiedit.config.AiEditSettings;
 import ru.godeck.presentation.aiedit.repository.PresentationAiEditRepository;
-import ru.godeck.presentation.model.AiOperation;
-import ru.godeck.presentation.repository.PresentationAiCallRepository;
+import ru.godeck.presentation.ai.AiOperation;
+import ru.godeck.presentation.ai.PresentationAiCallRepository;
 
 import java.time.Clock;
 import java.time.Instant;

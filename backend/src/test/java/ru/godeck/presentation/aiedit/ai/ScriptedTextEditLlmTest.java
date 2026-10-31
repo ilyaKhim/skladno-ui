@@ -11,7 +11,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.env.MockEnvironment;
 
-import ru.godeck.presentation.service.PresentationAiCallHistory;
+import ru.godeck.presentation.ai.PresentationAiCallHistory;
 
 import tools.jackson.databind.ObjectMapper;
 

@@ -8,9 +8,9 @@ import ru.godeck.common.text.BackendMessages;
 import ru.godeck.presentation.aiedit.action.TextEditAction;
 import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.exception.GenerationError;
-import ru.godeck.presentation.model.AiCallContext;
-import ru.godeck.presentation.model.AiOperation;
-import ru.godeck.presentation.service.PresentationAiCallHistory;
+import ru.godeck.presentation.ai.AiCallContext;
+import ru.godeck.presentation.ai.AiOperation;
+import ru.godeck.presentation.ai.PresentationAiCallHistory;
 
 import tools.jackson.databind.ObjectMapper;
 

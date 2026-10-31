@@ -1,5 +1,7 @@
 package ru.godeck.presentation.template;
 
+import ru.godeck.presentation.editor.EditorTextLimits;
+
 import static ru.godeck.presentation.template.TemplateShapes.allShapes;
 import static ru.godeck.presentation.template.TemplateShapes.pageBounds;
 import static ru.godeck.presentation.template.TemplateShapes.textLayoutId;
@@ -13,7 +15,7 @@ import org.apache.poi.xslf.usermodel.XSLFTextParagraph;
 import org.apache.poi.xslf.usermodel.XSLFTextRun;
 import org.apache.poi.xslf.usermodel.XSLFTextShape;
 
-import ru.godeck.presentation.dto.EditorDeckView;
+import ru.godeck.presentation.editor.dto.EditorDeckView;
 import ru.godeck.presentation.model.PresentationContent;
 
 import java.awt.Color;
