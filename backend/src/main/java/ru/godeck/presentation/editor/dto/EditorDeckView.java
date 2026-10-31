@@ -1,5 +1,6 @@
 package ru.godeck.presentation.editor.dto;
 
+import ru.godeck.presentation.model.TextStyle;
 import tools.jackson.databind.annotation.JsonNaming;
 import tools.jackson.databind.PropertyNamingStrategies;
 
@@ -46,7 +47,11 @@ public record EditorDeckView(
             String align,
             String color,
             String fontColor,
-            ParagraphStyle paragraph) {}
+            ParagraphStyle paragraph,
+            String fontFamily,
+            boolean italic,
+            boolean underline,
+            TextStyle textStyle) {}
 
     /**
      * Browser-safe subset of the PowerPoint paragraph model.

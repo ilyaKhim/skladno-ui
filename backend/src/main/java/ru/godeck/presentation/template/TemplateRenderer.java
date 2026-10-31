@@ -125,6 +125,7 @@ final class TemplateRenderer {
                     || !TOKEN.matcher(textShape.getText()).find()) continue;
             var layout = byId.get(textLayoutId(slideNumber, ++layoutIndex));
             if (layout == null) continue;
+            TemplateTextStyles.apply(textShape, layout.textStyle(), pageWidth);
             textShape.setAnchor(
                     new Rectangle2D.Double(
                             pageWidth * layout.x() / 100,
@@ -168,6 +169,7 @@ final class TemplateRenderer {
                 });
         paragraph.setSpaceBefore(0d);
         paragraph.setSpaceAfter(0d);
+        TemplateTextStyles.apply(box, block.textStyle(), pageWidth);
     }
 
     /** Resolves a normalized asset and creates a positioned PNG picture shape in the slide. */
@@ -218,4 +220,5 @@ final class TemplateRenderer {
         if (replaced.toString().equals(text)) return;
         runs.getFirst().setText(replaced.toString());
         for (int i = 1; i < runs.size(); i++) runs.get(i).setText("");
-    }}
+    }
+}

@@ -31,6 +31,10 @@ export function toDeck(source: EditorDeck): Deck {
         align: block.align,
         color: block.color,
         fontColor: block.font_color ?? undefined,
+        fontFamily: block.font_family ?? undefined,
+        italic: block.italic,
+        underline: block.underline,
+        ...(block.text_style ? { textStyle: block.text_style } : {}),
         paragraph: block.paragraph
           ? {
               index: block.paragraph.index,
@@ -65,7 +69,7 @@ export function serialize(deck: Deck, baseVersion: number, draftRevision: number
     title: deck.title,
     slides: deck.slides.map((slide) => {
       const fields = new Map<string, string>()
-      const layouts = new Map<string, { id: string; x: number; y: number; width: number; height: number }>()
+      const layouts = new Map<string, SaveEditorDraft['slides'][number]['layouts'][number]>()
       for (const block of slide.blocks) {
         if (block.fieldKey) fields.set(block.fieldKey, block.text)
         if (block.fieldKey && block.layoutKey) {
@@ -75,6 +79,8 @@ export function serialize(deck: Deck, baseVersion: number, draftRevision: number
             y: block.y,
             width: block.width,
             height: block.height,
+            // An empty style explicitly restores template formatting (including undo after autosave).
+            text_style: block.textStyle ?? {},
           })
         }
       }
@@ -97,6 +103,7 @@ export function serialize(deck: Deck, baseVersion: number, draftRevision: number
             weight: block.weight,
             align: block.align,
             color: block.color,
+            text_style: block.textStyle ?? {},
           })),
         images: slide.images.map((image) => ({
           id: image.id,

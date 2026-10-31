@@ -38,6 +38,32 @@ test('an unpublished base-zero draft has recoverable edits but cannot restore ov
   assert.equal(parseRecovery(raw.replace('"base":0', '"base":-1'), 'owner-1', server.id), null)
 })
 
+test('recovery retains validated formatting but rejects arbitrary fonts, CSS and invalid numeric values', () => {
+  const local = storage()
+  const writer = createRecoveryStore(local, 'owner-1', server.id, 'tab-1')
+  const deck = edited()
+  deck.slides[0].blocks[0].textStyle = { font_family: 'Georgia', font_size: 32, italic: true }
+  writer.write(deck, { base: 1, draft: 0 })
+  const entry = writer.latest(server)
+  assert.deepEqual(restoreRecovery(entry.copy, server).slides[0].blocks[0].textStyle, deck.slides[0].blocks[0].textStyle)
+  for (const textStyle of [{ font_family: 'url(https://evil.test)' }, { color: 'red; display:none' }, { font_size: 500 }, { weight: '700' }, { italic: 'yes' }, { unexpected: true }]) {
+    const copy = clone(entry.copy)
+    copy.deck.slides[0].blocks[0].textStyle = textStyle
+    assert.equal(parseRecovery(JSON.stringify(copy), 'owner-1', server.id), null)
+  }
+})
+
+test('recovering a local formatting undo clears the style still stored on the server', () => {
+  const local = storage()
+  const writer = createRecoveryStore(local, 'owner-1', server.id, 'tab-1')
+  const styled = clone(server)
+  styled.slides[0].blocks[0].textStyle = { italic: true }
+  writer.write(edited(), { base: 1, draft: 0 })
+  const entry = writer.latest(styled)
+  assert.ok(entry)
+  assert.deepEqual(restoreRecovery(entry.copy, styled).slides[0].blocks[0].textStyle, {})
+})
+
 test('recovery copies are isolated by owner and presentation', () => {
   const local = storage()
   const writer = createRecoveryStore(local, 'owner-1', server.id, 'tab-1')

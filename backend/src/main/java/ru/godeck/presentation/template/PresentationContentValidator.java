@@ -127,6 +127,7 @@ public class PresentationContentValidator {
                                     || !TEXT_ALIGNS.contains(block.align())
                                     || !TEXT_COLORS.contains(block.color()))
                                 throw new IllegalArgumentException();
+                            if (block.textStyle() != null) block.textStyle().validate();
                             return block;
                         })
                 .toList();
@@ -191,6 +192,7 @@ public class PresentationContentValidator {
                                             layout.width(),
                                             layout.height()))
                                 throw new IllegalArgumentException();
+                            if (layout.textStyle() != null) layout.textStyle().validate();
                             return layout;
                         })
                 .toList();

@@ -1,13 +1,13 @@
 'use client'
 
-import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent as ReactPointerEvent } from 'react'
-import { EyeOff } from 'lucide-react'
+import { useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
   BLOCK_ROLE_LABELS,
+  CUSTOM_TEXT_MAX_CHARS,
   SLIDE_BASE_WIDTH,
-  type BlockColor,
   type Slide,
   type SlideTheme,
   type TextBlock,
@@ -17,15 +17,11 @@ import {
 } from './editor-types'
 import { groupTextBlocks, type TextShapeGroup } from './text-shape-groups'
 import { SlideBackground } from './slide-background'
+import { browserFont, resolvedTextStyle } from './text-style'
 
 const THEME_BACKGROUND: Record<SlideTheme, string> = {
   paper: '#ffffff',
   navy: '#162d4e',
-}
-
-const TEXT_COLORS: Record<SlideTheme, Record<BlockColor, string>> = {
-  paper: { ink: '#142033', muted: '#5b6675', brand: '#335cc5' },
-  navy: { ink: '#f5f7fb', muted: '#b4c0d3', brand: '#d7f36a' },
 }
 
 const LINE_HEIGHT: Record<TextBlock['role'], number> = {
@@ -53,17 +49,21 @@ function canonicalPixels(value: number): string {
 }
 
 function paragraphStyle(block: TextBlock, theme: SlideTheme): CSSProperties {
+  const style = resolvedTextStyle(block, theme)
   const paragraph = block.paragraph
   const bulletMargin = paragraph?.bullet && !paragraph.leftMargin ? block.fontSize * 1.5 : 0
 
   return {
     position: 'relative',
     display: 'block',
-    fontSize: `${(block.fontSize / SLIDE_BASE_WIDTH) * 100}cqw`,
-    fontWeight: block.weight,
+    fontSize: `${(style.fontSize / SLIDE_BASE_WIDTH) * 100}cqw`,
+    fontWeight: style.weight,
+    fontFamily: browserFont(style.fontFamily),
+    fontStyle: style.italic ? 'italic' : 'normal',
+    textDecoration: style.underline ? 'underline' : undefined,
     lineHeight: paragraph?.lineHeight ?? LINE_HEIGHT[block.role],
-    textAlign: block.align,
-    color: block.fontColor ?? TEXT_COLORS[theme][block.color],
+    textAlign: style.align,
+    color: style.color,
     letterSpacing: block.role === 'eyebrow' ? '0.06em' : undefined,
     marginTop: paragraph?.spaceBefore ? canonicalPixels(paragraph.spaceBefore) : undefined,
     marginBottom: paragraph?.spaceAfter ? canonicalPixels(paragraph.spaceAfter) : undefined,
@@ -76,7 +76,42 @@ function paragraphStyle(block: TextBlock, theme: SlideTheme): CSSProperties {
   }
 }
 
-function textShapeContent(shape: TextShapeGroup, theme: SlideTheme) {
+function InlineText({ block, onChange, onFinish, onCommit }: { block: TextBlock; onChange: (text: string) => void; onFinish: () => void; onCommit?: () => void }) {
+  const input = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    input.current?.focus({ preventScroll: true })
+  }, [])
+  useLayoutEffect(() => {
+    if (!input.current) return
+    input.current.style.height = '0px'
+    input.current.style.height = `${input.current.scrollHeight}px`
+  }, [block.text, block.textStyle])
+  return <textarea
+    ref={input}
+    aria-label="Текст"
+    value={block.text}
+    maxLength={block.hardMaxChars ?? block.maxChars ?? CUSTOM_TEXT_MAX_CHARS}
+    rows={1}
+    spellCheck
+    className="block w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-inherit outline-none selection:bg-primary/20"
+    style={{ font: 'inherit', color: 'inherit', letterSpacing: 'inherit', textAlign: 'inherit', textDecoration: 'inherit', caretColor: 'currentColor' }}
+    onChange={(event) => onChange(event.target.value)}
+    onBlur={onCommit}
+    onPointerDown={(event) => event.stopPropagation()}
+    onClick={(event) => event.stopPropagation()}
+    onDoubleClick={(event) => event.stopPropagation()}
+    onKeyDown={(event) => {
+      if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+        event.stopPropagation()
+        event.preventDefault()
+        onFinish()
+      }
+    }}
+  />
+}
+
+function textShapeContent(shape: TextShapeGroup, theme: SlideTheme, editingBlockId?: string | null,
+  onUpdateBlock?: SlideSurfaceProps['onUpdateBlock'], onFinishEditing?: () => void, onCommit?: () => void) {
   return shape.paragraphs.map((paragraph) => {
     const block = paragraph.blocks[0]
     const metadata = block.paragraph
@@ -107,7 +142,9 @@ function textShapeContent(shape: TextShapeGroup, theme: SlideTheme) {
         )}
         {paragraph.blocks.map((field) => (
           <span key={field.id} data-text-block-id={field.id}>
-            {field.text}
+            {field.id === editingBlockId && onUpdateBlock && onFinishEditing
+              ? <InlineText block={field} onChange={(text) => onUpdateBlock(field.id, { text }, `${field.id}:text`)} onFinish={onFinishEditing} onCommit={onCommit} />
+              : field.text}
           </span>
         ))}
       </span>
@@ -131,6 +168,8 @@ interface SlideSurfaceProps {
   onUpdateBlock?: (blockId: string, patch: EditableBlockFields, coalesceKey?: string) => void
   onUpdateImage?: (imageId: string, patch: EditableImageFields, coalesceKey?: string) => void
   onCommitElement?: () => void
+  editingBlockId?: string | null
+  onFinishEditing?: () => void
 }
 
 /** Renders a slide at any size; text scales with the frame width via container query units. */
@@ -143,6 +182,8 @@ export function SlideSurface({
   onUpdateBlock,
   onUpdateImage,
   onCommitElement,
+  editingBlockId,
+  onFinishEditing,
 }: SlideSurfaceProps) {
   const interactive = Boolean(onSelectElement)
   const textShapes = groupTextBlocks(slide.blocks)
@@ -213,7 +254,8 @@ export function SlideSurface({
         const anchor = shape.blocks[0]
         const selectedBlock = shape.blocks.find((block) => block.id === selectedElementId)
         const style = shapeStyle(anchor)
-        const content = textShapeContent(shape, slide.theme)
+        const editing = shape.blocks.some((block) => block.id === editingBlockId)
+        const content = textShapeContent(shape, slide.theme, editingBlockId, onUpdateBlock, onFinishEditing, onCommitElement)
 
         if (!interactive) {
           return (
@@ -234,6 +276,11 @@ export function SlideSurface({
           onSelectElement?.(eventBlockId(event, anchor.id))
         }
         const handleKeyDown = (event: KeyboardEvent) => {
+          if (event.target !== event.currentTarget) return
+          if (event.key === ' ') {
+            event.preventDefault()
+            onSelectElement?.(selectedBlock?.id ?? anchor.id)
+          }
           if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
             event.preventDefault()
             onActivateBlock?.(selectedBlock?.id ?? anchor.id)
@@ -241,10 +288,11 @@ export function SlideSurface({
         }
 
         return (
-          <button
+          <div
             key={shape.id}
             data-text-shape-id={shape.id}
-            type="button"
+            role="button"
+            tabIndex={0}
             aria-pressed={selected}
             aria-label={shape.blocks
               .map(
@@ -278,7 +326,7 @@ export function SlideSurface({
                 {selectedBlock?.fieldKey ? BLOCK_ROLE_LABELS[selectedBlock.role] : 'Свободный текст'}
               </span>
             )}
-            <span className="block h-full overflow-hidden">{content}</span>
+            <span className={cn('block h-full', !editing && 'overflow-hidden')}>{content}</span>
             {selected && (
               <span
                 aria-hidden
@@ -289,7 +337,7 @@ export function SlideSurface({
                 className="absolute right-0 bottom-0 size-2.5 translate-x-1/2 translate-y-1/2 cursor-nwse-resize rounded-[2px] border-2 border-background bg-primary shadow-sm touch-none"
               />
             )}
-          </button>
+          </div>
         )
       })}
       {slide.images.map((image) => {
@@ -343,6 +391,8 @@ export function SlideSurface({
 }
 
 interface SlideCanvasProps {
+  editingBlockId: string | null
+  onFinishEditing: () => void
   slide: Slide
   slideIndex: number
   slideCount: number
@@ -352,12 +402,15 @@ interface SlideCanvasProps {
   onSelectElement: (elementId: string | null) => void
   onActivateBlock: (blockId: string) => void
   onToggleHidden: () => void
+  onRenameSlide: (name: string) => void
   onUpdateBlock: (blockId: string, patch: EditableBlockFields, coalesceKey?: string) => void
   onUpdateImage: (imageId: string, patch: EditableImageFields, coalesceKey?: string) => void
   onCommitElement: () => void
 }
 
 export function SlideCanvas({
+  editingBlockId,
+  onFinishEditing,
   slide,
   slideIndex,
   slideCount,
@@ -367,27 +420,25 @@ export function SlideCanvas({
   onSelectElement,
   onActivateBlock,
   onToggleHidden,
+  onRenameSlide,
   onUpdateBlock,
   onUpdateImage,
   onCommitElement,
 }: SlideCanvasProps) {
+  const [zoom, setZoom] = useState('fit')
   return (
     <section aria-label="Рабочая область слайда" className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-4 text-xs">
         <span className="tabular-nums text-muted-foreground">
           {slideIndex + 1} / {slideCount}
         </span>
-        <span className="truncate font-medium text-foreground">{slide.name}</span>
-        {slide.hidden && (
-          <span className="ml-1 inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground">
-            <EyeOff className="size-3" aria-hidden />
-            Скрыт из показа
-            <Button variant="link" size="xs" className="h-auto px-1 py-0 text-xs" onClick={onToggleHidden}>
-              Показать
-            </Button>
-          </span>
-        )}
-        <span className="ml-auto hidden text-muted-foreground sm:inline">
+        <input aria-label="Название слайда" value={slide.name} maxLength={120}
+          onChange={(event) => onRenameSlide(event.target.value)} onBlur={onCommitElement}
+          className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1 font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring sm:max-w-64" />
+        <Button variant="ghost" size="icon-xs" aria-label={slide.hidden ? 'Показать слайд' : 'Скрыть из показа'} title={slide.hidden ? 'Показать слайд' : 'Скрыть из показа'} onClick={onToggleHidden}>
+          {slide.hidden ? <EyeOff /> : <Eye />}
+        </Button>
+        <span className="ml-auto hidden text-muted-foreground xl:inline">
           {selectedElementId
             ? selectedElementKind === 'image'
               ? 'Перетаскивание — положение, маркер — размер'
@@ -398,14 +449,14 @@ export function SlideCanvas({
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 p-4 sm:p-8" style={{ containerType: 'size' }}>
-        <div className="flex h-full w-full items-center justify-center">
+      <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-8" style={{ containerType: 'size' }}>
+        <div className="flex min-h-full w-max min-w-full items-center justify-center">
           <div
             className={cn(
-              'rounded-sm shadow-[0_1px_2px_rgba(20,32,51,0.08),0_8px_24px_rgba(20,32,51,0.08)] ring-1 ring-border',
+              'shrink-0 rounded-sm shadow-[0_1px_2px_rgba(20,32,51,0.08),0_8px_24px_rgba(20,32,51,0.08)] ring-1 ring-border',
               slide.hidden && 'opacity-60',
             )}
-            style={{ width: 'min(100cqw, calc(100cqh * 16 / 9))' }}
+            style={{ width: zoom === 'fit' ? 'min(100cqw, calc(100cqh * 16 / 9))' : `${SLIDE_BASE_WIDTH * Number(zoom)}px` }}
           >
             <SlideSurface
               slide={slide}
@@ -415,11 +466,23 @@ export function SlideCanvas({
               onUpdateBlock={onUpdateBlock}
               onUpdateImage={onUpdateImage}
               onCommitElement={onCommitElement}
+              editingBlockId={editingBlockId}
+              onFinishEditing={onFinishEditing}
               className="rounded-sm"
             />
           </div>
         </div>
       </div>
+      <footer className="flex h-9 shrink-0 items-center justify-end gap-2 border-t border-border px-3 text-xs text-muted-foreground">
+        <label htmlFor="slide-zoom">Масштаб</label>
+        <select id="slide-zoom" value={zoom} onChange={(event) => setZoom(event.target.value)} className="h-7 rounded-md bg-transparent px-1 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <option value="fit">Уместить</option>
+          <option value="0.5">50%</option>
+          <option value="0.75">75%</option>
+          <option value="1">100%</option>
+          <option value="1.5">150%</option>
+        </select>
+      </footer>
     </section>
   )
 }

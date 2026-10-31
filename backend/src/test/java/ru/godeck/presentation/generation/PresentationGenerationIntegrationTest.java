@@ -48,6 +48,7 @@ import ru.godeck.presentation.material.MaterialRetention;
 import ru.godeck.presentation.material.SourceMaterial;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.model.PresentationStatus;
+import ru.godeck.presentation.model.TextStyle;
 import ru.godeck.presentation.PresentationService;
 import ru.godeck.presentation.PresentationTransactions;
 import ru.godeck.presentation.template.PresentationTemplateService;
@@ -1899,6 +1900,47 @@ class PresentationGenerationIntegrationTest {
             var deck = editor.get(owner, id);
             var saved = editor.save(owner, id, snapshot(deck));
             editor.commit(owner, id, saved.baseVersion(), saved.draftRevision());
+        }
+    }
+
+    @Test
+    void editorFormattingSurvivesLegacyAutosaveAndPublication() throws Exception {
+        UUID id = readyManual();
+        var initial = editor.get(USER, id);
+        var input = snapshot(initial);
+        var first = input.slides().getFirst();
+        var style = new TextStyle("Georgia", 30, 700, "center", "#335577", true, true);
+        var layouts = first.layouts().stream().map(layout -> new SaveEditorDraftRequest.TextLayout(
+                layout.id(), layout.x(), layout.y(), layout.width(), layout.height(), style)).toList();
+        var styled = new SaveEditorDraftRequest(input.baseVersion(), input.draftRevision(), input.title(),
+                List.of(new SaveEditorDraftRequest.Slide(first.sourceSlideNumber(), first.name(), first.hidden(),
+                        first.blocks(), List.of(new SaveEditorDraftRequest.CustomTextBlock("styled-custom", "Styled custom text",
+                                10, 75, 40, 10, 24, 400, "left", "ink", style)), first.images(), layouts)));
+        mvc.perform(put("/api/generation/v1/presentations/{id}/editor/draft", id).with(csrf())
+                .contentType("application/json").content(json.writeValueAsString(styled)))
+                .andExpect(status().isOk());
+        var loaded = editor.get(USER, id);
+        assertThat(loaded.slides().getFirst().blocks()).allSatisfy(block -> assertThat(block.textStyle()).isEqualTo(style));
+
+        // An older client sends geometry and text, but knows nothing about optional formatting.
+        var saved = editor.save(USER, id, snapshot(loaded));
+        assertThat(editor.get(USER, id).slides().getFirst().blocks())
+                .allSatisfy(block -> assertThat(block.textStyle()).isEqualTo(style));
+        var published = editor.commit(USER, id, saved.baseVersion(), saved.draftRevision());
+        byte[] pptx = mvc.perform(get(published.downloadUrl())).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+        try (var show = new XMLSlideShow(new ByteArrayInputStream(pptx))) {
+            assertThat(show.getSlides().getFirst().getShapes().stream()
+                    .filter(org.apache.poi.xslf.usermodel.XSLFTextShape.class::isInstance)
+                    .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast)
+                    .flatMap(shape -> shape.getTextParagraphs().stream())
+                    .flatMap(paragraph -> paragraph.getTextRuns().stream())
+                    .filter(run -> run.getRawText().contains("Styled custom text")))
+                    .singleElement().satisfies(run -> {
+                        assertThat(run.getFontFamily()).isEqualTo("Georgia");
+                        assertThat(run.isItalic()).isTrue();
+                        assertThat(run.isUnderlined()).isTrue();
+                    });
         }
     }
 

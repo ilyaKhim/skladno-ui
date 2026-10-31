@@ -75,6 +75,7 @@ export function applyDeckAction(deck: Deck, action: DeckAction): Deck {
             : {
                 ...(sameSemanticField && action.patch.text !== undefined ? { text: action.patch.text } : {}),
                 ...(sameTemplateShape ? geometryPatch : {}),
+                ...(sameTemplateShape && action.patch.textStyle !== undefined ? { textStyle: action.patch.textStyle } : {}),
               }
           if (Object.keys(patch).length === 0) return block
           if (Object.entries(patch).every(([key, value]) => block[key as keyof typeof block] === value)) return block

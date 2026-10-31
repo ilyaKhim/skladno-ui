@@ -108,6 +108,7 @@ public record PresentationContent(
      * @param weight supported CSS-like font weight
      * @param align normalized horizontal alignment
      * @param color semantic template color token
+     * @param textStyle optional overrides of the legacy block formatting, also used by PPTX export
      */
     public record TextBlock(
             String id,
@@ -119,7 +120,14 @@ public record PresentationContent(
             int fontSize,
             int weight,
             String align,
-            String color) {}
+            String color,
+            TextStyle textStyle) {
+        /** Reads the original editor contract without introducing formatting overrides. */
+        public TextBlock(String id, String text, double x, double y, double width, double height,
+                int fontSize, int weight, String align, String color) {
+            this(id, text, x, y, width, height, fontSize, weight, align, color, null);
+        }
+    }
 
     /**
      * An uploaded image placed by the visual editor.
@@ -145,7 +153,7 @@ public record PresentationContent(
             double height) {}
 
     /**
-     * Geometry override for a text shape originating in the PowerPoint template.
+     * Geometry and optional formatting overrides for a text shape originating in the template.
      *
      * <p>The stable id ties an editor action back to the shape discovered in the source template;
      * all values are percentages of the slide dimensions.
@@ -155,9 +163,14 @@ public record PresentationContent(
      * @param y top edge as a percentage of slide height
      * @param width width as a percentage of slide width
      * @param height height as a percentage of slide height
+     * @param textStyle formatting of the complete text box, including its editable paragraphs
      */
     public record TextLayout(
-            String id, double x, double y, double width, double height) {}
+            String id, double x, double y, double width, double height, TextStyle textStyle) {
+        public TextLayout(String id, double x, double y, double width, double height) {
+            this(id, x, y, width, height, null);
+        }
+    }
 
     /**
      * Counts slides physically present in the PPTX, including hidden slides.

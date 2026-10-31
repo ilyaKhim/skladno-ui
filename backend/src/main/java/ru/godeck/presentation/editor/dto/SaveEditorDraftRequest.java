@@ -6,12 +6,17 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.Valid;
+import ru.godeck.presentation.model.TextStyle;
 
 import tools.jackson.databind.annotation.JsonNaming;
 import tools.jackson.databind.PropertyNamingStrategies;
 
 import java.util.List;
 
+/**
+ * Complete editor snapshot. Omitted text styles preserve an older client's document;
+ * explicit empty styles reset formatting, which makes undo work even after autosave.
+ */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record SaveEditorDraftRequest(
         @Min(0) int baseVersion,
@@ -54,7 +59,13 @@ public record SaveEditorDraftRequest(
             int fontSize,
             int weight,
             @NotBlank String align,
-            @NotBlank String color) {}
+            @NotBlank String color,
+            TextStyle textStyle) {
+        public CustomTextBlock(String id, String text, double x, double y, double width, double height,
+                int fontSize, int weight, String align, String color) {
+            this(id, text, x, y, width, height, fontSize, weight, align, color, null);
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ImageBlock(
@@ -72,5 +83,10 @@ public record SaveEditorDraftRequest(
             double x,
             double y,
             double width,
-            double height) {}
+            double height,
+            TextStyle textStyle) {
+        public TextLayout(String id, double x, double y, double width, double height) {
+            this(id, x, y, width, height, null);
+        }
+    }
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type Ref } from 'react'
-import { AlertCircle, ChevronsRight, LoaderCircle, Repeat2, Scissors, SendHorizontal, Sparkles, X, type LucideIcon } from 'lucide-react'
+import { AlertCircle, LoaderCircle, Repeat2, Scissors, SendHorizontal, Sparkles, X, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
@@ -18,7 +18,7 @@ import type { AiChat } from './use-ai-chat'
 const ACTION_ICONS: Record<string, LucideIcon> = { shorten: Scissors, rephrase: Repeat2 }
 const DEFAULT_INPUT_MAX = 300
 
-export type AiChatLayout = 'column' | 'tab' | 'sheet'
+export type AiChatLayout = 'column' | 'sheet'
 
 type AiChatPanelProps = {
   chat: AiChat
@@ -26,17 +26,14 @@ type AiChatPanelProps = {
   target: TextEditTarget | null
   block: TextBlock | null
   layout: AiChatLayout
-  /** Hides the title row when the chat is a tab of the right column. */
-  showHeader?: boolean
   inputRef: Ref<HTMLTextAreaElement>
   onClose: () => void
-  /** Esc leaves the sheet or the tab; the wide column stays until closed explicitly. */
+  /** Esc closes the mobile chat; the wide column stays until closed explicitly. */
   onDismiss?: () => void
-  onCollapse?: () => void
   id?: string
 }
 
-export function AiChatPanel({ chat, deck, target, block, layout, showHeader = true, inputRef, onClose, onDismiss, onCollapse, id }: AiChatPanelProps) {
+export function AiChatPanel({ chat, deck, target, block, layout, inputRef, onClose, onDismiss, id }: AiChatPanelProps) {
   const ids = useId()
   const [draft, setDraft] = useState('')
   const feedEnd = useRef<HTMLDivElement>(null)
@@ -78,27 +75,19 @@ export function AiChatPanel({ chat, deck, target, block, layout, showHeader = tr
       className={cn(
         'flex min-h-0 flex-col bg-card',
         layout === 'column' && 'w-[360px] shrink-0 border-l border-border',
-        layout === 'tab' && 'flex-1',
-        layout === 'sheet' && 'h-[60dvh] shrink-0 rounded-t-xl border-t border-border shadow-[0_-8px_24px_-12px_rgb(0_0_0/0.25)]',
+        layout === 'sheet' && 'h-[min(78dvh,680px)] shrink-0 rounded-t-xl border-t border-border shadow-[0_-8px_24px_-12px_rgb(0_0_0/0.25)]',
       )}
     >
-      {showHeader && (
         <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
           <h2 className="flex items-center gap-1.5 text-xs font-medium text-foreground">
             <Sparkles className="size-3.5 text-primary" /> AI-чат
           </h2>
           <div className="flex items-center gap-0.5">
-            {onCollapse && (
-              <Button variant="ghost" size="icon-xs" onClick={onCollapse} aria-label="Свернуть AI-чат" title="Свернуть">
-                <ChevronsRight />
-              </Button>
-            )}
             <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Закрыть AI-чат" title="Закрыть">
               <X />
             </Button>
           </div>
         </div>
-      )}
 
       <div role="log" aria-live="polite" aria-label="Лента AI-чата" className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {state.messages.length === 0 ? (
