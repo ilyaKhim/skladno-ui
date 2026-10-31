@@ -102,8 +102,8 @@ test('desktop and mobile editor expose only AI chat and keep inline controls ins
   for (const [name, width, height] of [['desktop', 1440, 1000], ['user-1280', 1280, 900], ['mobile', 390, 844]] as const) {
     await page.setViewportSize({ width, height })
     if (width < 1024) {
-      const chat = page.getByRole('complementary', { name: 'AI-чат', exact: true })
-      if (await chat.isVisible()) await chat.getByRole('button', { name: 'Закрыть AI-чат' }).click()
+      // Wait for the responsive render; clicking the disappearing desktop column races WebKit.
+      await expect(page.getByRole('complementary', { name: 'AI-чат', exact: true })).toBeHidden()
     }
     await listShape(page).locator('[data-paragraph-index="2"]').dblclick()
     await expect(canvas(page).getByRole('textbox', { name: 'Текст', exact: true })).toBeFocused()
