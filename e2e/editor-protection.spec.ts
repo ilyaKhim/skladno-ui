@@ -165,7 +165,7 @@ test('обновление предупреждает о правках; пос�
 
 test('браузерный Back из редактора показывает предупреждение и позволяет остаться', async ({ page, deckId }) => {
   await page.goto('/studio')
-  await page.getByRole('tab', { name: 'Недавние', exact: true }).click()
+  await page.getByRole('link', { name: 'Недавние', exact: true }).click()
   await page.locator(`a[href*="presentation=${deckId}"]`).click()
   await page.getByRole('button', { name: /^Слайд 2:/ }).click()
   await page.route(draftUrl(deckId), (route) => route.abort('failed'))

@@ -201,7 +201,7 @@ test('чужое сохранение между публикацией и refre
 test('неопубликованный черновик можно отменить без файла и версии', async ({ page, request, createdDecks }) => {
   const id = await createDraft(request, createdDecks, 'cancel unpublished')
   await page.goto('/studio')
-  await page.getByRole('tab', { name: 'Недавние', exact: true }).click()
+  await page.getByRole('link', { name: 'Недавние', exact: true }).click()
   const card = page.locator(`[data-presentation-id="${id}"]`)
   page.once('dialog', (dialog) => dialog.accept())
   await card.getByRole('button', { name: 'Отменить создание', exact: true }).click()

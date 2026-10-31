@@ -2,7 +2,7 @@ import { test, expect, canvas, downloadPptx, editorState, inspectPresentationOrd
 import { strFromU8 } from 'fflate'
 
 test('создать презентацию через студию и открыть редактор с настоящим фоном', async ({ page, plan, createdDecks }) => {
-  await page.goto('/studio')
+  await page.goto('/studio/?view=create')
   await page.getByRole('button', { name: /Вставить ответ LLM/ }).click()
   await page.locator('label:has(input[name="template"][value="opal"])').click()
   await page.getByLabel('Ответ LLM', { exact: true }).fill(JSON.stringify(plan))

@@ -126,6 +126,11 @@ class PresentationTemplateServiceTest {
         org.assertj.core.api.Assertions.assertThat(service.withDescription("aurora", "Topic"))
                 .isEqualTo("Topic");
         org.assertj.core.api.Assertions.assertThat(service.catalogs()).hasSize(5);
+        for (var template : service.catalogs()) {
+            org.assertj.core.api.Assertions.assertThat(template.get("preview_url").toString())
+                    .startsWith("/api/generation/v1/templates/" + template.get("id") + "/slides/1/background.png?v=")
+                    .contains("hide_number=true");
+        }
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.fields("unknown"))
                 .isInstanceOf(ru.godeck.presentation.exception.GenerationException.class);
     }

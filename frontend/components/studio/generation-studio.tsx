@@ -1,24 +1,27 @@
 'use client'
 
 import { useCallback, useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
-import { Tabs } from '@base-ui/react/tabs'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { parseLlmResponse } from '@/lib/llm-response'
-import {
-  ClipboardCopy,
-  LoaderCircle,
-  LogOut,
-  Presentation,
-  RefreshCw,
-  Sparkles,
-} from 'lucide-react'
+import { ClipboardCopy, LoaderCircle, Plus, Sparkles, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { PresentationCard } from '@/components/studio/presentation-card'
-import { clearPendingMaterial, GenerationMaterialInput } from '@/components/studio/generation-material-input'
+import {
+  clearPendingMaterial,
+  GenerationMaterialInput,
+} from '@/components/studio/generation-material-input'
 import { generationApi, isAuthenticationError } from '@/lib/generation-client'
 import { getAuthApi, AUTH_ERROR_MESSAGES } from '@/lib/auth-client'
-import type { Template, ModelOption, PresentationJob, CreatePresentationInput } from '@/lib/generation-types'
+import type {
+  Template,
+  ModelOption,
+  PresentationJob,
+  CreatePresentationInput,
+} from '@/lib/generation-types'
 import { StudioSoundtrack } from '@/components/studio/studio-soundtrack'
+import { StudioNavigation, type StudioView } from './studio-navigation'
+import { StudioLibrary } from './studio-library'
+import { StudioTemplates } from './studio-templates'
 import {
   EMPTY_MATERIAL,
   creationAttempt,
@@ -31,6 +34,11 @@ import {
 
 export function GenerationStudio() {
   const router = useRouter()
+  const requestedView = useSearchParams().get('view')
+  const activeView: StudioView =
+    requestedView === 'create' || requestedView === 'templates' ? requestedView : 'recent'
+  const navigateTo = (view: StudioView) =>
+    router.replace(view === 'recent' ? '/studio/' : `/studio/?view=${view}`, { scroll: false })
   const [templates, setTemplates] = useState<Template[]>([])
   const [jobs, setJobs] = useState<PresentationJob[]>([])
   const refreshSequence = useRef(0)
@@ -47,17 +55,30 @@ export function GenerationStudio() {
   const [defaultModel, setDefaultModel] = useState('')
   const [responseText, setResponseText] = useState('')
   const [responseJob, setResponseJob] = useState<PresentationJob | null>(null)
-  const [activeTab, setActiveTab] = useState<'create' | 'recent'>('create')
   const [openaiEnabled, setOpenaiEnabled] = useState(false)
   const [promptPreview, setPromptPreview] = useState('')
   const [previewBusy, setPreviewBusy] = useState(false)
   const [copiedPrompt, setCopiedPrompt] = useState(false)
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadAttempt, setLoadAttempt] = useState(0)
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const materialsReady = materialCanGenerate(material)
+
+  function selectTemplate(id: string) {
+    setTemplateId(id)
+    setPromptPreview('')
+    setResponseJob(null)
+  }
+
+  function startCreation(nextMode: 'openai' | 'response') {
+    setMode(nextMode)
+    if (nextMode === 'response') changeMaterial({ type: 'clear' })
+    navigateTo('create')
+  }
 
   function changeMaterial(action: MaterialAction) {
     if (action.type === 'clear') clearPendingMaterial()
@@ -90,10 +111,16 @@ export function GenerationStudio() {
     setJobs(incoming)
   }, [])
 
-  useEffect(() => () => { refreshSequence.current++ }, [])
+  useEffect(
+    () => () => {
+      refreshSequence.current++
+    },
+    [],
+  )
 
   useEffect(() => {
     let active = true
+    setLoading(true)
     const initialRefresh = refreshSequence.current
     Promise.all([
       getAuthApi()
@@ -112,6 +139,7 @@ export function GenerationStudio() {
     ])
       .then(([user, catalog, history, health, modelCatalog]) => {
         if (!active) return
+        setInitialLoadFailed(false)
         setEmail(user)
         setTemplates(catalog.items)
         setTemplateId((current) => current || catalog.items[0]?.id || '')
@@ -134,7 +162,10 @@ export function GenerationStudio() {
           cause instanceof Error ? cause.message : 'Не удалось подключиться к сервису генерации.'
         if (message === 'auth' || isAuthenticationError(cause))
           router.replace('/auth/?returnTo=%2Fstudio%2F')
-        else setError(message)
+        else {
+          setError(message)
+          setInitialLoadFailed(true)
+        }
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -142,7 +173,7 @@ export function GenerationStudio() {
     return () => {
       active = false
     }
-  }, [router])
+  }, [router, loadAttempt])
 
   useEffect(() => {
     if (!jobs.some((job) => job.status === 'queued' || job.status === 'running')) return
@@ -166,7 +197,13 @@ export function GenerationStudio() {
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (submissionInFlight.current || previewBusy || !templateId || (mode === 'openai' && !materialsReady)) return
+    if (
+      submissionInFlight.current ||
+      previewBusy ||
+      !templateId ||
+      (mode === 'openai' && !materialsReady)
+    )
+      return
     submissionInFlight.current = true
     setSubmitting(true)
     setError('')
@@ -187,7 +224,9 @@ export function GenerationStudio() {
         await generationApi.submitContent(job.id, content)
         setResponseJob(null)
         lastCreation.current = null
-        setNotice('Ответ принят. Откройте черновик в редакторе и проверьте его перед первой публикацией.')
+        setNotice(
+          'Ответ принят. Откройте черновик в редакторе и проверьте его перед первой публикацией.',
+        )
       } else {
         await createJob(openAiInput())
         lastCreation.current = null
@@ -196,9 +235,11 @@ export function GenerationStudio() {
         setAudience('')
         dispatchMaterial({ type: 'clear' })
         setPromptPreview('')
-        setNotice('Проект создан. AI подготовит черновик — проверьте его в редакторе перед первой публикацией.')
+        setNotice(
+          'Проект создан. AI подготовит черновик — проверьте его в редакторе перед первой публикацией.',
+        )
       }
-      setActiveTab('recent')
+      navigateTo('recent')
       await refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось собрать презентацию.')
@@ -214,19 +255,24 @@ export function GenerationStudio() {
     setTemplateId(job.template_id)
     setMode('response')
     changeMaterial({ type: 'clear' })
-    setActiveTab('create')
+    navigateTo('create')
     setError('')
     setNotice(`Вставьте ответ LLM для проекта «${job.topic}».`)
   }
 
   async function showPromptPreview() {
-    if (!templateId || topic.trim().length < 5 || !materialsReady || submitting || previewBusy) return
+    if (!templateId || topic.trim().length < 5 || !materialsReady || submitting || previewBusy)
+      return
     setPreviewBusy(true)
     setError('')
     setPromptPreview('')
     try {
       const { goal, audience, source } = openAiInput()
-      const request = await generationApi.preview(templateId, topic.trim(), selectedModel, { goal, audience, source })
+      const request = await generationApi.preview(templateId, topic.trim(), selectedModel, {
+        goal,
+        audience,
+        source,
+      })
       setPromptPreview(JSON.stringify(request, null, 2))
       setCopiedPrompt(false)
     } catch (cause) {
@@ -252,73 +298,65 @@ export function GenerationStudio() {
   }
 
   return (
-    <main className="min-h-dvh bg-background px-4 py-6 sm:px-8 sm:py-10">
-      <div className="mx-auto max-w-4xl">
-        <header className="mb-10 flex flex-wrap items-center justify-between gap-4">
-          <a href="/" className="font-display text-2xl font-extrabold tracking-tight">
-            GoDeck
-          </a>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+    <div className="min-h-dvh bg-background lg:pl-60">
+      <StudioNavigation view={activeView} email={email} onSignOut={signOut} />
+      <main className="min-w-0">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-card px-5 py-5 sm:px-8 lg:px-10">
+          <h1 className="font-display text-2xl font-bold tracking-tight">
+            {activeView === 'recent'
+              ? 'Недавние'
+              : activeView === 'templates'
+                ? 'Шаблоны'
+                : 'Новая презентация'}
+          </h1>
+          <div className="flex flex-wrap items-center gap-2">
             <StudioSoundtrack />
-            {email && <span className="hidden sm:inline">{email}</span>}
-            <Button variant="outline" size="sm" onClick={signOut}>
-              <LogOut className="mr-2 size-4" />
-              Выйти
-            </Button>
+            <Link
+              href="/account/"
+              aria-label="Мой профиль"
+              className="grid size-9 place-items-center rounded-lg outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
+            >
+              <UserRound className="size-4" />
+            </Link>
+            {activeView !== 'create' && (
+              <Button onClick={() => startCreation('openai')}>
+                <Plus aria-hidden />
+                Новая презентация
+              </Button>
+            )}
           </div>
         </header>
-
-        <section className="mb-10 max-w-2xl">
-          <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-primary">
-            <Sparkles className="size-4" />
-            РАБОЧЕЕ ПРОСТРАНСТВО
-          </p>
-          <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
-            Создайте презентацию
-          </h1>
-          <p className="mt-4 text-lg leading-7 text-muted-foreground">
-            Опишите задачу, при необходимости добавьте документ и выберите визуальный стиль — GoDeck соберёт презентацию PowerPoint.
-          </p>
-        </section>
-
-        <Tabs.Root
-          value={activeTab}
-          onValueChange={(value) => {
-            if (value === 'create' || value === 'recent') setActiveTab(value)
-          }}
-          className="mx-auto max-w-4xl"
-        >
-          <Tabs.List aria-label="Разделы студии" className="mb-6 flex gap-6 border-b border-border">
-            <Tabs.Tab
-              value="create"
-              className="min-h-11 border-b-2 border-transparent px-1 py-3 text-sm font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[active]:border-primary data-[active]:text-primary"
-            >
-              Создание
-            </Tabs.Tab>
-            <Tabs.Tab
-              value="recent"
-              className="min-h-11 border-b-2 border-transparent px-1 py-3 text-sm font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[active]:border-primary data-[active]:text-primary"
-            >
-              Недавние
-            </Tabs.Tab>
-          </Tabs.List>
+        <div className="mx-auto max-w-[1600px] px-5 py-6 sm:px-8 lg:px-10 lg:py-8">
           {notice && (
             <p role="status" className="mb-5 rounded-lg bg-secondary p-3 text-sm">
               {notice}
             </p>
           )}
           {error && (
-            <p
+            <div
               role="alert"
-              className="mb-5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
+              aria-label="Ошибка студии"
+              className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-destructive/10 p-3 text-sm text-[color-mix(in_srgb,var(--destructive)_70%,var(--foreground))]"
             >
-              {error}
-            </p>
+              <p>{error}</p>
+              {initialLoadFailed && (
+                <Button
+                  variant="outline"
+                  disabled={loading}
+                  onClick={() => {
+                    setError('')
+                    setLoadAttempt((value) => value + 1)
+                  }}
+                >
+                  Повторить загрузку
+                </Button>
+              )}
+            </div>
           )}
-          <Tabs.Panel value="create" keepMounted className="data-[hidden]:hidden">
+          <section hidden={activeView !== 'create'} aria-label="Создание презентации">
             <form
               onSubmit={create}
-              className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8"
+              className="mx-auto max-w-4xl rounded-xl border border-border bg-card p-5 sm:p-8"
             >
               <fieldset className="mb-6">
                 <legend className="mb-2 text-sm font-semibold">Способ создания</legend>
@@ -375,34 +413,47 @@ export function GenerationStudio() {
                       setPromptPreview('')
                     }}
                     placeholder="Например: стратегия выхода на рынок для нового сервиса доставки…"
-                    className="mt-2 min-h-40 w-full resize-y rounded-xl border border-input bg-background p-4 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="mt-2 min-h-40 w-full resize-y rounded-xl border border-input bg-background p-4 text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                   />
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Сначала подготовим черновик. Проверьте его в редакторе и создайте первую версию PowerPoint.
+                    Сначала подготовим черновик. Проверьте его в редакторе и создайте первую версию
+                    PowerPoint.
                   </p>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label htmlFor="generation-goal" className="block text-sm font-semibold">Цель презентации <span className="font-normal text-muted-foreground">· необязательно</span></label>
+                      <label htmlFor="generation-goal" className="block text-sm font-semibold">
+                        Цель презентации{' '}
+                        <span className="font-normal text-muted-foreground">· необязательно</span>
+                      </label>
                       <input
                         id="generation-goal"
                         value={goal}
                         maxLength={500}
                         disabled={submitting || previewBusy}
-                        onChange={(event) => { setGoal(event.target.value); setPromptPreview('') }}
+                        onChange={(event) => {
+                          setGoal(event.target.value)
+                          setPromptPreview('')
+                        }}
                         placeholder="Например: согласовать бюджет"
-                        className="mt-2 min-h-11 w-full rounded-xl border border-input bg-background p-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="mt-2 min-h-11 w-full rounded-xl border border-input bg-background p-3 text-base outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                       />
                     </div>
                     <div>
-                      <label htmlFor="generation-audience" className="block text-sm font-semibold">Аудитория <span className="font-normal text-muted-foreground">· необязательно</span></label>
+                      <label htmlFor="generation-audience" className="block text-sm font-semibold">
+                        Аудитория{' '}
+                        <span className="font-normal text-muted-foreground">· необязательно</span>
+                      </label>
                       <input
                         id="generation-audience"
                         value={audience}
                         maxLength={500}
                         disabled={submitting || previewBusy}
-                        onChange={(event) => { setAudience(event.target.value); setPromptPreview('') }}
+                        onChange={(event) => {
+                          setAudience(event.target.value)
+                          setPromptPreview('')
+                        }}
                         placeholder="Например: совет директоров"
-                        className="mt-2 min-h-11 w-full rounded-xl border border-input bg-background p-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="mt-2 min-h-11 w-full rounded-xl border border-input bg-background p-3 text-base outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                       />
                     </div>
                   </div>
@@ -431,7 +482,7 @@ export function GenerationStudio() {
                     autoCorrect="off"
                     aria-describedby="llm-response-help"
                     placeholder='{"status":"completed","output":[…]}'
-                    className="mt-3 min-h-72 w-full resize-y rounded-xl border border-input bg-background p-4 font-mono text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="mt-3 min-h-72 w-full resize-y rounded-xl border border-input bg-background p-4 font-mono text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                   />
                   {responseJob && (
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -459,7 +510,7 @@ export function GenerationStudio() {
               {loading ? (
                 <p className="mt-4 text-sm text-muted-foreground">Загружаем шаблоны…</p>
               ) : (
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                   {templates.map((template) => (
                     <label
                       key={template.id}
@@ -473,20 +524,26 @@ export function GenerationStudio() {
                         checked={templateId === template.id}
                         disabled={submitting || previewBusy}
                         onChange={() => {
-                          setTemplateId(template.id)
-                          setPromptPreview('')
-                          setResponseJob(null)
+                          selectTemplate(template.id)
                           setError('')
                           setNotice('')
                         }}
                       />
-                      <span className="flex items-start justify-between gap-3 font-semibold">
+                      {template.preview_url && (
+                        <img
+                          src={template.preview_url}
+                          alt=""
+                          loading="lazy"
+                          className="mb-3 aspect-video w-full rounded-md object-cover"
+                        />
+                      )}
+                      <span className="flex items-start justify-between gap-2 text-sm font-semibold">
                         {template.name}
                         <span className="text-xs font-normal text-muted-foreground">
                           {template.available_slides} слайдов
                         </span>
                       </span>
-                      <span className="mt-2 block text-sm leading-5 text-muted-foreground">
+                      <span className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
                         {template.description}
                       </span>
                     </label>
@@ -581,56 +638,34 @@ export function GenerationStudio() {
                     : 'Создать презентацию'}
               </Button>
             </form>
-          </Tabs.Panel>
-          <Tabs.Panel value="recent" keepMounted className="data-[hidden]:hidden">
-            <section aria-labelledby="history-title">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h2 id="history-title" className="mt-1 font-display text-2xl font-bold">
-                    Недавние
-                  </h2>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Обновить список"
-                  onClick={() => refresh().catch((cause) => setError(cause.message))}
-                >
-                  <RefreshCw className="size-4" />
-                </Button>
-              </div>
-              {jobs.length === 0 && !loading ? (
-                <div className="rounded-2xl border border-dashed border-border bg-card/60 p-8 text-center">
-                  <Presentation className="mx-auto size-8 text-muted-foreground" />
-                  <p className="mt-3 font-semibold">Здесь появятся ваши презентации</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Создайте первый проект через форму.
-                  </p>
-                </div>
-              ) : (
-                <ul className="space-y-3">
-                  {jobs.map((job) => (
-                    <PresentationCard
-                      key={job.id}
-                      job={job}
-                      templateName={
-                        templates.find((template) => template.id === job.template_id)?.name ??
-                        job.template_id
-                      }
-                      models={models}
-                      defaultModel={defaultModel}
-                      openaiEnabled={openaiEnabled}
-                      onResume={resumeResponse}
-                      onChanged={refresh}
-                      onError={setError}
-                    />
-                  ))}
-                </ul>
-              )}
-            </section>
-          </Tabs.Panel>
-        </Tabs.Root>
-      </div>
-    </main>
+          </section>
+          <section hidden={activeView !== 'templates'} aria-label="Шаблоны презентаций">
+            <StudioTemplates
+              templates={templates}
+              loading={loading}
+              onChoose={(id) => {
+                selectTemplate(id)
+                navigateTo('create')
+              }}
+            />
+          </section>
+          <section hidden={activeView !== 'recent'}>
+            <StudioLibrary
+              jobs={jobs}
+              templates={templates}
+              models={models}
+              defaultModel={defaultModel}
+              openaiEnabled={openaiEnabled}
+              loading={loading}
+              loadFailed={initialLoadFailed}
+              onCreate={startCreation}
+              onResume={resumeResponse}
+              onChanged={refresh}
+              onError={setError}
+            />
+          </section>
+        </div>
+      </main>
+    </div>
   )
 }

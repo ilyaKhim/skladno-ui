@@ -7,7 +7,7 @@ const picker = 'Загрузить PDF, DOCX или TXT'
 const acknowledgement = 'Понимаю, что часть страниц не распознана, и хочу продолжить с извлечённым текстом'
 
 test('обработка документа восстанавливается после reload по сохранённому job id', async ({ page, request }) => {
-  await page.goto('/studio')
+  await page.goto('/studio/?view=create')
   const uploaded = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/materials/extract'))
   // Delay only status delivery to the old view; the real worker continues its durable job.
   await page.route('**/materials/*', async (route) => {
@@ -37,7 +37,7 @@ test('обработка документа восстанавливается �
 
 for (const format of ['pdf', 'docx', 'txt'] satisfies MaterialFormat[]) {
   test(`${format.toUpperCase()}: извлечь, исправить материалы и получить настоящий PPTX`, async ({ page, createdDecks }) => {
-    await page.goto('/studio')
+    await page.goto('/studio/?view=create')
     await page.locator('label:has(input[name="template"][value="opal"])').click()
     await page.getByLabel(picker, { exact: true }).setInputFiles(materialFile(format))
     await expect(page.getByLabel('Текст материалов', { exact: true })).toHaveValue(new RegExp(`E2E original ${format.toUpperCase()} 41`))
@@ -100,7 +100,7 @@ for (const format of ['pdf', 'docx', 'txt'] satisfies MaterialFormat[]) {
 }
 
 test('PDF с нераспознанной страницей требует подтверждения, удаление снимает ограничение', async ({ page }) => {
-  await page.goto('/studio')
+  await page.goto('/studio/?view=create')
   // SSR inputs can be filled before hydration; wait for the real client-loaded catalog.
   await expect(page.getByLabel('Модель AI', { exact: true })).toBeEnabled()
   await page.getByLabel('О чём презентация?', { exact: true }).fill('Prepare a report from the document')
@@ -119,7 +119,7 @@ test('PDF с нераспознанной страницей требует по
 })
 
 test('неверный TXT не запускает генерацию и позволяет выбрать тот же файл повторно', async ({ page }) => {
-  await page.goto('/studio')
+  await page.goto('/studio/?view=create')
   await expect(page.getByLabel('Модель AI', { exact: true })).toBeEnabled()
   await page.getByLabel('О чём презентация?', { exact: true }).fill('Prepare a presentation from materials')
   let creates = 0
@@ -142,7 +142,7 @@ test('неверный TXT не запускает генерацию и поз�
 })
 
 test('повтор после потерянного ответа сохраняет материалы и не создаёт вторую генерацию', async ({ page, createdDecks }) => {
-  await page.goto('/studio')
+  await page.goto('/studio/?view=create')
   await page.getByLabel(picker, { exact: true }).setInputFiles(materialFile('txt'))
   await expect(page.getByLabel('Текст материалов', { exact: true })).toHaveValue(/E2E original TXT 41/)
   await page.getByLabel('О чём презентация?', { exact: true }).fill('Retry the same presentation safely')
@@ -171,7 +171,7 @@ test('повтор после потерянного ответа сохраня
 })
 
 test('запоздалое извлечение удалённого файла не заменяет новый документ', async ({ page }) => {
-  await page.goto('/studio')
+  await page.goto('/studio/?view=create')
   let release!: () => void
   const pending = new Promise<void>((resolve) => { release = resolve })
   let requests = 0

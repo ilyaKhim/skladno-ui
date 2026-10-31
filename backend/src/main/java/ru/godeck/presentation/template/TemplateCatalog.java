@@ -160,7 +160,7 @@ final class TemplateCatalog {
                 "available_slides",
                 template.slideCount(),
                 "preview_url",
-                "",
+                backgroundUrl(id, 1),
                 "selection",
                 "manual");
     }
