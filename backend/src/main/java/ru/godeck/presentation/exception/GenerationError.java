@@ -6,6 +6,9 @@ import ru.godeck.common.text.BackendMessages;
 import ru.godeck.presentation.policy.PresentationPolicy;
 
 public enum GenerationError {
+    PDF_BUSY(HttpStatus.TOO_MANY_REQUESTS, "pdf_busy", "presentation.error.pdf-busy"),
+    PDF_EMPTY(HttpStatus.UNPROCESSABLE_ENTITY, "pdf_empty", "presentation.error.pdf-empty"),
+    PDF_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "pdf_failed", "presentation.error.pdf-failed"),
     SOURCE_NOT_FOUND(
             HttpStatus.NOT_FOUND, "source_not_found", "presentation.error.source-not-found"),
     SOURCE_LIMIT(HttpStatus.PAYLOAD_TOO_LARGE, "source_limit", "presentation.error.source-limit"),

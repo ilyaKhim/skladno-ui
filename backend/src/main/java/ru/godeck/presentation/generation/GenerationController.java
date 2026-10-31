@@ -2,6 +2,7 @@ package ru.godeck.presentation.generation;
 
 import jakarta.validation.Valid;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
@@ -28,6 +29,9 @@ import ru.godeck.presentation.dto.PresentationView;
 import ru.godeck.presentation.generation.dto.CreatePresentationRequest;
 import ru.godeck.presentation.generation.dto.PreviewPromptRequest;
 import ru.godeck.presentation.model.PresentationContent;
+import ru.godeck.presentation.export.PresentationPdfRenderer;
+import ru.godeck.presentation.exception.GenerationError;
+import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.PresentationService;
 
@@ -50,9 +54,11 @@ public class GenerationController {
             MediaType.parseMediaType(
                     "application/vnd.openxmlformats-officedocument.presentationml.presentation");
     private final PresentationService service;
+    private final PresentationPdfRenderer pdf;
 
-    public GenerationController(PresentationService service) {
+    public GenerationController(PresentationService service, PresentationPdfRenderer pdf) {
         this.service = service;
+        this.pdf = pdf;
     }
 
     /** Reports readiness and provider availability for operational checks. */
@@ -165,30 +171,41 @@ public class GenerationController {
         return service.cancel(user(auth), id);
     }
 
-    /** Streams the current published PPTX as a private attachment. */
+    /** Downloads the current published version as PPTX or its visual PDF copy. */
     @GetMapping("/v1/presentations/{id}/download")
-    public ResponseEntity<Resource> download(@PathVariable UUID id, Authentication auth) {
-        return pptx(service.download(user(auth), id), "godeck-" + id + ".pptx");
+    public ResponseEntity<Resource> download(@PathVariable UUID id, Authentication auth,
+            @RequestParam(defaultValue = "pptx") String format,
+            @RequestParam(defaultValue = "false", name = "include_hidden") boolean includeHidden) {
+        return attachment(service.download(user(auth), id), "godeck-" + id, format, includeHidden);
     }
 
-    /** Streams one immutable historical PPTX version as a private attachment. */
+    /** Downloads an owned historical version without modifying or publishing the presentation. */
     @GetMapping("/v1/presentations/{id}/versions/{version}/download")
     public ResponseEntity<Resource> downloadVersion(
-            @PathVariable UUID id, @PathVariable int version, Authentication auth) {
-        return pptx(
+            @PathVariable UUID id, @PathVariable int version, Authentication auth,
+            @RequestParam(defaultValue = "pptx") String format,
+            @RequestParam(defaultValue = "false", name = "include_hidden") boolean includeHidden) {
+        return attachment(
                 service.downloadVersion(user(auth), id, version),
-                "godeck-" + id + "-v" + version + ".pptx");
+                "godeck-" + id + "-v" + version, format, includeHidden);
     }
 
     /** Creates the common no-store attachment response for already-validated local files. */
-    private static ResponseEntity<Resource> pptx(Path file, String filename) {
+    private ResponseEntity<Resource> attachment(Path file, String basename, String format, boolean includeHidden) {
+        Resource resource;
+        MediaType mediaType;
+        switch (format) {
+            case "pptx" -> { resource = new FileSystemResource(file); mediaType = PPTX_MEDIA_TYPE; }
+            case "pdf" -> { resource = new ByteArrayResource(pdf.render(file, includeHidden)); mediaType = MediaType.APPLICATION_PDF; }
+            default -> throw new GenerationException(GenerationError.INVALID_INPUT);
+        }
         return ResponseEntity.ok()
-                .contentType(PPTX_MEDIA_TYPE)
+                .contentType(mediaType)
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
-                        ContentDisposition.attachment().filename(filename).build().toString())
+                        ContentDisposition.attachment().filename(basename + "." + format).build().toString())
                 .cacheControl(CacheControl.noStore())
-                .body(new FileSystemResource(file));
+                .body(resource);
     }
 
     /** Extracts the application principal installed by session security. */

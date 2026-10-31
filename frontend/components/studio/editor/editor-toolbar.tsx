@@ -5,7 +5,7 @@ import { ArrowLeft, Check, CircleDot, Download, ImagePlus, LoaderCircle, Sparkle
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-import type { SaveStatus } from './editor-types'
+import type { ExportFormat, ExportOptions, SaveStatus } from './editor-types'
 
 interface EditorToolbarProps {
   title: string
@@ -24,7 +24,7 @@ interface EditorToolbarProps {
   onAddText?: () => void
   onAddImage?: (file: File) => void
   imageUploading?: boolean
-  onExport?: () => Promise<void>
+  onExport?: (options: ExportOptions) => Promise<void>
   onToggleChat: () => void
   titleEditable?: boolean
   firstPublication?: boolean
@@ -196,12 +196,9 @@ function SaveIndicator({ status, onSave }: { status: SaveStatus; onSave: () => v
   )
 }
 
-type ExportFormat = 'pdf' | 'pptx' | 'png'
-
 const EXPORT_FORMATS: { value: ExportFormat; label: string; hint: string }[] = [
-  { value: 'pdf', label: 'PDF', hint: 'Для отправки и печати' },
   { value: 'pptx', label: 'PowerPoint', hint: 'Редактируемый .pptx' },
-  { value: 'png', label: 'Изображения', hint: 'PNG каждого слайда' },
+  { value: 'pdf', label: 'PDF', hint: 'Для просмотра и печати' },
 ]
 
 function ExportMenu({
@@ -212,10 +209,10 @@ function ExportMenu({
 }: {
   title: string
   hiddenCount: number
-  onExport?: () => Promise<void>
+  onExport?: (options: ExportOptions) => Promise<void>
   firstPublication: boolean
 }) {
-  const [format, setFormat] = useState<ExportFormat>('pdf')
+  const [format, setFormat] = useState<ExportFormat>('pptx')
   const [includeHidden, setIncludeHidden] = useState(false)
   const [open, setOpen] = useState(false)
   const [phase, setPhase] = useState<'idle' | 'preparing' | 'ready'>('idle')
@@ -226,7 +223,7 @@ function ExportMenu({
   const startExport = () => {
     if (onExport) {
       setPhase('preparing')
-      void onExport()
+      void onExport({ format, includeHidden })
         .then(() => setPhase('ready'))
         .catch(() => {
           setPhase('idle')
@@ -238,8 +235,6 @@ function ExportMenu({
     window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => setPhase('ready'), 900)
   }
-
-  const extension = format === 'png' ? 'zip' : format
 
   return (
     <Popover open={open} onOpenChange={(nextOpen) => {
@@ -253,44 +248,34 @@ function ExportMenu({
       <PopoverContent align="end" className="w-72 p-3">
         <div className="flex flex-col gap-3">
           <p className="text-sm font-medium text-foreground">{firstPublication ? 'Публикация первой версии' : 'Экспорт презентации'}</p>
-          {firstPublication && <p className="text-sm leading-6 text-muted-foreground">Сейчас это черновик. Создайте первую версию, чтобы подтвердить презентацию и скачать PowerPoint.</p>}
-          {!onExport && <div role="radiogroup" aria-label="Формат" className="flex flex-col gap-1">
+          {firstPublication && <p className="text-sm leading-6 text-muted-foreground">Сейчас это черновик. Создайте первую версию, чтобы подтвердить презентацию и скачать выбранный формат.</p>}
+          <div role="radiogroup" aria-label="Формат" className="flex flex-col gap-1">
             {EXPORT_FORMATS.map((option) => {
               const checked = option.value === format
               return (
-                <button
+                <label
                   key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={checked}
-                  onClick={() => {
-                    setFormat(option.value)
-                    setPhase('idle')
-                  }}
                   className={cn(
-                    'flex items-center justify-between rounded-lg border px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                    'flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left focus-within:ring-2 focus-within:ring-ring/50',
                     checked ? 'border-primary bg-secondary' : 'border-border hover:bg-muted',
                   )}
                 >
+                  <input type="radio" name="editor-export-format" aria-label={option.label} value={option.value}
+                    checked={checked} disabled={phase === 'preparing'} className="size-3.5 accent-primary"
+                    onChange={() => { setFormat(option.value); setPhase('idle') }} />
                   <span className="text-sm font-medium text-foreground">{option.label}</span>
-                  <span className="text-xs text-muted-foreground">{option.hint}</span>
-                </button>
+                  <span className="ml-auto text-xs text-muted-foreground">{option.hint}</span>
+                </label>
               )
             })}
-          </div>}
+          </div>
 
-          {onExport && (
-            <div className="rounded-lg border border-primary bg-secondary px-2.5 py-2">
-              <p className="text-sm font-medium text-foreground">PowerPoint</p>
-              <p className="text-xs text-muted-foreground">Редактируемый .pptx</p>
-            </div>
-          )}
-
-          {hiddenCount > 0 && !onExport && (
+          {hiddenCount > 0 && format === 'pdf' && (
             <label className="flex items-center gap-2 text-xs text-foreground">
               <input
                 type="checkbox"
                 checked={includeHidden}
+                disabled={phase === 'preparing'}
                 onChange={(event) => setIncludeHidden(event.target.checked)}
                 className="size-3.5 accent-primary"
               />
@@ -306,10 +291,12 @@ function ExportMenu({
           <p role="status" aria-live="polite" className="text-xs leading-relaxed text-muted-foreground">
             {phase === 'ready'
               ? onExport
-                ? `Файл «${title || 'Презентация'}.pptx» отправлен на скачивание.`
-                : `Файл «${title || 'Презентация'}.${extension}» подготовлен. В прототипе скачивание отключено.`
+                ? `Файл «${title || 'Презентация'}.${format}» отправлен на скачивание.`
+                : `Файл «${title || 'Презентация'}.${format}» подготовлен. В прототипе скачивание отключено.`
               : onExport
-                ? 'Скрытые слайды сохранятся в файле, но будут пропущены при показе.'
+                ? format === 'pdf'
+                  ? 'Визуальная копия слайдов. Текст в PDF не выделяется. Скрытые слайды добавляются только по выбору.'
+                  : 'Скрытые слайды сохранятся в файле, но будут пропущены при показе.'
                 : 'Прототип: файл не скачивается.'}
           </p>
         </div>

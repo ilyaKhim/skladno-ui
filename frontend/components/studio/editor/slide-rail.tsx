@@ -89,7 +89,7 @@ export function SlideRail({ slides, selectedSlideId, onSelectSlide, onMoveSlide,
                     isDropTarget && 'ring-2 ring-primary/60',
                   )}
                 >
-                  <SlideSurface slide={slide} className={cn('pointer-events-none', slide.hidden && 'opacity-40')} />
+                  <SlideSurface slide={slide} slideNumber={index + 1} className={cn('pointer-events-none', slide.hidden && 'opacity-40')} />
                 </button>
 
                 {slide.hidden && (

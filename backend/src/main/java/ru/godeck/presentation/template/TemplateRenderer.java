@@ -64,6 +64,7 @@ final class TemplateRenderer {
                 if (!Boolean.TRUE.equals(decision.include())) continue;
                 XSLFSlide slide = bySourceNumber.get(decision.slide());
                 show.setSlideOrder(slide, order++);
+                TemplateSlideNumbers.apply(slide, order);
                 slide.setHidden(decision.hiddenOrFalse());
             }
             for (var decision : plan.slides()) {

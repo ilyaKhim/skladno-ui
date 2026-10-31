@@ -6,11 +6,15 @@ export type BlockAlign = 'left' | 'center' | 'right'
 export type BlockWeight = 400 | 500 | 700
 export type SlideTheme = 'paper' | 'navy'
 export type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error'
+export type ExportFormat = 'pptx' | 'pdf'
+export interface ExportOptions { format: ExportFormat; includeHidden: boolean }
 
 export interface EditorOperationError {
   operation: 'save' | 'export' | 'reload'
   message: string
   conflict: boolean
+  /** A download failure must not imply that the confirmed publication was lost. */
+  publicationComplete?: boolean
 }
 
 interface TextParagraphStyle {
@@ -75,6 +79,11 @@ export interface Slide {
   name: string
   theme: SlideTheme
   backgroundUrl?: string
+  numberStyle?: {
+    x: number; y: number; width: number; height: number
+    fontSize: number; fontFamily?: string; fontColor?: string
+    weight: BlockWeight; align: BlockAlign; minimumDigits: number
+  }
   hidden: boolean
   blocks: TextBlock[]
   images: ImageBlock[]

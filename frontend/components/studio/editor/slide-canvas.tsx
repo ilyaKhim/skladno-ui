@@ -161,6 +161,7 @@ function eventBlockId(event: { target: EventTarget | null }, fallback: string): 
 
 interface SlideSurfaceProps {
   slide: Slide
+  slideNumber?: number
   className?: string
   selectedElementId?: string | null
   onSelectElement?: (elementId: string | null) => void
@@ -175,6 +176,7 @@ interface SlideSurfaceProps {
 /** Renders a slide at any size; text scales with the frame width via container query units. */
 export function SlideSurface({
   slide,
+  slideNumber,
   className,
   selectedElementId,
   onSelectElement,
@@ -250,6 +252,15 @@ export function SlideSurface({
       {!slide.backgroundUrl && slide.theme === 'paper' && (
         <span aria-hidden className="absolute top-[9.5%] right-[6%] h-[1.2%] w-[3%] rounded-full bg-accent" />
       )}
+      {slide.numberStyle && slideNumber !== undefined && <span data-slide-number className="pointer-events-none absolute whitespace-nowrap"
+        aria-label={`Номер слайда: ${slideNumber}`}
+        style={{ left: `${slide.numberStyle.x}%`, top: `${slide.numberStyle.y}%`,
+          width: `${slide.numberStyle.width}%`, height: `${slide.numberStyle.height}%`,
+          fontFamily: browserFont(slide.numberStyle.fontFamily), fontSize: canonicalPixels(slide.numberStyle.fontSize),
+          fontWeight: slide.numberStyle.weight, textAlign: slide.numberStyle.align,
+          color: slide.numberStyle.fontColor ?? 'inherit', lineHeight: 1.2 }}>
+        {String(slideNumber).padStart(slide.numberStyle.minimumDigits, '0')}
+      </span>}
       {textShapes.map((shape) => {
         const anchor = shape.blocks[0]
         const selectedBlock = shape.blocks.find((block) => block.id === selectedElementId)
@@ -460,6 +471,7 @@ export function SlideCanvas({
           >
             <SlideSurface
               slide={slide}
+              slideNumber={slideIndex + 1}
               selectedElementId={selectedElementId}
               onSelectElement={onSelectElement}
               onActivateBlock={onActivateBlock}

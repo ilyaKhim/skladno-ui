@@ -22,6 +22,8 @@ template background and typography, independent of application chrome.
 
 STORY: Choose a slide, double-click text, type in place, format the selected text box,
 then see autosave confirmation. AI remains an optional, reviewable assistant.
+Export offers editable PowerPoint or a visual PDF copy; hidden PDF slides are opt-in.
+Reordering updates existing template folios immediately, without adding a number to an unnumbered cover.
 
 FIRST VIEWPORT: A compact document toolbar spans the top. Slide thumbnails occupy the
 left rail; the large 16:9 slide owns the center; only AI chat occupies the collapsible
@@ -35,3 +37,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 Limits: formatting applies to the selected PowerPoint text box, not arbitrary rich-text
 character ranges. Fonts must remain local/system fonts; never depend on Google Fonts.
+PDF is a visual copy without selectable text. Its pages follow the selected visible/all-slide order.
+Publishing and downloading remain separate: conversion retry must not publish an extra version.
+When publication is confirmed but downloading fails, say the version is saved and the file
+was not downloaded; an uncertain commit retains the existing publication-check safeguards.

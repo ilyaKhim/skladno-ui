@@ -47,6 +47,11 @@ Spring связывает параметры с небольшими immutable r
 Autosave `/draft` не создаёт PPTX и не расходует эту квоту. `/commit` сохраняет проверки
 точной base version, draft revision и lease. Таймаут lease не является жёстким watchdog рендера.
 
+## PDF
+
+Настройки визуального PDF: `PDF_EXPORT_DPI=144` (72–216) и `PDF_EXPORT_MAX_CONCURRENT=2` (1–4).
+Они связываются с `PdfExportSettings`; ограничения и расход памяти описаны в [экспорте](presentation-export.md).
+
 ## AI-правки отдельного блока
 
 | ENV | Default | Назначение |
