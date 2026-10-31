@@ -23,11 +23,15 @@ export async function startAiFixture() {
       const slideNumbers = schema.properties.slides.items.properties.slide.enum
       const approved = JSON.stringify(input.input).match(/E2E approved (?:PDF|DOCX|TXT) 73/)?.[0]
       const reviewFixture = JSON.stringify(input.input).includes('E2E outline')
+      const dataFixture = JSON.stringify(input.input).includes('E2E data blocks 73')
       const fields = Object.fromEntries(fieldNames.map((name) => [name, 'Тест']))
       fields.TITLE = approved ?? 'E2E presentation'
       const content = {
         fields,
-        slides: slideNumbers.map((slide, index) => ({ slide, include: reviewFixture ? [1, 9, 13].includes(slide) : index === 0, reason: 'E2E fixture' })),
+        slides: slideNumbers.map((slide, index) => ({ slide, include: reviewFixture ? [1, 9, 13].includes(slide) : index === 0, reason: 'E2E fixture',
+          dataBlocks: dataFixture && index === 0 ? [{ id: 'ai-data-73', type: 'bar', x: 15, y: 40, width: 70, height: 40,
+            headers: ['Категория', 'Значение'], rows: [['Материал', '73']], horizontal: false }] : [],
+        })),
       }
       response.end(JSON.stringify({
         id: 'e2e-local-response',

@@ -75,14 +75,12 @@ public class PresentationChatService {
             PresentationContent previous =
                     templates.normalize(edit.templateId(), codec.decode(edit.contentJson()));
             PresentationContent generated =
-                    templates.normalize(
-                            edit.templateId(),
-                            generator.generate(
-                                    new AiCallContext(id, AiOperation.CHAT),
-                                    templates.withDescription(edit.templateId(), topic),
-                                    templates.fields(edit.templateId()),
-                                    templates.slideManifest(edit.templateId()),
-                                    edit.model()));
+                    generator.generate(
+                            new AiCallContext(id, AiOperation.CHAT),
+                            templates.withDescription(edit.templateId(), topic),
+                            templates.fields(edit.templateId()),
+                            templates.slideManifest(edit.templateId()),
+                            edit.model());
             PresentationContent content =
                     templates.normalize(
                             edit.templateId(), preserveEditorBlocks(previous, generated));
@@ -136,7 +134,10 @@ public class PresentationChatService {
                                                         : List.of(),
                                                 bySlide.containsKey(slide.slide())
                                                         ? bySlide.get(slide.slide()).textLayoutsOrEmpty()
-                                                        : List.of()))
+                                                        : List.of(),
+                                                slide.dataBlocks() == null
+                                                        ? bySlide.get(slide.slide()).dataBlocksOrEmpty()
+                                                        : slide.dataBlocksOrEmpty()))
                         .toList());
     }
 

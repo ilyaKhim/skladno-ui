@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { createAutosaveQueue, type AutosaveQueue } from './autosave-queue.ts'
+import type { DataBlock } from '../../../lib/data-blocks'
 import type {
   Deck,
   EditableBlockFields,
@@ -24,6 +25,8 @@ type DeckAction =
   | { type: 'addImage'; slideId: string; image: ImageBlock }
   | { type: 'removeImage'; slideId: string; imageId: string }
   | { type: 'moveSlide'; fromIndex: number; toIndex: number }
+  | { type: 'setDataBlock'; slideId: string; block: DataBlock }
+  | { type: 'removeDataBlock'; slideId: string; blockId: string }
 
 type HistoryAction =
   | { type: 'apply'; action: DeckAction; coalesceKey?: string }
@@ -42,6 +45,18 @@ interface HistoryState {
 
 export function applyDeckAction(deck: Deck, action: DeckAction): Deck {
   switch (action.type) {
+    case 'setDataBlock': {
+      if (!deck.slides.some((slide) => slide.id === action.slideId)) return deck
+      return { ...deck, slides: deck.slides.map((slide) => {
+        if (slide.id !== action.slideId) return slide
+        const blocks = slide.dataBlocks ?? []
+        return { ...slide, dataBlocks: blocks.some((block) => block.id === action.block.id)
+          ? blocks.map((block) => block.id === action.block.id ? action.block : block) : [...blocks, action.block] }
+      }) }
+    }
+    case 'removeDataBlock':
+      return { ...deck, slides: deck.slides.map((slide) => slide.id === action.slideId
+        ? { ...slide, dataBlocks: (slide.dataBlocks ?? []).filter((block) => block.id !== action.blockId) } : slide) }
     case 'renameDeck':
       return deck.title === action.title ? deck : { ...deck, title: action.title }
     case 'updateSlide': {
@@ -329,5 +344,7 @@ export function useEditorState(initialDeck: Deck, onSave?: (deck: Deck) => Promi
     addImage,
     removeImage,
     moveSlide,
+    setDataBlock: (slideId: string, block: DataBlock, coalesceKey?: string) => apply({ type: 'setDataBlock', slideId, block }, coalesceKey),
+    removeDataBlock: (slideId: string, blockId: string) => apply({ type: 'removeDataBlock', slideId, blockId }),
   }
 }

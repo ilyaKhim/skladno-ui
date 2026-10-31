@@ -1,4 +1,5 @@
 import type { EditorTextStyle } from '../../../lib/generation-types'
+import type { DataBlock } from '../../../lib/data-blocks'
 
 type BlockRole = 'eyebrow' | 'title' | 'subtitle' | 'body' | 'metric' | 'caption'
 export type BlockColor = 'ink' | 'muted' | 'brand'
@@ -87,6 +88,7 @@ export interface Slide {
   hidden: boolean
   blocks: TextBlock[]
   images: ImageBlock[]
+  dataBlocks?: DataBlock[]
 }
 
 export interface Deck {

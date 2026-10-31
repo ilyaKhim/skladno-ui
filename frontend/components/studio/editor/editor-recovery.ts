@@ -1,6 +1,7 @@
 import type { Deck, Slide, TextBlock, ImageBlock } from './editor-types'
 import { validTextStyle } from './text-style.ts'
 import { serialize } from './editor-document.ts'
+import { dataBlockError, DATA_LIMITS, type DataBlock } from '../../../lib/data-blocks.ts'
 
 export interface EditorVersion { base: number; draft: number }
 interface RecoveryCopy {
@@ -39,6 +40,8 @@ function validSlide(value: unknown): value is Slide {
     && Number.isInteger(value.sourceSlideNumber) && ['paper', 'navy'].includes(String(value.theme))
     && Array.isArray(value.blocks) && value.blocks.length <= 1000 && value.blocks.every(validText)
     && Array.isArray(value.images) && value.images.length <= 100 && value.images.every(validImage)
+    && (value.dataBlocks === undefined || (Array.isArray(value.dataBlocks) && value.dataBlocks.length <= DATA_LIMITS.blocks
+      && value.dataBlocks.every((block) => object(block) && dataBlockError(block as unknown as DataBlock) === null)))
 }
 
 /** Local copies are untrusted input: reject corrupt/old schemas before exposing them to the editor. */
@@ -84,7 +87,7 @@ export function restoreRecovery(copy: RecoveryCopy, server: Deck): Deck | null {
         height: block.height, fontSize: block.fontSize, weight: block.weight, align: block.align, color: block.color,
         ...(block.textStyle ? { textStyle: block.textStyle } : {}) })
     }
-    slides.push({ ...original, name: local.name, hidden: local.hidden, blocks,
+    slides.push({ ...original, name: local.name, hidden: local.hidden, blocks, dataBlocks: local.dataBlocks ?? [],
       images: local.images.map((image) => ({ id: image.id, assetId: image.assetId, alt: image.alt,
         x: image.x, y: image.y, width: image.width, height: image.height,
         url: `/api/generation/v1/presentations/${encodeURIComponent(server.id)}/editor/assets/${image.assetId}` })) })

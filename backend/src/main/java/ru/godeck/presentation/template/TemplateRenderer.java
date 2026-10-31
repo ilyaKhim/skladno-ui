@@ -100,6 +100,7 @@ final class TemplateRenderer {
                             page.getHeight(),
                             imageResolver);
                 }
+                for (var block : decision.dataBlocksOrEmpty()) DataBlockRenderer.add(show, slide, block);
             }
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             show.write(output);

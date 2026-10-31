@@ -198,7 +198,8 @@ final class TemplateEditorMapper {
                                 decision.hiddenOrFalse(),
                                 List.copyOf(blocks),
                                 images,
-                                slideNumber(slide, page)));
+                                slideNumber(slide, page),
+                                decision.dataBlocksOrEmpty()));
             }
             return new EditorDeckView(
                     presentationId,

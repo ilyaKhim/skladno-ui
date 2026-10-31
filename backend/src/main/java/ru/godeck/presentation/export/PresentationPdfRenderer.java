@@ -54,6 +54,7 @@ public class PresentationPdfRenderer {
                     graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
                     graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                    graphics.setRenderingHint(org.apache.poi.sl.draw.Drawable.DRAW_FACTORY, new ChartDrawFactory());
                     graphics.scale(scale, scale);
                     slide.draw(graphics);
                 } finally {

@@ -18,6 +18,8 @@ import {
 import { groupTextBlocks, type TextShapeGroup } from './text-shape-groups'
 import { SlideBackground } from './slide-background'
 import { browserFont, resolvedTextStyle } from './text-style'
+import { DataBlockView } from './data-block-view'
+import type { DataBlock } from '../../../lib/data-blocks'
 
 const THEME_BACKGROUND: Record<SlideTheme, string> = {
   paper: '#ffffff',
@@ -168,6 +170,8 @@ interface SlideSurfaceProps {
   onActivateBlock?: (blockId: string) => void
   onUpdateBlock?: (blockId: string, patch: EditableBlockFields, coalesceKey?: string) => void
   onUpdateImage?: (imageId: string, patch: EditableImageFields, coalesceKey?: string) => void
+  onUpdateData?: (block: DataBlock, coalesceKey?: string) => void
+  onEditData?: (block: DataBlock) => void
   onCommitElement?: () => void
   editingBlockId?: string | null
   onFinishEditing?: () => void
@@ -183,6 +187,8 @@ export function SlideSurface({
   onActivateBlock,
   onUpdateBlock,
   onUpdateImage,
+  onUpdateData,
+  onEditData,
   onCommitElement,
   editingBlockId,
   onFinishEditing,
@@ -195,6 +201,7 @@ export function SlideSurface({
     element: Pick<TextBlock | ImageBlock, 'id' | 'x' | 'y' | 'width' | 'height'>,
     mode: 'move' | 'resize',
     update: (id: string, patch: GeometryPatch, coalesceKey?: string) => void,
+    minimum = { width: 5, height: 4 },
   ) => {
     event.preventDefault()
     event.stopPropagation()
@@ -218,8 +225,8 @@ export function SlideSurface({
               y: round(clamp(origin.y + dy, 0, 100 - origin.height)),
             }
           : {
-              width: round(clamp(origin.width + dx, 5, 100 - origin.x)),
-              height: round(clamp(origin.height + dy, 4, 100 - origin.y)),
+              width: round(clamp(origin.width + dx, minimum.width, 100 - origin.x)),
+              height: round(clamp(origin.height + dy, minimum.height, 100 - origin.y)),
             }
       update(element.id, patch, `${element.id}:${mode}`)
     }
@@ -397,6 +404,29 @@ export function SlideSurface({
           </button>
         )
       })}
+      {(slide.dataBlocks ?? []).map((block) => {
+        const selected = selectedElementId === block.id
+        const label = block.type === 'table' ? 'Таблица' : 'Столбчатая диаграмма'
+        const update = (_id: string, patch: GeometryPatch, key?: string) => onUpdateData?.({ ...block, ...patch }, key)
+        return <div key={block.id} data-data-block-id={block.id} role={interactive ? 'button' : undefined}
+          tabIndex={interactive ? 0 : undefined} aria-label={interactive ? `${label}: ${block.headers.join(', ')}` : undefined}
+          aria-pressed={interactive ? selected : undefined}
+          style={{ left: `${block.x}%`, top: `${block.y}%`, width: `${block.width}%`, height: `${block.height}%` }}
+          className={cn('absolute outline-offset-[3px]', interactive && 'cursor-move touch-none focus-visible:outline-2 focus-visible:outline-primary',
+            selected ? 'outline-2 outline-primary outline-solid' : interactive && 'hover:outline-1 hover:outline-dashed hover:outline-primary/60')}
+          onClick={interactive ? (event) => { event.stopPropagation(); onSelectElement?.(block.id) } : undefined}
+          onDoubleClick={interactive ? () => onEditData?.(block) : undefined}
+          onKeyDown={interactive ? (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); onEditData?.(block) }
+            if (event.key === ' ') { event.preventDefault(); onSelectElement?.(block.id) }
+          } : undefined}
+          onPointerDown={interactive && onUpdateData ? (event) => startGesture(event, block, 'move', update) : undefined}>
+          <DataBlockView block={block} />
+          {selected && <span aria-hidden data-resize-handle
+            onPointerDown={(event) => startGesture(event, block, 'resize', update, { width: 20, height: 15 })}
+            className="absolute right-0 bottom-0 size-2.5 translate-x-1/2 translate-y-1/2 cursor-nwse-resize rounded-[2px] border-2 border-background bg-primary touch-none" />}
+        </div>
+      })}
     </div>
   )
 }
@@ -408,7 +438,7 @@ interface SlideCanvasProps {
   slideIndex: number
   slideCount: number
   selectedElementId: string | null
-  selectedElementKind: 'text' | 'image' | null
+  selectedElementKind: 'text' | 'image' | 'data' | null
   selectedElementCanMove: boolean
   onSelectElement: (elementId: string | null) => void
   onActivateBlock: (blockId: string) => void
@@ -416,6 +446,8 @@ interface SlideCanvasProps {
   onRenameSlide: (name: string) => void
   onUpdateBlock: (blockId: string, patch: EditableBlockFields, coalesceKey?: string) => void
   onUpdateImage: (imageId: string, patch: EditableImageFields, coalesceKey?: string) => void
+  onUpdateData?: (block: DataBlock, coalesceKey?: string) => void
+  onEditData?: (block: DataBlock) => void
   onCommitElement: () => void
 }
 
@@ -434,6 +466,8 @@ export function SlideCanvas({
   onRenameSlide,
   onUpdateBlock,
   onUpdateImage,
+  onUpdateData,
+  onEditData,
   onCommitElement,
 }: SlideCanvasProps) {
   const [zoom, setZoom] = useState('fit')
@@ -451,7 +485,9 @@ export function SlideCanvas({
         </Button>
         <span className="ml-auto hidden text-muted-foreground xl:inline">
           {selectedElementId
-            ? selectedElementKind === 'image'
+            ? selectedElementKind === 'data'
+              ? 'Двойной щелчок — данные, перетаскивание — положение'
+              : selectedElementKind === 'image'
               ? 'Перетаскивание — положение, маркер — размер'
               : selectedElementCanMove
                 ? 'Двойной щелчок — текст, перетаскивание — положение'
@@ -477,6 +513,8 @@ export function SlideCanvas({
               onActivateBlock={onActivateBlock}
               onUpdateBlock={onUpdateBlock}
               onUpdateImage={onUpdateImage}
+              onUpdateData={onUpdateData}
+              onEditData={onEditData}
               onCommitElement={onCommitElement}
               editingBlockId={editingBlockId}
               onFinishEditing={onFinishEditing}

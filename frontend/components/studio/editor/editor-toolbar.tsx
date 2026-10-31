@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, CircleDot, Download, ImagePlus, LoaderCircle, Sparkles, Redo2, Type, Undo2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Check, CircleDot, Download, ImagePlus, LoaderCircle, Sparkles, Redo2, Table2, Type, Undo2 } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -23,6 +23,8 @@ interface EditorToolbarProps {
   onSave: () => void
   onAddText?: () => void
   onAddImage?: (file: File) => void
+  onAddData?: (type: 'table' | 'bar') => void
+  dataBlocksFull?: boolean
   imageUploading?: boolean
   onExport?: (options: ExportOptions) => Promise<void>
   onToggleChat: () => void
@@ -47,6 +49,8 @@ export function EditorToolbar({
   onSave,
   onAddText,
   onAddImage,
+  onAddData,
+  dataBlocksFull,
   imageUploading = false,
   onExport,
   onToggleChat,
@@ -130,6 +134,10 @@ export function EditorToolbar({
             </Button>
           </>
         )}
+        {onAddData && <>
+          <Button variant="outline" size="icon-sm" onClick={() => onAddData('table')} disabled={dataBlocksFull} aria-label="Добавить таблицу" title="Добавить таблицу"><Table2 /></Button>
+          <Button variant="outline" size="icon-sm" onClick={() => onAddData('bar')} disabled={dataBlocksFull} aria-label="Добавить диаграмму" title="Добавить диаграмму"><BarChart3 /></Button>
+        </>}
         <Button variant="ghost" size="icon-sm" onClick={onUndo} disabled={!canUndo} aria-label="Отменить" title="Отменить (Ctrl+Z)">
           <Undo2 />
         </Button>

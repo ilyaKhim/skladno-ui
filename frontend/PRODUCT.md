@@ -11,6 +11,15 @@ The editor preserves source-template artwork and supports text, uploaded images,
 ordering, visibility, undo/redo, draft autosave, recovery, and explicit publication.
 AI suggestions must remain reviewable before application. Authentication stays server-side.
 
+Tables and grouped bar charts share an editable rectangular dataset. A focused grid
+supports table/chart conversion, multiple numeric series, and vertical or horizontal
+bars; applying valid data is one undo step, while cancellation discards local edits.
+Blocks retain canvas movement/resizing, duplication, deletion, autosave, and recovery.
+PPTX exports native tables/charts with an embedded chart workbook; PDF remains visual.
+Initial generation and whole-deck chat understand data blocks, but the editor's
+right-side contextual AI remains text-only. Formulas, merged cells, automatic layout,
+and arbitrary PPTX import are outside this iteration.
+
 Existing template folios follow the current slide order from 1 in the editor and
 exported files, preserving their styling; unnumbered covers remain unnumbered.
 PDF numbers follow exported page order. Export publishes a version before downloading

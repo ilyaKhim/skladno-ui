@@ -39,5 +39,12 @@ Limits: formatting applies to the selected PowerPoint text box, not arbitrary ri
 character ranges. Fonts must remain local/system fonts; never depend on Google Fonts.
 PDF is a visual copy without selectable text. Its pages follow the selected visible/all-slide order.
 Publishing and downloading remain separate: conversion retry must not publish an extra version.
+Tables and grouped bar charts share a rectangular dataset. Insert from the top toolbar;
+double-click or choose “Изменить данные” for a focused, cancellable grid editor. Valid changes
+apply as one undo step. Blocks move/resize on the canvas and appear in thumbnails. Charts
+support negative/zero values and vertical/horizontal bars. Use the same existing GoDeck controls,
+without a new inspector. The local grid must scroll horizontally on mobile without page overflow.
+AI generation and whole-deck chat understand data blocks; the existing contextual AI panel remains
+text-only. PPTX retains native cells/charts and an embedded workbook. PDF renders GoDeck bar charts.
 When publication is confirmed but downloading fails, say the version is saved and the file
 was not downloaded; an uncertain commit retains the existing publication-check safeguards.

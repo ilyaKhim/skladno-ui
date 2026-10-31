@@ -35,6 +35,11 @@ class PresentationRequestFactoryTest {
         assertThat(item.path("properties").path("slide").path("enum").toString())
                 .isEqualTo("[2,5]");
         assertThat(item.path("required").toString())
-                .isEqualTo("[\"slide\",\"include\",\"reason\"]");
+                .isEqualTo("[\"slide\",\"include\",\"reason\",\"dataBlocks\"]");
+        var data = item.path("properties").path("dataBlocks");
+        assertThat(data.path("maxItems").asInt()).isEqualTo(10);
+        assertThat(data.path("items").path("additionalProperties").asBoolean()).isFalse();
+        assertThat(data.path("items").path("properties").path("type").path("enum").toString())
+                .isEqualTo("[\"table\",\"bar\"]");
     }
 }
