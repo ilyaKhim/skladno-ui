@@ -40,16 +40,22 @@ public class TemplateSlideBackgrounds {
 
     /** Returns a cached, defensive PNG copy for a validated one-based source slide. */
     public byte[] png(String templateId, int sourceSlide) {
-        if (sourceSlide < 1 || sourceSlide > templates.slideManifest(templateId).size())
-            throw new GenerationException(GenerationError.TEMPLATE_NOT_FOUND);
-        return cache.computeIfAbsent(templateId + ":" + sourceSlide,
-                ignored -> render(templateId, sourceSlide)).clone();
+        return png(templateId, sourceSlide, false);
     }
 
-    private byte[] render(String templateId, int sourceSlide) {
+    /** Old artwork URLs retain static folios; new editor URLs render the number as a separate layer. */
+    public byte[] png(String templateId, int sourceSlide, boolean hideNumber) {
+        if (sourceSlide < 1 || sourceSlide > templates.slideManifest(templateId).size())
+            throw new GenerationException(GenerationError.TEMPLATE_NOT_FOUND);
+        return cache.computeIfAbsent(templateId + ":" + sourceSlide + ":" + hideNumber,
+                ignored -> render(templateId, sourceSlide, hideNumber)).clone();
+    }
+
+    private byte[] render(String templateId, int sourceSlide, boolean hideNumber) {
         try (var show = new XMLSlideShow(new ByteArrayInputStream(templates.source(templateId)))) {
             var slide = show.getSlides().get(sourceSlide - 1);
             clearMarkers(slide.getShapes());
+            if (hideNumber) TemplateSlideNumbers.find(slide).ifPresent(XSLFTextShape::clearText);
             var size = TemplateShapes.pageBounds(show);
             var image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
             var graphics = image.createGraphics();

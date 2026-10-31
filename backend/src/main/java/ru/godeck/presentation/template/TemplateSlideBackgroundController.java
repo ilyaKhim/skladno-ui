@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
@@ -22,9 +23,10 @@ public class TemplateSlideBackgroundController {
 
     @GetMapping(value = "/background.png", produces = MediaType.IMAGE_PNG_VALUE)
     public ResponseEntity<byte[]> background(
-            @PathVariable String templateId, @PathVariable int sourceSlide) {
+            @PathVariable String templateId, @PathVariable int sourceSlide,
+            @RequestParam(defaultValue = "false", name = "hide_number") boolean hideNumber) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.maxAge(Duration.ofHours(1)).cachePrivate())
-                .body(backgrounds.png(templateId, sourceSlide));
+                .body(backgrounds.png(templateId, sourceSlide, hideNumber));
     }
 }

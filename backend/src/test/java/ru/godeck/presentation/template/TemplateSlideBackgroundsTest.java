@@ -48,4 +48,24 @@ class TemplateSlideBackgroundsTest {
         assertThatThrownBy(() -> backgrounds.png("opal", 0)).isInstanceOf(GenerationException.class);
         assertThatThrownBy(() -> backgrounds.png("opal", 14)).isInstanceOf(GenerationException.class);
     }
+
+    @Test
+    void editorArtworkOmitsOnlyTheFolioAndUsesASeparateCacheEntry() throws Exception {
+        var legacy = ImageIO.read(new ByteArrayInputStream(backgrounds.png("opal", 9)));
+        byte[] cleanBytes = backgrounds.png("opal", 9, true);
+        var clean = ImageIO.read(new ByteArrayInputStream(cleanBytes));
+        int changed = 0;
+        for (int y = 0; y < 540; y++) {
+            for (int x = 0; x < 960; x++) {
+                if (legacy.getRGB(x, y) != clean.getRGB(x, y)) {
+                    changed++;
+                    assertThat(x).isGreaterThan(800);
+                    assertThat(y).isGreaterThan(480);
+                }
+            }
+        }
+        assertThat(changed).isPositive();
+        assertThat(backgrounds.png("opal", 9, true)).isEqualTo(cleanBytes).isNotSameAs(cleanBytes);
+        assertThat(templates.backgroundUrl("opal", 9)).contains("hide_number=true");
+    }
 }

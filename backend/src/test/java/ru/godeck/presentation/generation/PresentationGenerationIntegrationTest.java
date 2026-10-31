@@ -1324,6 +1324,50 @@ class PresentationGenerationIntegrationTest {
     }
 
     @Test
+    void downloadsVisualPdfOfAnOwnedImmutableVersionWithoutPublishingAgain() throws Exception {
+        UUID id = readyManual();
+        var source = service.downloadVersion(USER, id, 1);
+        byte[] original = Files.readAllBytes(source);
+        var response = mvc.perform(get("/api/generation/v1/presentations/{id}/versions/1/download", id)
+                        .param("format", "pdf"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString(".pdf")))
+                .andReturn().getResponse();
+        try (var pdf = org.apache.pdfbox.Loader.loadPDF(response.getContentAsByteArray())) {
+            assertThat(pdf.getNumberOfPages()).isEqualTo(1);
+            assertThat(pdf.getPage(0).getMediaBox().getWidth()).isGreaterThan(0);
+        }
+        assertThat(Files.readAllBytes(source)).isEqualTo(original);
+        assertThat(service.versions(USER, id)).hasSize(1);
+        mvc.perform(get("/api/generation/v1/presentations/{id}/versions/1/download", id)
+                        .param("format", "exe"))
+                .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void pdfSkipsHiddenSlidesUnlessExplicitlyIncludedWithoutCreatingAnotherVersion() throws Exception {
+        UUID id = readyManual();
+        var draft = snapshot(editor.get(USER, id));
+        var hidden = draft.slides().stream().map(s -> new SaveEditorDraftRequest.Slide(
+                s.sourceSlideNumber(), s.name(), true, s.blocks(), s.customBlocks(), s.images(), s.layouts())).toList();
+        var saved = editor.save(USER, id, new SaveEditorDraftRequest(
+                draft.baseVersion(), draft.draftRevision(), draft.title(), hidden));
+        editor.commit(USER, id, saved.baseVersion(), saved.draftRevision());
+        mvc.perform(get("/api/generation/v1/presentations/{id}/versions/2/download", id).param("format", "pdf"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("pdf_empty"));
+        var response = mvc.perform(get("/api/generation/v1/presentations/{id}/versions/2/download", id)
+                        .param("format", "pdf").param("include_hidden", "true"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        try (var pdf = org.apache.pdfbox.Loader.loadPDF(response.getContentAsByteArray())) {
+            assertThat(pdf.getNumberOfPages()).isEqualTo(1);
+        }
+        assertThat(service.versions(USER, id)).hasSize(2);
+    }
+
+    @Test
     void rejectsDownloadsOfOtherOwnersUnknownProjectsAndMissingVersions() throws Exception {
         UUID owner = UUID.randomUUID();
         UUID foreignId =
@@ -1331,6 +1375,9 @@ class PresentationGenerationIntegrationTest {
         service.submitManual(owner, foreignId, typedPlan("Чужой файл"));
         prepareAndPublish();
         assertThat(service.downloadVersion(owner, foreignId, 1)).exists();
+        mvc.perform(get("/api/generation/v1/presentations/{id}/versions/1/download", foreignId)
+                        .param("format", "pdf"))
+                .andExpect(status().isNotFound());
         mvc.perform(get("/api/generation/v1/presentations/{id}/versions/1/download", foreignId))
                 .andExpect(status().isNotFound());
         mvc.perform(

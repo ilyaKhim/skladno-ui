@@ -27,7 +27,13 @@ public record EditorDeckView(
             String backgroundUrl,
             boolean hidden,
             List<TextBlock> blocks,
-            List<ImageBlock> images) {}
+            List<ImageBlock> images,
+            SlideNumber slideNumber) {}
+
+    /** Read-only source styling; the browser computes the current position after every reorder. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record SlideNumber(double x, double y, double width, double height, double fontSize,
+            String fontFamily, String fontColor, int weight, String align, int minimumDigits) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record TextBlock(

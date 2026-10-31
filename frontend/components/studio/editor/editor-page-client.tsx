@@ -11,7 +11,8 @@ import type { EditorDeck } from '@/lib/generation-types'
 import { cn } from '@/lib/utils'
 import { createHttpAiEditPort } from './ai/ai-edit-port'
 import { EditorShell } from './editor-shell'
-import type { Deck, EditorOperationError } from './editor-types'
+import type { Deck, EditorOperationError, ExportOptions } from './editor-types'
+import type { EditorVersion } from './editor-recovery'
 import { serialize, toDeck } from './editor-document'
 import { createEditorPublisher } from './editor-publication'
 
@@ -26,6 +27,8 @@ export function EditorPageClient() {
   const version = useRef({ base: 0, draft: 0 })
   const conflict = useRef(false)
   const publisher = useRef(createEditorPublisher())
+  // A failed PDF conversion retries the already-published version, unless the document changed.
+  const pendingDownload = useRef<EditorVersion | null>(null)
   const [publicationPending, setPublicationPending] = useState(false)
   const getVersion = useCallback(() => version.current, [])
   const aiEdit = useMemo(
@@ -33,10 +36,10 @@ export function EditorPageClient() {
     [presentationId],
   )
 
-  const reportError = useCallback((operation: EditorOperationError['operation'], cause: unknown) => {
+  const reportError = useCallback((operation: EditorOperationError['operation'], cause: unknown, publicationComplete = false) => {
     const expired = cause instanceof GenerationApiError && cause.code === 'edit_expired'
     if (expired) conflict.current = true
-    setOperationError({ operation, conflict: conflict.current,
+    setOperationError({ operation, conflict: conflict.current, publicationComplete,
       message: expired ? 'Презентация изменена в другой вкладке. Ваши правки остались в редакторе.'
         : cause instanceof Error ? cause.message : 'Не удалось выполнить действие. Повторите попытку.' })
   }, [])
@@ -49,6 +52,7 @@ export function EditorPageClient() {
     setOperationError(null)
     conflict.current = false
     publisher.current.reset()
+    pendingDownload.current = null
     setPublicationPending(false)
     Promise.all([
       generationApi.editor(presentationId, controller.signal),
@@ -88,23 +92,45 @@ export function EditorPageClient() {
     [presentationId, reportError],
   )
 
-  /** Export renders a new PPTX through /commit; ordinary edits use /draft in save() above. */
-  const exportPptx = useCallback(async (saveDraft: () => Promise<boolean>) => {
+  /** Publish once, then download the exact immutable revision in the selected format. */
+  const exportDocument = useCallback(async (saveDraft: (onlyIfDirty?: boolean) => Promise<boolean>, options: ExportOptions) => {
     if (!presentationId) throw new Error('Не указана презентация.')
+    let publicationComplete = false
     try {
-      const { committed, refreshed } = await publisher.current.publish({
-        save: saveDraft,
-        version: () => version.current,
-        onPending: setPublicationPending,
-        commit: (snapshot) => generationApi.commitEditor(presentationId, snapshot.base, snapshot.draft),
-        refresh: () => generationApi.editor(presentationId),
-      })
-      version.current = { base: refreshed.base_version, draft: refreshed.draft_revision }
+      if (pendingDownload.current && !publisher.current.isPending()) {
+        if (!(await saveDraft(true))) throw new Error('Не удалось сохранить изменения перед экспортом.')
+        if (pendingDownload.current.base !== version.current.base || pendingDownload.current.draft !== version.current.draft)
+          pendingDownload.current = null
+      }
+      if (!pendingDownload.current || publisher.current.isPending()) {
+        const { refreshed } = await publisher.current.publish({
+          save: saveDraft,
+          version: () => version.current,
+          onPending: setPublicationPending,
+          commit: (snapshot) => generationApi.commitEditor(presentationId, snapshot.base, snapshot.draft),
+          refresh: () => generationApi.editor(presentationId),
+        })
+        version.current = { base: refreshed.base_version, draft: refreshed.draft_revision }
+        pendingDownload.current = { ...version.current }
+      }
       // Metadata advances without remounting the document or destroying local undo history.
       setOperationError(null)
-      if (committed.download_url) window.location.assign(committed.download_url)
+      const publishedVersion = pendingDownload.current.base
+      publicationComplete = true
+      if (options.format === 'pdf') {
+        const file = await generationApi.downloadPdf(presentationId, publishedVersion, options.includeHidden)
+        const url = URL.createObjectURL(file)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `godeck-${presentationId}-v${publishedVersion}.pdf`
+        document.body.append(link)
+        try { link.click() } finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
+      } else {
+        window.location.assign(generationApi.versionDownloadUrl(presentationId, publishedVersion))
+      }
+      pendingDownload.current = null
     } catch (exportError) {
-      reportError('export', exportError)
+      reportError('export', exportError, publicationComplete)
       if (publisher.current.isPending()) setOperationError({ operation: 'export', conflict: conflict.current,
         message: conflict.current
           ? 'Серверная версия изменилась во время публикации. Откройте серверную версию; текущую работу можно скачать как JSON.'
@@ -119,6 +145,7 @@ export function EditorPageClient() {
       const fresh = await generationApi.editor(presentationId)
       version.current = { base: fresh.base_version, draft: fresh.draft_revision }
       publisher.current.reset()
+      pendingDownload.current = null
       setPublicationPending(false)
       conflict.current = false
       setOperationError(null)
@@ -154,7 +181,7 @@ export function EditorPageClient() {
       key={`${presentationId}:${epoch}`}
       initialDeck={toDeck(source)}
       onSave={save}
-      onExport={exportPptx}
+      onExport={exportDocument}
       onUploadImage={uploadImage}
       ownerId={ownerId}
       getVersion={getVersion}

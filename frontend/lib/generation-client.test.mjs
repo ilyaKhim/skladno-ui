@@ -6,6 +6,36 @@ const originalFetch = globalThis.fetch
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 afterEach(() => { globalThis.fetch = originalFetch })
 
+test('PDF downloads pin the published version and explicitly opt in to hidden slides', async () => {
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init })
+    return new Response('%PDF-1.7\nfixture', { headers: { 'Content-Type': 'application/pdf' } })
+  }
+  const file = await generationApi.downloadPdf('deck', 3, true)
+  assert.equal(await file.text(), '%PDF-1.7\nfixture')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, '/api/generation/v1/presentations/deck/versions/3/download?format=pdf&include_hidden=true')
+  assert.equal(calls[0].init.credentials, 'same-origin')
+  assert.equal(calls[0].init.cache, 'no-store')
+  assert.match(generationApi.versionDownloadUrl('deck', 2), /versions\/2\/download\?format=pptx&include_hidden=false$/)
+})
+
+test('PDF downloads reject HTML, corrupt files and preserve public server errors', async () => {
+  for (const [body, type] of [['<html>login</html>', 'text/html'], ['not a PDF', 'application/pdf']]) {
+    globalThis.fetch = async () => new Response(body, { headers: { 'Content-Type': type } })
+    await assert.rejects(generationApi.downloadPdf('deck', 1, false), GenerationApiError)
+  }
+  globalThis.fetch = async () => json({ error: { code: 'pdf_busy', message: 'Попробуйте позже.' } }, 429)
+  await assert.rejects(generationApi.downloadPdf('deck', 1, false), error => {
+    assert.equal(error.code, 'pdf_busy')
+    assert.equal(error.status, 429)
+    return true
+  })
+  globalThis.fetch = async () => json({}, 401)
+  await assert.rejects(generationApi.downloadPdf('deck', 1, false), isAuthenticationError)
+})
+
 test('a read uses the same-origin session without fetching CSRF or caching private data', async () => {
   const calls = []
   globalThis.fetch = async (url, init) => { calls.push({ url, init }); return json({ items: [] }) }

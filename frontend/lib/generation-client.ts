@@ -25,6 +25,7 @@ const REQUEST_TIMEOUT_MS = 15_000
 const CSRF_TIMEOUT_MS = 10_000
 const CHAT_TIMEOUT_MS = 150_000
 const TEXT_EDIT_TIMEOUT_MS = 45_000
+const PDF_TIMEOUT_MS = 120_000
 const SESSION_EXPIRED = 'Войдите в GoDeck, чтобы открыть студию.'
 
 export class GenerationApiError extends Error {
@@ -139,6 +140,34 @@ const segment = encodeURIComponent
 const presentationPath = (id: string) => `/v1/presentations/${segment(id)}`
 const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) })
 
+function versionDownloadUrl(id: string, version: number, format: 'pptx' | 'pdf' = 'pptx', includeHidden = false) {
+  return `${API_ROOT}${presentationPath(id)}/versions/${segment(String(version))}/download?format=${format}&include_hidden=${includeHidden}`
+}
+
+/** Read-only conversion of a pinned revision; HTML/login pages must never be downloaded as PDF. */
+async function downloadPdf(id: string, version: number, includeHidden: boolean): Promise<Blob> {
+  try {
+    const response = await fetch(versionDownloadUrl(id, version, 'pdf', includeHidden), {
+      credentials: 'same-origin', cache: 'no-store', signal: signalWithTimeout(undefined, PDF_TIMEOUT_MS),
+    })
+    if (response.status === 401 || response.status === 403) throw new GenerationApiError(SESSION_EXPIRED, response.status)
+    if (!response.ok) {
+      const body = await readJson(response)
+      throw new GenerationApiError(typeof body?.error?.message === 'string' ? body.error.message : 'Не удалось подготовить PDF.',
+        response.status, typeof body?.error?.code === 'string' ? body.error.code : undefined)
+    }
+    const file = await response.blob()
+    if (!response.headers.get('content-type')?.toLowerCase().startsWith('application/pdf') || await file.slice(0, 5).text() !== '%PDF-')
+      throw new GenerationApiError('Сервер вернул некорректный PDF. Повторите экспорт.', response.status)
+    return file
+  } catch (error) {
+    if (error instanceof GenerationApiError) throw error
+    throw new GenerationApiError(error instanceof Error && error.name === 'TimeoutError'
+      ? 'Подготовка PDF заняла слишком много времени. Повторите экспорт.'
+      : 'Не удалось скачать PDF. Проверьте соединение и повторите экспорт.')
+  }
+}
+
 const MATERIAL_TIMEOUT = 'Не удалось обработать документ вовремя. Повторите загрузку или выберите файл меньшего размера.'
 
 /** Wait for the durable worker job, not an open upload request. Cancellation only stops this view. */
@@ -175,6 +204,8 @@ async function waitForMaterial(initial: MaterialJob, signal?: AbortSignal): Prom
 }
 
 export const generationApi = {
+  versionDownloadUrl,
+  downloadPdf,
   health: () => request<{ openai_enabled: boolean }>('/health/ready'),
   templates: () => request<{ items: Template[] }>('/v1/templates'),
   models: () => request<{ items: ModelOption[]; default_model: string }>('/v1/models'),

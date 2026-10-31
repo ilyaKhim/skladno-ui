@@ -13,6 +13,15 @@ export function toDeck(source: EditorDeck): Deck {
       name: slide.name,
       theme: slide.theme,
       backgroundUrl: slide.background_url,
+      ...(slide.slide_number ? { numberStyle: {
+        x: slide.slide_number.x, y: slide.slide_number.y,
+        width: slide.slide_number.width, height: slide.slide_number.height,
+        fontSize: slide.slide_number.font_size,
+        fontFamily: slide.slide_number.font_family ?? undefined,
+        fontColor: slide.slide_number.font_color ?? undefined,
+        weight: slide.slide_number.weight, align: slide.slide_number.align,
+        minimumDigits: slide.slide_number.minimum_digits,
+      } } : {}),
       hidden: slide.hidden,
       blocks: slide.blocks.map((block) => ({
         id: block.id,

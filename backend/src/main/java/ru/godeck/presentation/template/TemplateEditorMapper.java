@@ -197,7 +197,8 @@ final class TemplateEditorMapper {
                                 catalog.backgroundUrl(templateId, source),
                                 decision.hiddenOrFalse(),
                                 List.copyOf(blocks),
-                                images));
+                                images,
+                                slideNumber(slide, page)));
             }
             return new EditorDeckView(
                     presentationId,
@@ -207,6 +208,20 @@ final class TemplateEditorMapper {
                     new EditorDeckView.SlideSize(960, 540),
                     List.copyOf(slides));
         }
+    }
+
+    private static EditorDeckView.SlideNumber slideNumber(XSLFSlide slide, Rectangle2D page) {
+        var shape = TemplateSlideNumbers.find(slide).orElse(null);
+        if (shape == null || shape.getAnchor() == null || shape.getTextParagraphs().isEmpty()) return null;
+        var anchor = shape.getAnchor();
+        var paragraph = shape.getTextParagraphs().getFirst();
+        var run = firstRun(paragraph);
+        double points = run == null || run.getFontSize() == null ? 8 : run.getFontSize();
+        return new EditorDeckView.SlideNumber(percent(anchor.getX(), page.getWidth()),
+                percent(anchor.getY(), page.getHeight()), percent(anchor.getWidth(), page.getWidth()),
+                percent(anchor.getHeight(), page.getHeight()), points * 960 / page.getWidth(),
+                run == null ? null : run.getFontFamily(), run == null ? null : paintColor(run.getFontColor()),
+                run != null && run.isBold() ? 700 : 400, alignment(paragraph), shape.getText().strip().length());
     }
 
     private static XSLFTextRun firstRun(XSLFTextParagraph paragraph) {

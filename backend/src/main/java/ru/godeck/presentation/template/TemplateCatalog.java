@@ -186,7 +186,7 @@ final class TemplateCatalog {
     /** Versions browser artwork URLs by source bytes so template updates invalidate old previews. */
     public String backgroundUrl(String id, int slideNumber) {
         return "/api/generation/v1/templates/" + id + "/slides/" + slideNumber
-                + "/background.png?v=" + get(id).version();
+                + "/background.png?v=" + get(id).version() + "&hide_number=true";
     }
 
     /** Returns the source-slide/field manifest for the default template. */

@@ -17,6 +17,7 @@ import {
   CUSTOM_TEXT_MAX_CHARS,
   type Deck,
   type EditorOperationError,
+  type ExportOptions,
   type ImageBlock,
   type TextBlock,
 } from './editor-types'
@@ -57,7 +58,7 @@ function isEditableTarget(target: EventTarget | null) {
 type EditorShellProps = {
   initialDeck: Deck
   onSave?: (deck: Deck) => Promise<void>
-  onExport?: (saveDraft: () => Promise<boolean>) => Promise<void>
+  onExport?: (saveDraft: (onlyIfDirty?: boolean) => Promise<boolean>, options: ExportOptions) => Promise<void>
   onUploadImage?: (file: File) => Promise<EditorAsset>
   contentOnly?: boolean
   ownerId?: string
@@ -81,6 +82,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   const [imageError, setImageError] = useState('')
   const [processing, setProcessing] = useState<'export' | 'leave' | 'reload' | null>(null)
   const busy = useRef(false)
+  const lastExport = useRef<ExportOptions>({ format: 'pptx', includeHidden: false })
   const isWide = useMediaQuery(WIDE_LAYOUT_QUERY)
   const chatLayout: AiChatLayout = isWide ? 'column' : 'sheet'
   const [chatOpen, setChatOpen] = useState(true)
@@ -124,16 +126,21 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   }, [])
 
   /** Flush the latest draft, then invoke the page's publish/download callback. */
-  const exportDocument = async () => {
+  const exportDocument = async (options: ExportOptions = lastExport.current) => {
     if (busy.current) throw new Error('Дождитесь завершения текущего действия.')
     if (imageUploading) {
       setImageError('Дождитесь завершения загрузки изображения перед экспортом.')
       throw new Error('Изображение ещё загружается.')
     }
     busy.current = true
+    lastExport.current = options
     setProcessing('export')
     try {
-      await onExport?.(editor.saveNow)
+      await onExport?.(
+        (onlyIfDirty = false) => onlyIfDirty && !editor.hasUnsavedChanges()
+          ? Promise.resolve(true) : editor.saveNow(),
+        options,
+      )
     } finally {
       busy.current = false
       setProcessing(null)
@@ -490,7 +497,8 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
         onDiscard={recovery.discard}
       />
       {processing && <p role="status" className="shrink-0 border-b border-border px-4 py-2 text-sm text-muted-foreground">
-        {processing === 'leave' ? 'Сохраняем изменения перед выходом…' : processing === 'reload' ? 'Загружаем серверную версию…' : 'Подготавливаем PowerPoint…'}
+        {processing === 'leave' ? 'Сохраняем изменения перед выходом…' : processing === 'reload' ? 'Загружаем серверную версию…'
+          : lastExport.current.format === 'pdf' ? 'Подготавливаем PDF…' : 'Подготавливаем PowerPoint…'}
       </p>}
 
       <div inert={processing !== null || publicationPending} className="flex min-h-0 flex-1 flex-col-reverse md:flex-row">

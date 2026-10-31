@@ -40,6 +40,19 @@ const serverDeck = (block) => ({
   }],
 })
 
+test('slide-number style is trusted display metadata and never a submitted layout override', () => {
+  const source = serverDeck(serverBlock())
+  source.slides[0].slide_number = { x: 86, y: 92, width: 5, height: 3, font_size: 8,
+    font_family: 'Inter', font_color: '#223344', weight: 700, align: 'right', minimum_digits: 2 }
+  const deck = toDeck(source)
+  assert.equal(deck.slides[0].numberStyle.minimumDigits, 2)
+  assert.equal(deck.slides[0].numberStyle.fontSize, 8)
+  const payload = serialize(deck, 1, 0)
+  assert.equal(payload.slides[0].slide_number, undefined)
+  assert.equal(payload.slides[0].numberStyle, undefined)
+  assert.equal(payload.slides[0].source_slide_number, 3)
+})
+
 test('the editor keeps the server hard limit separate from the layout limit', () => {
   const block = toDeck(serverDeck(serverBlock({ hard_max_chars: 146 }))).slides[0].blocks[0]
   assert.equal(block.maxChars, 46)

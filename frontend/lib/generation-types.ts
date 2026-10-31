@@ -125,6 +125,11 @@ type EditorSlide = {
   hidden: boolean
   blocks: EditorTextBlock[]
   images: EditorImageBlock[]
+  slide_number?: {
+    x: number; y: number; width: number; height: number
+    font_size: number; font_family: string | null; font_color: string | null
+    weight: 400 | 700; align: 'left' | 'center' | 'right'; minimum_digits: number
+  } | null
 }
 
 type EditorImageBlock = {
