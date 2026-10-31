@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import ru.godeck.auth.dto.AuthIdentification;
+import ru.godeck.auth.config.AuthSettings;
 import ru.godeck.auth.dto.VerificationChallenge;
 import ru.godeck.auth.entity.EmailVerification;
 import ru.godeck.auth.entity.UserAccount;
@@ -46,6 +47,7 @@ public class AuthService {
     private final PasswordEncoder passwords;
     private final AuthMailService mail;
     private final Clock clock;
+    private final AuthSettings settings;
     private final SecureRandom random = new SecureRandom();
     private final String dummyHash;
 
@@ -55,13 +57,15 @@ public class AuthService {
             EmailVerificationRepository verifications,
             PasswordEncoder passwords,
             AuthMailService mail,
-            Clock clock) {
+            Clock clock,
+            AuthSettings settings) {
         this.registrations = registrations;
         this.users = users;
         this.verifications = verifications;
         this.passwords = passwords;
         this.mail = mail;
         this.clock = clock;
+        this.settings = settings;
         this.dummyHash = passwords.encode(UUID.randomUUID().toString());
     }
 
@@ -122,13 +126,13 @@ public class AuthService {
      */
     public AuthPrincipal verify(String rawEmail, String code, UUID challengeId) {
         EmailVerification pending = pending(normalize(rawEmail), challengeId);
-        if (pending.getAttempts() >= AuthPolicy.MAX_FAILED_ATTEMPTS)
+        if (pending.getAttempts() >= settings.maxFailedAttempts())
             throw new AuthException(AuthError.TOO_MANY_ATTEMPTS);
         if (!pending.getExpiresAt().isAfter(clock.instant()))
             throw new AuthException(AuthError.EXPIRED_CODE);
         if (!passwords.matches(code, pending.getCodeHash())) {
             pending.recordFailedAttempt();
-            boolean locked = pending.getAttempts() >= AuthPolicy.MAX_FAILED_ATTEMPTS;
+            boolean locked = pending.getAttempts() >= settings.maxFailedAttempts();
             // AuthException deliberately commits counters; SMTP/DB failures still roll back.
             throw new AuthException(locked ? AuthError.TOO_MANY_ATTEMPTS : AuthError.INVALID_CODE);
         }
@@ -155,7 +159,7 @@ public class AuthService {
                         AuthPolicy.VERIFICATION_CODE_FORMAT,
                         random.nextInt(AuthPolicy.VERIFICATION_CODE_BOUND));
         Instant now = clock.instant();
-        pending.resend(passwords.encode(code), now.plus(AuthPolicy.CODE_TTL), now);
+        pending.resend(passwords.encode(code), now.plus(settings.codeTtl()), now);
         mail.sendCode(pending.getEmail(), code);
     }
 
@@ -181,8 +185,8 @@ public class AuthService {
             int attempts = user.getLockedUntil() != null ? 1 : user.getFailedLogins() + 1;
             user.recordFailedLogin(
                     attempts,
-                    attempts >= AuthPolicy.MAX_FAILED_ATTEMPTS
-                            ? now.plus(AuthPolicy.LOGIN_LOCK)
+                    attempts >= settings.maxFailedAttempts()
+                            ? now.plus(settings.loginLock())
                             : null);
             throw new AuthException(AuthError.INVALID_CREDENTIALS);
         }
@@ -202,7 +206,7 @@ public class AuthService {
         random.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         Instant now = clock.instant();
-        user.requestReset(Hashing.sha256(token), now.plus(AuthPolicy.RESET_TTL), now);
+        user.requestReset(Hashing.sha256(token), now.plus(settings.resetTtl()), now);
         // The fragment is read by the UI and never sent to the HTTP server or in Referer.
         mail.sendReset(user.getEmail(), token);
     }
@@ -243,7 +247,7 @@ public class AuthService {
     }
 
     private int remaining(Instant sentAt) {
-        return secondsRemaining(sentAt.plusSeconds(AuthPolicy.RESEND_COOLDOWN_SECONDS));
+        return secondsRemaining(sentAt.plus(settings.resendCooldown()));
     }
 
     private int secondsRemaining(Instant deadline) {

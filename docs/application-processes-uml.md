@@ -96,6 +96,28 @@ flowchart LR
 (OpenAI, Apache POI, файловая система) выполняются вне транзакции; короткие методы
 `PresentationTransactions` резервируют работу и затем атомарно публикуют результат.
 
+### 1.1. Внутренние границы шаблонов и редактора
+
+```mermaid
+flowchart LR
+    App["PresentationService"] --> Chat["PresentationChatService.edit"]
+    Chat --> Tx["PresentationTransactions"]
+    Editor["PresentationEditorService.save"] --> Assemble["EditorDraftAssembler.assemble"]
+    Assemble --> Templates["PresentationTemplateService"]
+    Chat --> Templates
+    Export["PresentationFiles.write"] --> Templates
+    Templates --> Catalog["TemplateCatalog: immutable source + fieldsBySlide"]
+    Templates --> Renderer["TemplateRenderer.render"]
+    Templates --> Mapper["TemplateEditorMapper.editorDeck"]
+    Renderer --> Shapes["TemplateShapes: traversal + layout ID + EMU"]
+    Mapper --> Shapes
+    Catalog --> Shapes
+```
+
+Фасад не выполняет POI-алгоритмы сам. Внутренние классы package-private и не создают
+дополнительных процессов или Spring beans. Транзакции по-прежнему резервируют/публикуют
+точную версию; renderer и AI вызываются снаружи транзакций.
+
 ## 2. Регистрация, подтверждение и создание сессии
 
 ```mermaid
@@ -516,7 +538,7 @@ sequenceDiagram
     participant API as AiEditController
     participant Svc as AiTextEditService
     participant Res as TargetResolver
-    participant Reg as TextEditActionRegistry
+    participant Reg as TextEditActionCatalog
     participant LLM as AiResponsesClient
     participant DB as PostgreSQL
     Panel->>API: GET /editor/ai/actions (один раз за сессию)

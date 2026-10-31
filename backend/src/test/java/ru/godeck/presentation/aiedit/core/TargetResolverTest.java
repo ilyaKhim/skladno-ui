@@ -1,5 +1,8 @@
 package ru.godeck.presentation.aiedit.core;
 
+import static ru.godeck.support.TestSettings.defaults;
+import ru.godeck.presentation.aiedit.config.TextEditPromptSettings;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -34,7 +37,7 @@ class TargetResolverTest {
     final PresentationContentCodec contentCodec = new PresentationContentCodec(JSON);
     final PresentationEditorDraftCodec editorCodec = new PresentationEditorDraftCodec(JSON);
     final TargetResolver resolver =
-            new TargetResolver(repository, templates, contentCodec, editorCodec);
+            new TargetResolver(repository, templates, contentCodec, editorCodec, defaults(TextEditPromptSettings.class));
     static final UUID ID = UUID.randomUUID();
     static final UUID USER = UUID.randomUUID();
 

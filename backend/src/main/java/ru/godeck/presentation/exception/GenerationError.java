@@ -3,7 +3,6 @@ package ru.godeck.presentation.exception;
 import org.springframework.http.HttpStatus;
 
 import ru.godeck.common.text.BackendMessages;
-import ru.godeck.presentation.aiedit.policy.AiEditPolicy;
 import ru.godeck.presentation.policy.PresentationPolicy;
 
 public enum GenerationError {
@@ -150,8 +149,6 @@ public enum GenerationError {
                     BackendMessages.text(messageKey, PresentationPolicy.MAX_TOPIC_LENGTH);
             case INVALID_MESSAGE ->
                     BackendMessages.text(messageKey, PresentationPolicy.MAX_EDIT_MESSAGE_LENGTH);
-            case AI_EDIT_LIMIT ->
-                    BackendMessages.text(messageKey, AiEditPolicy.MAX_TEXT_EDITS_PER_DAY);
             default -> BackendMessages.text(messageKey);
         };
     }

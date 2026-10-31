@@ -45,7 +45,7 @@ API-контракт (раздел 7) скопирован в оба ТЗ **до
 - панель чата: лента, чип цели, быстрые действия, свободный ввод, карточки «было / стало»;
 - действия `shorten`, `rephrase`, `custom` (свободный запрос, в том числе любой тон) над полным
   текстом одного блока;
-- реестр действий и каталог для UI;
+- фиксированные действия и каталог для UI;
 - уточнения по текущему предложению;
 - предупреждение о превышении лимита поля **без обрезки**;
 - изменения редактора, позволяющие сохранить и экспортировать текст длиннее `max_chars`
@@ -179,7 +179,7 @@ sequenceDiagram
     participant API as AiEditController
     participant Svc as AiTextEditService
     participant Res as TargetResolver
-    participant Reg as TextEditActionRegistry
+    participant Reg as TextEditActionCatalog
     participant LLM as AiResponsesClient
     participant DB as PostgreSQL
     Panel->>API: GET /editor/ai/actions (один раз за сессию)
@@ -209,12 +209,12 @@ ru.godeck.presentation.aiedit
 │                AiUsageView, AiQuotaView, AiActionCatalogView, AiActionView, AiActionParamView
 ├── core         AiEditTarget (sealed), TargetKind, ResolvedTextTarget, TargetResolver,
 │                AiEditKind (TEXT_EDIT; позже CHAT_TURN), AiEditStatus
-├── action       TextEditAction (interface), TextEditActionRegistry, ActionParam, ActionUi
-│   └── builtin  ShortenAction, RephraseAction, CustomAction
+├── action       TextEditAction (enum), TextEditActionCatalog, ActionUi
 ├── ai           AiResponsesClient, ResponsesUsage, TextEditRequestFactory, TextEditResponseParser,
 │                TextEditLlm (interface) + OpenAiTextEditLlm, ScriptedTextEditLlm
 ├── text         TextResultSanitizer
-├── service      AiTextEditService, AiEditTransactions, AiEditQuota
+├── service      AiTextEditService, AiEditTransactions, AiEditRetention
+├── config       AiEditSettings, AiEditClientConfig
 ├── entity       PresentationAiEdit
 ├── repository   PresentationAiEditRepository
 └── policy       AiEditPolicy
@@ -224,27 +224,17 @@ ru.godeck.presentation.aiedit
 перегрузки и новый режим, существующее поведение не меняется.
 
 ```java
-/** Действие над текстом одного блока. Каждая реализация — @Component; реестр собирает List<TextEditAction>. */
-public interface TextEditAction {
-    String id();                                   // "shorten"; стабилен в API и в БД
-    String labelKey();                             // ключ messages.properties
-    String descriptionKey();
-    ActionUi ui();                                 // QUICK — кнопка в чате; INPUT — привязано к полю ввода
-    List<ActionParam> params();                    // enum/string параметры для каталога и валидации
-    Set<TargetKind> targets();                     // TEMPLATE_FIELD, CUSTOM_BLOCK
-    default boolean available(AiEditContext context) { return true; }   // флаг, тариф, шаблон
-    /** Короткая задача для модели (≤ 300 символов); параметры уже провалидированы. */
-    String task(Map<String, String> params, ResolvedTextTarget target);
-    default int targetLength(ResolvedTextTarget target, String source) { return target.maxChars(); }
-    default List<String> warnings(String source, String result, ResolvedTextTarget target) { return List.of(); }
-}
+// Фиксированный список, а не интерфейс подключаемых Spring-компонентов:
+enum TextEditAction { SHORTEN, REPHRASE, CUSTOM }
+// Каждое действие задаёт id, task, targetLength и warnings.
+// TextEditActionCatalog сохраняет JSON-каталог и строго проверяет параметры.
 ```
 
 Точки расширения:
 
-1. **Новое действие** (перевод, исправление ошибок, расширение, вернуть фиксированные тоны,
-   если понадобятся) — новый `@Component` и строки в `messages.properties`. Каталог, валидация,
-   промпт и UI-кнопки подхватывают его автоматически.
+1. **Новое действие** — явное дополнение `TextEditAction` и проверки параметров/каталога,
+   строки в `messages.properties` и тест контракта. Сейчас все три действия доступны для
+   обоих типов текста; специальных тарифных флагов или enum-параметров нет.
 2. **Новый тип цели** — ветка `sealed AiEditTarget` и `TargetResolver`.
 3. **Структурные операции** (раздел 12) — отдельный pipeline с целью `DeckTarget` и предложением
    `operations` на тех же `AiResponsesClient`, `AiEditQuota`, журнале и учёте usage. Панель чата
@@ -682,7 +672,7 @@ Prompt cache почти ни на что не влияет: статичный �
 | D3 | Ответ на языке исходного текста, без markdown и кавычек; `message` — одно предложение на русском |
 | D4 | Тела запросов и ответов AI хранятся 90 дней |
 | D5 | Тестовый чат студии не трогаем; его ограничения — известное свойство тестового функционала (раздел 2.2), отдельной задачи нет |
-| D6 | Все действия доступны всем; точка для тарифов — `TextEditAction.available()` |
+| D6 | Все три действия доступны всем; неиспользуемая точка расширения тарифов удалена |
 | D7 | В MVP правится весь текст блока; правка части — этап 2 |
 | D8 | Цели — поля шаблона и пользовательские текстовые блоки; не названия слайдов, не подписи изображений, не название презентации |
 | N1 | Один вариант за запрос и кнопка «Другой вариант»; контракт допускает до 3 |

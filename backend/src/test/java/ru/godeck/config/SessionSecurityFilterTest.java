@@ -13,6 +13,8 @@ import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import ru.godeck.auth.security.AuthPrincipal;
+import ru.godeck.auth.config.AuthSettings;
+import ru.godeck.support.TestSettings;
 import ru.godeck.auth.service.AuthService;
 import ru.godeck.common.security.SecurityPolicy;
 
@@ -24,12 +26,13 @@ class SessionSecurityFilterTest {
     private final AuthService service = mock(AuthService.class);
     private final Clock clock = mock(Clock.class);
     private SessionSecurityFilter filter;
+    private final AuthSettings settings = TestSettings.defaults(AuthSettings.class);
 
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
         when(clock.instant()).thenReturn(NOW);
-        filter = new SessionSecurityFilter(service, clock, false);
+        filter = new SessionSecurityFilter(service, clock, false, settings.ip());
     }
 
     @AfterEach
@@ -39,25 +42,39 @@ class SessionSecurityFilterTest {
 
     @Test
     void requestWindowResetsAtItsExactDeadline() throws Exception {
-        for (int n = 0; n < SecurityPolicy.MAX_AUTH_REQUESTS_PER_WINDOW; n++)
+        for (int n = 0; n < settings.ip().maxRequestsPerWindow(); n++)
             assertThat(request("POST", "/api/auth/identify", "127.0.0.1", null).getStatus())
                     .isEqualTo(200);
         assertThat(request("POST", "/api/auth/identify", "127.0.0.1", null).getStatus())
                 .isEqualTo(429);
-        when(clock.instant()).thenReturn(NOW.plus(SecurityPolicy.AUTH_REQUEST_WINDOW));
+        when(clock.instant()).thenReturn(NOW.plus(settings.ip().requestWindow()));
         assertThat(request("POST", "/api/auth/identify", "127.0.0.1", null).getStatus())
                 .isEqualTo(200);
     }
 
     @Test
     void forwardedHeadersCannotBypassRemoteAddressLimit() throws Exception {
-        for (int n = 0; n < SecurityPolicy.MAX_AUTH_REQUESTS_PER_WINDOW; n++)
+        for (int n = 0; n < settings.ip().maxRequestsPerWindow(); n++)
             request("POST", "/api/auth/identify", "127.0.0.1", "forged-" + n);
         assertThat(request("POST", "/api/auth/identify", "127.0.0.1", "new-forged").getStatus())
                 .isEqualTo(429);
         assertThat(request("POST", "/api/auth/identify", "127.0.0.2", "new-forged").getStatus())
                 .isEqualTo(200);
         assertThat(request("GET", "/api/auth/csrf", "127.0.0.1", null).getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    void configuredWindowRequestLimitAndAddressCapacityAreEnforced() throws Exception {
+        filter = new SessionSecurityFilter(service, clock, false,
+                new AuthSettings.IpProtection(1, 2, Duration.ofSeconds(30)));
+        assertThat(request("POST", "/api/auth/identify", "127.0.0.1", null).getStatus()).isEqualTo(200);
+        assertThat(request("POST", "/api/auth/identify", "127.0.0.1", null).getStatus()).isEqualTo(200);
+        var limited = request("POST", "/api/auth/identify", "127.0.0.1", null);
+        assertThat(limited.getStatus()).isEqualTo(429);
+        assertThat(limited.getHeader("Retry-After")).isEqualTo("30");
+        assertThat(request("POST", "/api/auth/identify", "127.0.0.2", null).getStatus()).isEqualTo(429);
+        when(clock.instant()).thenReturn(NOW.plusSeconds(30));
+        assertThat(request("POST", "/api/auth/identify", "127.0.0.2", null).getStatus()).isEqualTo(200);
     }
 
     @Test
@@ -82,7 +99,7 @@ class SessionSecurityFilterTest {
 
     @Test
     void debugModeUsesStablePrincipalWithoutDatabaseLookupOrSessionCreation() throws Exception {
-        filter = new SessionSecurityFilter(service, clock, true);
+        filter = new SessionSecurityFilter(service, clock, true, settings.ip());
         var request = new MockHttpServletRequest("GET", "/api/auth/me");
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
         var auth = SecurityContextHolder.getContext().getAuthentication();
@@ -98,7 +115,7 @@ class SessionSecurityFilterTest {
     @ValueSource(strings = {"0.0.0.0", "::", "192.0.2.1"})
     void debugBypassRefusesNonLoopbackBinding(String address) {
         var http = mock(HttpSecurity.class);
-        assertThatThrownBy(() -> new SecurityConfig().security(http, service, clock, true, address))
+        assertThatThrownBy(() -> new SecurityConfig().security(http, service, clock, settings, true, address))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("AUTH_BYPASS");
         verifyNoInteractions(http, service);

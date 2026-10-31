@@ -2,16 +2,13 @@ package ru.godeck.presentation.service;
 
 import static ru.godeck.presentation.model.PresentationStatus.*;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import ru.godeck.common.security.Hashing;
-import ru.godeck.common.text.BackendMessages;
 import ru.godeck.presentation.ai.PresentationContentGenerator;
 import ru.godeck.presentation.ai.PresentationModelCatalog;
-import ru.godeck.presentation.ai.PresentationPrompts;
+import ru.godeck.presentation.config.GenerationSettings;
 import ru.godeck.presentation.dto.ChatReply;
 import ru.godeck.presentation.dto.PresentationAiCallView;
 import ru.godeck.presentation.dto.PresentationPage;
@@ -22,8 +19,6 @@ import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.mapper.GenerationInputCodec;
 import ru.godeck.presentation.mapper.PresentationContentCodec;
-import ru.godeck.presentation.model.AiCallContext;
-import ru.godeck.presentation.model.AiOperation;
 import ru.godeck.presentation.model.GenerationInput;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.model.PresentationContent;
@@ -37,7 +32,6 @@ import ru.godeck.presentation.template.PresentationTemplateService;
 
 import java.nio.file.Path;
 import java.time.Clock;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -53,12 +47,9 @@ import java.util.UUID;
  */
 @Service
 public class PresentationService {
-    private static final String EDIT_RELEASE_FAILURE_LOG = "Could not release edit {}";
-
-    private static final Logger log = LoggerFactory.getLogger(PresentationService.class);
     private final PresentationRepository presentations;
     private final PresentationRevisionRepository revisions;
-    private final PresentationTransactions transactions;
+    private final PresentationChatService chat;
     private final PresentationTemplateService templates;
     private final PresentationContentGenerator generator;
     private final PresentationModelCatalog models;
@@ -67,11 +58,12 @@ public class PresentationService {
     private final Clock clock;
     private final PresentationAiCallHistory aiHistory;
     private final GenerationInputCodec inputs;
+    private final GenerationSettings settings;
 
     public PresentationService(
             PresentationRepository presentations,
             PresentationRevisionRepository revisions,
-            PresentationTransactions transactions,
+            PresentationChatService chat,
             PresentationTemplateService templates,
             PresentationContentGenerator generator,
             PresentationModelCatalog models,
@@ -79,10 +71,11 @@ public class PresentationService {
             PresentationFiles files,
             Clock clock,
             PresentationAiCallHistory aiHistory,
-            GenerationInputCodec inputs) {
+            GenerationInputCodec inputs,
+            GenerationSettings settings) {
         this.presentations = presentations;
         this.revisions = revisions;
-        this.transactions = transactions;
+        this.chat = chat;
         this.templates = templates;
         this.generator = generator;
         this.models = models;
@@ -91,6 +84,7 @@ public class PresentationService {
         this.clock = clock;
         this.aiHistory = aiHistory;
         this.inputs = inputs;
+        this.settings = settings;
     }
 
     /** Exposes process readiness and whether paid OpenAI generation is actually configured. */
@@ -201,11 +195,11 @@ public class PresentationService {
             if (previous.isPresent()) return idempotent(previous.get(), hash);
         }
         if (presentations.countByUserIdAndCreatedAtAfter(
-                                userId, clock.instant().minus(PresentationPolicy.QUOTA_WINDOW))
-                        >= PresentationPolicy.MAX_GENERATIONS_PER_DAY
+                                userId, clock.instant().minus(settings.quotaWindow()))
+                        >= settings.maxGenerationsPerWindow()
                 || presentations.countByUserIdAndStatusIn(
                                 userId, List.of(AWAITING_CONTENT, DRAFT, QUEUED, RUNNING))
-                        >= PresentationPolicy.MAX_ACTIVE_PRESENTATIONS) {
+                        >= settings.maxActivePresentations()) {
             throw new GenerationException(GenerationError.GENERATION_LIMIT);
         }
         UUID id = UUID.randomUUID();
@@ -294,9 +288,9 @@ public class PresentationService {
             throw new GenerationException(GenerationError.CANNOT_CANCEL);
         if (p.getEditId() != null
                 && p.getEditStartedAt()
-                        .isAfter(clock.instant().minus(PresentationPolicy.EDIT_LEASE_TIMEOUT)))
+                        .isAfter(clock.instant().minus(settings.editLeaseTimeout())))
             throw new GenerationException(GenerationError.EDIT_IN_PROGRESS);
-        p.cancel(clock.instant());
+        p.cancel(clock.instant(), settings.sourceRetention());
         return PresentationView.from(p);
     }
 
@@ -309,94 +303,15 @@ public class PresentationService {
                 .toList();
     }
 
-    /**
-     * Applies a natural-language edit as a new immutable presentation version.
-     *
-     * <p>The edit lease captures the current version and prevents concurrent commits. AI receives
-     * the published semantic snapshot, while editor-created text and image blocks are copied onto
-     * the newly generated field/slide plan. Rendering happens outside a transaction. Publication
-     * succeeds only if the lease and base version still match; otherwise the orphan file is
-     * removed.
-     */
+    /** Delegates whole-deck AI editing; block proposals belong to AiTextEditService. */
     public ChatReply chat(UUID userId, UUID id, String message, String model) {
-        if (!generator.enabled()) throw new GenerationException(GenerationError.CHAT_DISABLED);
-        if (message == null
-                || message.isBlank()
-                || message.length() > PresentationPolicy.MAX_EDIT_MESSAGE_LENGTH)
-            throw new GenerationException(GenerationError.INVALID_MESSAGE);
-        var edit = transactions.beginEdit(userId, id, model);
-        Path output = null;
-        try {
-            String topic = PresentationPrompts.edit(edit.topic(), edit.contentJson(), message);
-            PresentationContent previous =
-                    templates.normalize(edit.templateId(), codec.decode(edit.contentJson()));
-            PresentationContent generated =
-                    templates.normalize(
-                            edit.templateId(),
-                            generator.generate(
-                                    new AiCallContext(id, AiOperation.CHAT),
-                                    templates.withDescription(edit.templateId(), topic),
-                                    templates.fields(edit.templateId()),
-                                    templates.slideManifest(edit.templateId()),
-                                    edit.model()));
-            PresentationContent content =
-                    templates.normalize(
-                            edit.templateId(), preserveEditorBlocks(previous, generated));
-            output = files.write(id, edit.baseVersion() + 1, edit.templateId(), content);
-            PresentationView view =
-                    transactions.completeEdit(
-                            edit,
-                            message,
-                            codec.encode(content),
-                            output.toString(),
-                            content.slideCount());
-            return new ChatReply(
-                    view.version(), BackendMessages.text("presentation.chat.reply"), view);
-        } catch (Exception error) {
-            files.discard(output);
-            try {
-                transactions.releaseEdit(edit);
-            } catch (Exception cleanup) {
-                log.warn(EDIT_RELEASE_FAILURE_LOG, edit.token());
-            }
-            if (error instanceof GenerationException known) throw known;
-            throw new GenerationException(GenerationError.EDIT_FAILED);
-        }
+        return chat.edit(userId, id, message, model);
     }
 
     /** Returns private provider-call history after presentation ownership is established. */
     public List<PresentationAiCallView> aiCalls(UUID userId, UUID id) {
         owned(userId, id);
         return aiHistory.list(id);
-    }
-
-    /**
-     * Keeps user-created editor shapes when AI rewrites template fields and inclusion decisions.
-     * Generated semantic choices win, while per-slide freeform content remains user-owned.
-     */
-    private static PresentationContent preserveEditorBlocks(
-            PresentationContent previous, PresentationContent generated) {
-        Map<Integer, PresentationContent.Slide> bySlide = new LinkedHashMap<>();
-        for (var slide : previous.slides()) bySlide.put(slide.slide(), slide);
-        return new PresentationContent(
-                generated.fields(),
-                generated.slides().stream()
-                        .map(
-                                slide ->
-                                        new PresentationContent.Slide(
-                                                slide.slide(),
-                                                slide.include(),
-                                                slide.reason(),
-                                                slide.hiddenOrFalse(),
-                                                bySlide.containsKey(slide.slide())
-                                                        ? bySlide.get(slide.slide())
-                                                                .textBlocksOrEmpty()
-                                                        : List.of(),
-                                                bySlide.containsKey(slide.slide())
-                                                        ? bySlide.get(slide.slide())
-                                                                .imageBlocksOrEmpty()
-                                                        : List.of()))
-                        .toList());
     }
 
     /** Centralizes tenant ownership lookup so callers receive one non-enumerating missing error. */

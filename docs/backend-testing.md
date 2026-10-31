@@ -5,7 +5,7 @@
 Из корня репозитория:
 
 ```sh
-pnpm backend:test:unit         # без Spring-контекста, PostgreSQL и внешней сети
+pnpm backend:test:unit         # без веб-сервера, PostgreSQL и внешней сети
 pnpm infra:up                 # PostgreSQL и Mailpit для локальной работы
 pnpm backend:test:integration  # Spring + настоящая PostgreSQL, отдельные тестовые схемы
 pnpm backend:test             # весь набор
@@ -23,6 +23,13 @@ pnpm document-worker:test     # парсеры в отдельном Java-мод
 ```
 
 ## Unit-тесты
+
+Settings-тесты используют лёгкий `ApplicationContextRunner`, но не поднимают API/БД.
+`TestSettings` находится исключительно в test source set: production не содержит конструкторов
+или entry points для тестов. Проверяются default/override, отклонение некорректной конфигурации,
+настраиваемые квоты images, SMTP TTL/cooldown и формирование provider budgets.
+Интеграция отдельно проверяет точные dotted model keys из production YAML и source-retention
+после первой публикации без продления последующими commit.
 
 | Область | Что проверяется |
 | --- | --- |
@@ -68,8 +75,8 @@ Smoke создаёт один локальный аккаунт и два пис
 Модель заменена `ScriptedTextEditLlm` (`godeck.ai-edit.llm=scripted`, профиль `test`); OpenAI не
 вызывается. Интеграционные тесты используют схемы `ai_edit_test` и `editor_text_test`.
 
-- Unit: `TextEditActionRegistryTest` (уникальность id, ровно одно `input`-действие, каталог совпадает
-  с примером контракта, строгая валидация параметров), `TextEditRequestFactoryTest` (снимок `input`
+- Unit: `TextEditActionCatalogTest` (фиксированные действия, каталог совпадает
+  с примером контракта, строгая валидация instruction и запрет лишних параметров), `TextEditRequestFactoryTest` (снимок `input`
   для каждого действия, только минимальный контекст, strict schema, `store: false`, формула
   `max_output_tokens`), `TextEditResponseParserTest`, `TextResultSanitizerTest` (кавычки, markdown,
   переносы, маркеры, предупреждения; текст не обрезается), `TargetResolverTest` (заголовки, aurora без

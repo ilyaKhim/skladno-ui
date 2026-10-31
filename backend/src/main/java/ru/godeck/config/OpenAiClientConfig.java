@@ -5,18 +5,15 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-import java.time.Duration;
+import ru.godeck.presentation.config.GenerationSettings;
 
 @Configuration
 public class OpenAiClientConfig {
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
-    private static final Duration READ_TIMEOUT = Duration.ofMinutes(2);
-
     @Bean
-    RestClient openAiClient() {
+    RestClient openAiClient(GenerationSettings settings) {
         var factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(CONNECT_TIMEOUT);
-        factory.setReadTimeout(READ_TIMEOUT);
+        factory.setConnectTimeout(settings.connectTimeout());
+        factory.setReadTimeout(settings.readTimeout());
         return RestClient.builder().requestFactory(factory).build();
     }
 }

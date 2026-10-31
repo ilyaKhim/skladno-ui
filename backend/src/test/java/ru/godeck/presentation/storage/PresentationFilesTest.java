@@ -1,5 +1,7 @@
 package ru.godeck.presentation.storage;
 
+import static ru.godeck.support.TestSettings.defaults;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -7,6 +9,7 @@ import static org.mockito.Mockito.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.util.unit.DataSize;
 
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.model.PresentationContent;
@@ -32,7 +35,34 @@ class PresentationFilesTest {
     @BeforeEach
     void setUp() throws Exception {
         directory = Files.createDirectory(root.resolve("output"));
-        files = new PresentationFiles(templates, directory.toString());
+        files = new PresentationFiles(templates, directory.toString(), defaults(ImageSettings.class));
+    }
+
+    @Test
+    void configuredImageCountDimensionsAndPixelQuotaAreEnforced() throws Exception {
+        files = new PresentationFiles(templates, directory.toString(),
+                new ImageSettings(DataSize.ofKilobytes(1), 4, 8, 1, DataSize.ofKilobytes(1)));
+        assertImageError(png(5, 1), "image_limit");
+        assertImageError(png(3, 3), "image_limit");
+        assertImageError(new byte[1025], "image_limit");
+        UUID id = UUID.randomUUID();
+        files.storeImage(id, png(2, 2));
+        assertThatThrownBy(() -> files.storeImage(id, png(2, 2)))
+                .isInstanceOfSatisfying(GenerationException.class,
+                        error -> assertThat(error.code()).isEqualTo("image_limit"));
+    }
+
+    @Test
+    void configuredStorageBudgetCountsAlreadyStoredNormalizedBytes() throws Exception {
+        UUID id = UUID.randomUUID();
+        var first = files.storeImage(id, png(2, 2));
+        long bytes = files.imageBytes(id, first.id()).length;
+        files = new PresentationFiles(templates, directory.toString(),
+                new ImageSettings(DataSize.ofMegabytes(10), 8192, 32000000, 100, DataSize.ofBytes(bytes)));
+        assertThatThrownBy(() -> files.storeImage(id, png(2, 2)))
+                .isInstanceOfSatisfying(GenerationException.class,
+                        error -> assertThat(error.code()).isEqualTo("image_limit"));
+        assertThat(files.image(id, first.id())).exists();
     }
 
     @Test

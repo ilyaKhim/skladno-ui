@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.model.PresentationContent;
-import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.template.PresentationTemplateService;
 import ru.godeck.presentation.template.TextLengthMode;
 
@@ -41,12 +40,15 @@ public class PresentationFiles {
     private static final Logger log = LoggerFactory.getLogger(PresentationFiles.class);
     private final Path directory;
     private final PresentationTemplateService templates;
+    private final ImageSettings images;
 
     public PresentationFiles(
             PresentationTemplateService templates,
-            @Value("${godeck.generation.data-dir:./data/presentations}") String directory) {
+            @Value("${godeck.generation.data-dir:./data/presentations}") String directory,
+            ImageSettings images) {
         this.templates = templates;
         this.directory = Path.of(directory).toAbsolutePath().normalize();
+        this.images = images;
     }
 
     /**
@@ -114,11 +116,11 @@ public class PresentationFiles {
     public ImageAsset storeImage(UUID presentationId, byte[] bytes) {
         if (bytes == null || bytes.length == 0)
             throw new GenerationException(GenerationError.INVALID_IMAGE);
-        if (bytes.length > PresentationPolicy.MAX_IMAGE_UPLOAD_BYTES)
+        if (bytes.length > images.maxUploadSize().toBytes())
             throw new GenerationException(GenerationError.IMAGE_LIMIT);
         DecodedImage decoded = decodeImage(bytes);
         byte[] normalized = encodePng(decoded.image());
-        if (normalized.length > PresentationPolicy.MAX_IMAGE_UPLOAD_BYTES)
+        if (normalized.length > images.maxUploadSize().toBytes())
             throw new GenerationException(GenerationError.IMAGE_LIMIT);
 
         Path assets = assetDirectory(presentationId);
@@ -142,7 +144,7 @@ public class PresentationFiles {
     }
 
     /** Reads image headers and pixels while rejecting unsupported formats and decompression bombs. */
-    private static DecodedImage decodeImage(byte[] bytes) {
+    private DecodedImage decodeImage(byte[] bytes) {
         try (ImageInputStream input =
                 ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
             if (input == null) throw new IOException();
@@ -158,9 +160,9 @@ public class PresentationFiles {
                 int height = reader.getHeight(0);
                 if (width < 1
                         || height < 1
-                        || width > PresentationPolicy.MAX_IMAGE_DIMENSION
-                        || height > PresentationPolicy.MAX_IMAGE_DIMENSION
-                        || (long) width * height > PresentationPolicy.MAX_IMAGE_PIXELS)
+                        || width > images.maxDimension()
+                        || height > images.maxDimension()
+                        || (long) width * height > images.maxPixels())
                     throw new GenerationException(GenerationError.IMAGE_LIMIT);
                 BufferedImage image = reader.read(0);
                 if (image == null) throw new IOException();
@@ -223,7 +225,7 @@ public class PresentationFiles {
     }
 
     /** Enforces per-presentation asset count and byte quotas before publishing a new image. */
-    private static void enforceAssetQuota(Path assets, long incomingBytes) throws IOException {
+    private void enforceAssetQuota(Path assets, long incomingBytes) throws IOException {
         int count = 0;
         long total = 0;
         try (var paths = Files.list(assets)) {
@@ -233,8 +235,8 @@ public class PresentationFiles {
                 total += Files.size(path);
             }
         }
-        if (count >= PresentationPolicy.MAX_IMAGES_PER_PRESENTATION
-                || total + incomingBytes > PresentationPolicy.MAX_IMAGE_STORAGE_BYTES)
+        if (count >= images.maxPerPresentation()
+                || total + incomingBytes > images.maxStorageSize().toBytes())
             throw new GenerationException(GenerationError.IMAGE_LIMIT);
     }
 

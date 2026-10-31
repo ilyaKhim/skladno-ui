@@ -13,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import ru.godeck.auth.exception.AuthError;
+import ru.godeck.auth.config.AuthSettings;
 import ru.godeck.auth.security.AuthPrincipal;
 import ru.godeck.auth.service.AuthService;
 import ru.godeck.common.security.SecurityPolicy;
@@ -43,12 +44,15 @@ final class SessionSecurityFilter extends OncePerRequestFilter {
     private final AuthService service;
     private final Clock clock;
     private final boolean devBypass;
+    private final AuthSettings.IpProtection limits;
     private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
 
-    SessionSecurityFilter(AuthService service, Clock clock, boolean devBypass) {
+    SessionSecurityFilter(AuthService service, Clock clock, boolean devBypass,
+            AuthSettings.IpProtection limits) {
         this.service = service;
         this.clock = clock;
         this.devBypass = devBypass;
+        this.limits = limits;
     }
 
     /**
@@ -87,11 +91,11 @@ final class SessionSecurityFilter extends OncePerRequestFilter {
     private boolean rateLimited(HttpServletRequest request, HttpServletResponse response)
             throws IOException {
         Instant now = clock.instant();
-        if (windows.size() >= SecurityPolicy.MAX_TRACKED_IP_ADDRESSES)
+        if (windows.size() >= limits.maxTrackedAddresses())
             windows.entrySet().removeIf(e -> !e.getValue().end().isAfter(now));
         String key = request.getRemoteAddr(); // Never trust a client-supplied X-Forwarded-For.
         if (!windows.containsKey(key)
-                && windows.size() >= SecurityPolicy.MAX_TRACKED_IP_ADDRESSES) {
+                && windows.size() >= limits.maxTrackedAddresses()) {
             reject(response);
             return true;
         }
@@ -101,9 +105,9 @@ final class SessionSecurityFilter extends OncePerRequestFilter {
                         (k, old) ->
                                 old == null || !old.end().isAfter(now)
                                         ? new Window(
-                                                now.plus(SecurityPolicy.AUTH_REQUEST_WINDOW), 1)
+                                                now.plus(limits.requestWindow()), 1)
                                         : new Window(old.end(), old.count() + 1));
-        if (window.count() > SecurityPolicy.MAX_AUTH_REQUESTS_PER_WINDOW) {
+        if (window.count() > limits.maxRequestsPerWindow()) {
             response.setHeader(
                     "Retry-After",
                     Long.toString(Math.max(1, Duration.between(now, window.end()).toSeconds())));

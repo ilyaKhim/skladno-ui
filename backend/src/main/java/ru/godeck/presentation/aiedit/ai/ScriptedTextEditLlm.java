@@ -5,9 +5,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import ru.godeck.common.text.BackendMessages;
-import ru.godeck.presentation.aiedit.action.builtin.CustomAction;
-import ru.godeck.presentation.aiedit.action.builtin.RephraseAction;
-import ru.godeck.presentation.aiedit.action.builtin.ShortenAction;
+import ru.godeck.presentation.aiedit.action.TextEditAction;
 import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.model.AiCallContext;
@@ -112,7 +110,7 @@ public class ScriptedTextEditLlm implements TextEditLlm {
 
     private Map<String, Object> answer(TextEditPrompt prompt) {
         Map<String, Object> answer = new LinkedHashMap<>();
-        if (CustomAction.ID.equals(prompt.action())
+        if (TextEditAction.CUSTOM.id().equals(prompt.action())
                 && prompt.request() != null
                 && prompt.request().toLowerCase(Locale.ROOT).contains(UNSUPPORTED_WORD)) {
             answer.put("status", TextEditRequestFactory.STATUS_UNSUPPORTED);
@@ -136,9 +134,9 @@ public class ScriptedTextEditLlm implements TextEditLlm {
         if (text.contains(LONG))
             return filler(Math.min(prompt.maxChars() + LONG_OVERFLOW, prompt.hardMaxChars()));
         List<String> words = new ArrayList<>(Arrays.asList(text.strip().split("\\s+")));
-        if (ShortenAction.ID.equals(prompt.action()))
+        if (TextEditAction.SHORTEN.id().equals(prompt.action()))
             return String.join(" ", words.subList(0, Math.max(1, words.size() / 2)));
-        if (RephraseAction.ID.equals(prompt.action())) Collections.reverse(words);
+        if (TextEditAction.REPHRASE.id().equals(prompt.action())) Collections.reverse(words);
         else if (words.size() > 1) words.add(words.removeFirst());
         return String.join(" ", words);
     }

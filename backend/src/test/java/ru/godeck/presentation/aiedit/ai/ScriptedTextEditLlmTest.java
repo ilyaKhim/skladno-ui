@@ -1,5 +1,8 @@
 package ru.godeck.presentation.aiedit.ai;
 
+import static ru.godeck.support.TestSettings.defaults;
+import ru.godeck.presentation.aiedit.config.TextEditPromptSettings;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
@@ -44,7 +47,7 @@ class ScriptedTextEditLlmTest {
     private ScriptedTextEditLlm create(MockEnvironment environment) {
         return new ScriptedTextEditLlm(
                 environment,
-                new TextEditRequestFactory(json),
+                new TextEditRequestFactory(json, defaults(TextEditPromptSettings.class)),
                 new TextEditResponseParser(json),
                 mock(PresentationAiCallHistory.class),
                 json);

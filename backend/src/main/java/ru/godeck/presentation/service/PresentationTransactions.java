@@ -9,12 +9,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import ru.godeck.common.text.BackendMessages;
 import ru.godeck.presentation.ai.PresentationModelCatalog;
+import ru.godeck.presentation.config.GenerationSettings;
 import ru.godeck.presentation.dto.PresentationView;
 import ru.godeck.presentation.entity.Presentation;
 import ru.godeck.presentation.entity.PresentationRevision;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
-import ru.godeck.presentation.material.MaterialPolicy;
 import ru.godeck.presentation.model.GenerationMode;
 import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.repository.PresentationRepository;
@@ -42,16 +42,19 @@ public class PresentationTransactions {
     private final PresentationRevisionRepository revisions;
     private final PresentationModelCatalog models;
     private final Clock clock;
+    private final GenerationSettings settings;
 
     public PresentationTransactions(
             PresentationRepository presentations,
             PresentationRevisionRepository revisions,
             PresentationModelCatalog models,
-            Clock clock) {
+            Clock clock,
+            GenerationSettings settings) {
         this.presentations = presentations;
         this.revisions = revisions;
         this.models = models;
         this.clock = clock;
+        this.settings = settings;
     }
 
     /**
@@ -66,12 +69,12 @@ public class PresentationTransactions {
     public Optional<Job> claim() {
         Instant now = clock.instant();
         presentations.failInterrupted(
-                now.minus(PresentationPolicy.GENERATION_TIMEOUT),
+                now.minus(settings.jobTimeout()),
                 now,
                 RUNNING,
                 FAILED,
                 GenerationError.WORKER_INTERRUPTED.code(),
-                now.plus(MaterialPolicy.RETENTION));
+                now.plus(settings.sourceRetention()));
         return presentations
                 .findNextQueuedForUpdate()
                 .map(
@@ -104,7 +107,7 @@ public class PresentationTransactions {
         presentations
                 .findForCompletion(job.id())
                 .filter(p -> p.getStatus() == RUNNING)
-                .ifPresent(p -> p.fail(code, clock.instant()));
+                .ifPresent(p -> p.fail(code, clock.instant(), settings.sourceRetention()));
     }
 
     /**
@@ -141,13 +144,13 @@ public class PresentationTransactions {
         if (p.getEditorJson() != null)
             throw new GenerationException(GenerationError.EDIT_IN_PROGRESS);
         if (p.getEditId() != null
-                && p.getEditStartedAt().isAfter(now.minus(PresentationPolicy.EDIT_LEASE_TIMEOUT)))
+                && p.getEditStartedAt().isAfter(now.minus(settings.editLeaseTimeout())))
             throw editing();
         if (revisions.countByUserIdAndVersionGreaterThanAndCreatedAtAfter(
                         userId,
                         PresentationPolicy.INITIAL_VERSION,
-                        now.minus(PresentationPolicy.QUOTA_WINDOW))
-                >= PresentationPolicy.MAX_EDITS_PER_DAY) {
+                        now.minus(settings.quotaWindow()))
+                >= settings.maxEditsPerWindow()) {
             throw new GenerationException(GenerationError.EDIT_LIMIT);
         }
         String model =
@@ -188,7 +191,7 @@ public class PresentationTransactions {
             throw new GenerationException(GenerationError.EDIT_EXPIRED);
         }
         int version = edit.baseVersion() + 1;
-        p.succeed(json, path, count, edit.model(), version, clock.instant());
+        p.succeed(json, path, count, edit.model(), version, clock.instant(), settings.sourceRetention());
         p.clearEdit();
         revisions.save(
                 new PresentationRevision(
@@ -273,14 +276,14 @@ public class PresentationTransactions {
                 || p.getEditorRevision() != expectedDraftRevision)
             throw new GenerationException(GenerationError.EDIT_EXPIRED);
         if (p.getEditId() != null
-                && p.getEditStartedAt().isAfter(now.minus(PresentationPolicy.EDIT_LEASE_TIMEOUT)))
+                && p.getEditStartedAt().isAfter(now.minus(settings.editLeaseTimeout())))
             throw editing();
         if (p.getCurrentVersion() > 0
                 && revisions.countByUserIdAndVersionGreaterThanAndCreatedAtAfter(
                                 userId,
                                 PresentationPolicy.INITIAL_VERSION,
-                                now.minus(PresentationPolicy.QUOTA_WINDOW))
-                        >= PresentationPolicy.MAX_EDITS_PER_DAY)
+                                now.minus(settings.quotaWindow()))
+                        >= settings.maxEditsPerWindow())
             throw new GenerationException(GenerationError.EDIT_LIMIT);
         UUID token = UUID.randomUUID();
         p.beginEdit(token, now);
@@ -314,7 +317,7 @@ public class PresentationTransactions {
                 || p.getEditorRevision() != edit.draftRevision())
             throw new GenerationException(GenerationError.EDIT_EXPIRED);
         int version = edit.baseVersion() + 1;
-        p.succeed(json, path, count, edit.model(), version, clock.instant());
+        p.succeed(json, path, count, edit.model(), version, clock.instant(), settings.sourceRetention());
         p.bumpEditorRevision(clock.instant());
         p.clearEdit();
         revisions.save(

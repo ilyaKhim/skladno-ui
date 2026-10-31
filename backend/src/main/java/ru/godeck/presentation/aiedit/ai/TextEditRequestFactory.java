@@ -3,7 +3,7 @@ package ru.godeck.presentation.aiedit.ai;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
-import ru.godeck.presentation.aiedit.policy.AiEditPolicy;
+import ru.godeck.presentation.aiedit.config.TextEditPromptSettings;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -30,9 +30,11 @@ public class TextEditRequestFactory {
     public static final String STATUS_UNSUPPORTED = "unsupported";
     private static final String INSTRUCTIONS = read("text-edit-instructions.txt");
     private final ObjectMapper json;
+    private final TextEditPromptSettings settings;
 
-    public TextEditRequestFactory(ObjectMapper json) {
+    public TextEditRequestFactory(ObjectMapper json, TextEditPromptSettings settings) {
         this.json = json;
+        this.settings = settings;
     }
 
     /** Static model instructions, with line endings normalized to LF. */
@@ -60,16 +62,16 @@ public class TextEditRequestFactory {
                                 schema())));
         request.put("max_output_tokens", maxOutputTokens(prompt.variants(), prompt.maxChars()));
         request.put("store", false);
-        String effort = AiEditPolicy.REASONING_EFFORT_BY_MODEL.get(prompt.model());
-        if (effort != null) request.put("reasoning", Map.of("effort", effort));
+        String effort = settings.reasoningEfforts().get(prompt.model());
+        if (effort != null && !effort.isBlank()) request.put("reasoning", Map.of("effort", effort));
         return request;
     }
 
-    /** {@code min(2048, 256 + variants × ceil(max_chars / 2))}. */
-    public static int maxOutputTokens(int variants, int maxChars) {
+    /** Applies the configured cap to a length-based budget; arithmetic stays wide until capped. */
+    public int maxOutputTokens(int variants, int maxChars) {
         long perVariant = (maxChars + 1L) / 2;
-        long budget = AiEditPolicy.BASE_OUTPUT_TOKENS + variants * perVariant;
-        return (int) Math.min(AiEditPolicy.MAX_OUTPUT_TOKENS, budget);
+        long budget = settings.baseOutputTokens() + variants * perVariant;
+        return (int) Math.min(settings.maxOutputTokens(), budget);
     }
 
     /** The model-visible data, in a fixed key order; {@code max_chars} is always present. */

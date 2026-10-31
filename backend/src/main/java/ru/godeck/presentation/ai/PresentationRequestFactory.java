@@ -3,6 +3,7 @@ package ru.godeck.presentation.ai;
 import org.springframework.stereotype.Component;
 
 import ru.godeck.presentation.model.GenerationInput;
+import ru.godeck.presentation.config.GenerationSettings;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -19,8 +20,12 @@ import java.util.Map;
  */
 @Component
 public class PresentationRequestFactory {
-    private static final int MAX_OUTPUT_TOKENS = 12_000;
     private static final ObjectMapper JSON = new ObjectMapper();
+    private final GenerationSettings settings;
+
+    public PresentationRequestFactory(GenerationSettings settings) {
+        this.settings = settings;
+    }
 
     /**
      * Creates a Responses API payload whose schema requires every template field and slide
@@ -100,7 +105,7 @@ public class PresentationRequestFactory {
                                 "schema",
                                 objectSchema(properties))),
                 "max_output_tokens",
-                MAX_OUTPUT_TOKENS,
+                settings.maxOutputTokens(),
                 "store",
                 false);
     }

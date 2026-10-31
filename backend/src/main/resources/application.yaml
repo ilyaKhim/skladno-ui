@@ -3,7 +3,7 @@ server:
   port: ${PORT:8081}
   servlet:
     session:
-      timeout: 7d
+      timeout: ${SESSION_TIMEOUT:7d}
       cookie:
         name: GODECK_SESSION
         http-only: true
@@ -35,9 +35,9 @@ spring:
     properties:
       mail.smtp.auth: ${SMTP_AUTH:false}
       mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
-      mail.smtp.connectiontimeout: 5000
-      mail.smtp.timeout: 5000
-      mail.smtp.writetimeout: 5000
+      mail.smtp.connectiontimeout: ${SMTP_CONNECT_TIMEOUT_MS:5000}
+      mail.smtp.timeout: ${SMTP_READ_TIMEOUT_MS:5000}
+      mail.smtp.writetimeout: ${SMTP_WRITE_TIMEOUT_MS:5000}
   servlet:
     multipart:
       max-file-size: 10MB
@@ -47,13 +47,65 @@ godeck:
   mail-from: ${MAIL_FROM:GoDeck <noreply@godeck.local>}
   auth:
     dev-bypass: ${AUTH_BYPASS:false}
+    code-ttl: ${AUTH_CODE_TTL:10m}
+    reset-ttl: ${AUTH_RESET_TTL:30m}
+    login-lock: ${AUTH_LOGIN_LOCK:15m}
+    resend-cooldown: ${AUTH_RESEND_COOLDOWN:60s}
+    max-failed-attempts: ${AUTH_MAX_FAILED_ATTEMPTS:5}
+    ip:
+      max-tracked-addresses: ${AUTH_MAX_TRACKED_IP_ADDRESSES:10000}
+      max-requests-per-window: ${AUTH_MAX_REQUESTS_PER_WINDOW:100}
+      request-window: ${AUTH_REQUEST_WINDOW:15m}
   generation:
     enabled: ${GODECK_OPENAI_ENABLED:false}
     api-key: ${OPENAI_API_KEY:}
     responses-url: ${GODECK_OPENAI_RESPONSES_URL:https://api.openai.com/v1/responses}
     model: ${OPENAI_MODEL:gpt-6.1-sol}
     data-dir: ${GODECK_DATA_DIR:./data/presentations}
+    # Operational overrides and their safety constraints: docs/backend-configuration.md.
+    max-generations-per-window: ${GENERATION_MAX_PER_WINDOW:10}
+    max-active-presentations: ${GENERATION_MAX_ACTIVE:3}
+    max-edits-per-window: ${PRESENTATION_MAX_EDITS_PER_WINDOW:30}
+    quota-window: ${GENERATION_QUOTA_WINDOW:24h}
+    connect-timeout: ${GENERATION_CONNECT_TIMEOUT:10s}
+    read-timeout: ${GENERATION_READ_TIMEOUT:2m}
+    job-timeout: ${GENERATION_JOB_TIMEOUT:5m}
+    edit-lease-timeout: ${PRESENTATION_EDIT_LEASE_TIMEOUT:5m}
+    poll-ms: ${GENERATION_POLL_MS:1500}
+    source-retention: ${GENERATION_SOURCE_RETENTION:30d}
+    max-output-tokens: ${GENERATION_MAX_OUTPUT_TOKENS:12000}
   ai-edit:
     model: ${GODECK_AI_EDIT_MODEL:gpt-5.4-mini}
     # "scripted" is a deterministic stub allowed only in the test and e2e profiles.
     llm: ${GODECK_AI_EDIT_LLM:openai}
+    max-edits-per-window: ${AI_EDIT_MAX_PER_WINDOW:100}
+    quota-window: ${AI_EDIT_QUOTA_WINDOW:24h}
+    connect-timeout: ${AI_EDIT_CONNECT_TIMEOUT:10s}
+    read-timeout: ${AI_EDIT_READ_TIMEOUT:30s}
+    stale-after: ${AI_EDIT_STALE_AFTER:2m}
+    retention: ${AI_EDIT_RETENTION:90d}
+    retention-batch-size: ${AI_EDIT_RETENTION_BATCH_SIZE:1000}
+    retention-cron: ${AI_EDIT_RETENTION_CRON:0 17 3 * * *}
+    prompt:
+      max-output-tokens: ${AI_EDIT_MAX_OUTPUT_TOKENS:2048}
+      base-output-tokens: ${AI_EDIT_BASE_OUTPUT_TOKENS:256}
+      shorten-ratio: ${AI_EDIT_SHORTEN_RATIO:0.7}
+      title-max-chars: ${AI_EDIT_TITLE_MAX_CHARS:80}
+      role-max-chars: ${AI_EDIT_ROLE_MAX_CHARS:160}
+      reasoning-efforts:
+        "[gpt-5.4-mini]": ${AI_EDIT_GPT54_MINI_REASONING_EFFORT:low}
+        "[gpt-5.4]": ${AI_EDIT_GPT54_REASONING_EFFORT:low}
+  images:
+    max-upload-size: ${IMAGE_MAX_UPLOAD_SIZE:10MB}
+    max-dimension: ${IMAGE_MAX_DIMENSION:8192}
+    max-pixels: ${IMAGE_MAX_PIXELS:32000000}
+    max-per-presentation: ${IMAGE_MAX_PER_PRESENTATION:100}
+    max-storage-size: ${IMAGE_MAX_STORAGE_SIZE:100MB}
+  materials:
+    cleanup-ms: ${MATERIAL_INPUT_CLEANUP_MS:3600000}
+    jobs:
+      max-active: ${MATERIAL_JOBS_MAX_ACTIVE:20}
+      max-active-per-user: ${MATERIAL_JOBS_MAX_ACTIVE_PER_USER:2}
+      queue-timeout: ${MATERIAL_JOBS_QUEUE_TIMEOUT:60s}
+      result-ttl: ${MATERIAL_JOBS_RESULT_TTL:1h}
+      cleanup-interval: ${MATERIAL_JOBS_CLEANUP_INTERVAL:60s}

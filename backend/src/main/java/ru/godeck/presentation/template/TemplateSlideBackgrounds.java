@@ -50,7 +50,7 @@ public class TemplateSlideBackgrounds {
         try (var show = new XMLSlideShow(new ByteArrayInputStream(templates.source(templateId)))) {
             var slide = show.getSlides().get(sourceSlide - 1);
             clearMarkers(slide.getShapes());
-            var size = PresentationTemplateService.pageBounds(show);
+            var size = TemplateShapes.pageBounds(show);
             var image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
             var graphics = image.createGraphics();
             try {

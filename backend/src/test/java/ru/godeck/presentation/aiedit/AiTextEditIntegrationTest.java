@@ -34,6 +34,7 @@ import ru.godeck.common.security.SecurityPolicy;
 import ru.godeck.presentation.aiedit.ai.ScriptedTextEditLlm;
 import ru.godeck.presentation.aiedit.ai.TextEditPrompt;
 import ru.godeck.presentation.aiedit.service.AiEditRetention;
+import ru.godeck.presentation.aiedit.config.TextEditPromptSettings;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.service.PresentationService;
 import ru.godeck.presentation.template.PresentationTemplateService;
@@ -69,6 +70,10 @@ import java.util.stream.Stream;
             "godeck.generation.enabled=false",
             "godeck.generation.poll-ms=86400000",
             "godeck.ai-edit.llm=scripted",
+            "godeck.ai-edit.max-edits-per-window=7",
+            "godeck.ai-edit.quota-window=1h",
+            "godeck.ai-edit.retention=10d",
+            "godeck.ai-edit.retention-batch-size=1",
             "spring.datasource.hikari.schema=ai_edit_test",
             "spring.flyway.default-schema=ai_edit_test",
             "spring.flyway.schemas=ai_edit_test"
@@ -92,6 +97,7 @@ class AiTextEditIntegrationTest {
     @Autowired PresentationService service;
     @Autowired PresentationWorker worker;
     @Autowired AiEditRetention retention;
+    @Autowired TextEditPromptSettings promptSettings;
     @MockitoSpyBean ScriptedTextEditLlm llm;
 
     String field;
@@ -109,6 +115,12 @@ class AiTextEditIntegrationTest {
                 "spring.datasource.url",
                 () -> database.replace("currentSchema=auth_test", "currentSchema=ai_edit_test"));
         properties.add("godeck.generation.data-dir", OUTPUT::toString);
+    }
+
+    @Test
+    void productionYamlKeepsTheExactReasoningModelKeys() {
+        assertThat(promptSettings.reasoningEfforts()).containsExactlyInAnyOrderEntriesOf(
+                Map.of("gpt-5.4-mini", "low", "gpt-5.4", "low"));
     }
 
     @BeforeEach
@@ -180,8 +192,8 @@ class AiTextEditIntegrationTest {
                         .andExpect(jsonPath("$.model").value("gpt-5.4-mini"))
                         .andExpect(jsonPath("$.usage.input_tokens").isNumber())
                         .andExpect(jsonPath("$.usage.output_tokens").isNumber())
-                        .andExpect(jsonPath("$.quota.limit").value(100))
-                        .andExpect(jsonPath("$.quota.remaining").value(99))
+                        .andExpect(jsonPath("$.quota.limit").value(7))
+                        .andExpect(jsonPath("$.quota.remaining").value(6))
                         .andExpect(jsonPath("$.quota.resets_at").isString())
                         .andExpect(jsonPath("$.replayed").value(false))
                         .andReturn()
@@ -383,21 +395,21 @@ class AiTextEditIntegrationTest {
     }
 
     @Test
-    void dailyQuotaStopsTheHundredAndFirstEditWithoutAModelCall() throws Exception {
+    void configuredQuotaStopsTheEighthEditWithoutAModelCall() throws Exception {
         Instant now = Instant.now();
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < 7; i++)
             insertEdit(OWNER, id, "ok", now.minus(i, ChronoUnit.MINUTES));
         String message =
                 read(perform(OWNER, id, request("shorten", Map.of(), fieldTarget(), "Текст поля"))
                                 .andExpect(status().isTooManyRequests())
                                 .andExpect(jsonPath("$.error.code").value("ai_edit_limit")))
                         .path("error").path("message").asText();
-        Instant resetsAt = now.minus(99, ChronoUnit.MINUTES).plus(24, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
-        assertThat(message).contains("МСК").contains(resetsAt.toString().substring(0, 16));
+        Instant resetsAt = now.minus(6, ChronoUnit.MINUTES).plus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS);
+        assertThat(message).contains("7", "МСК", resetsAt.toString().substring(0, 16));
         verify(llm, never()).edit(any());
-        db.update("UPDATE presentation_ai_edits SET created_at = created_at - interval '25 hours'");
+        db.update("UPDATE presentation_ai_edits SET created_at = created_at - interval '2 hours'");
         ok(request("shorten", Map.of(), fieldTarget(), "Текст поля после окна"))
-                .andExpect(jsonPath("$.quota.remaining").value(99));
+                .andExpect(jsonPath("$.quota.remaining").value(6));
     }
 
     @Test
@@ -493,8 +505,8 @@ class AiTextEditIntegrationTest {
 
     @Test
     void retentionRemovesOnlyOldTextEditRecords() throws Exception {
-        Instant old = Instant.now().minus(91, ChronoUnit.DAYS);
-        Instant recent = Instant.now().minus(89, ChronoUnit.DAYS);
+        Instant old = Instant.now().minus(11, ChronoUnit.DAYS);
+        Instant recent = Instant.now().minus(9, ChronoUnit.DAYS);
         UUID oldEdit = insertEdit(OWNER, id, "ok", old);
         UUID recentEdit = insertEdit(OWNER, id, "ok", recent);
         db.update("UPDATE presentation_ai_edits SET refines_edit_id=? WHERE id=?", oldEdit, recentEdit);

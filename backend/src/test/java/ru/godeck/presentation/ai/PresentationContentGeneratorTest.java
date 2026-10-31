@@ -1,5 +1,8 @@
 package ru.godeck.presentation.ai;
 
+import static ru.godeck.support.TestSettings.defaults;
+import ru.godeck.presentation.config.GenerationSettings;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
@@ -49,7 +52,7 @@ class PresentationContentGeneratorTest {
                 new PresentationContentGenerator(
                         client,
                         json,
-                        new PresentationRequestFactory(),
+                        new PresentationRequestFactory(defaults(GenerationSettings.class)),
                         new OpenAiResponseReader(json, new PresentationContentCodec(json)),
                         history,
                         "unit-test-key",
@@ -210,7 +213,7 @@ class PresentationContentGeneratorTest {
                 new PresentationContentGenerator(
                         client,
                         json,
-                        new PresentationRequestFactory(),
+                        new PresentationRequestFactory(defaults(GenerationSettings.class)),
                         new OpenAiResponseReader(json, new PresentationContentCodec(json)),
                         history,
                         "",
@@ -219,7 +222,7 @@ class PresentationContentGeneratorTest {
                 new PresentationContentGenerator(
                         client,
                         json,
-                        new PresentationRequestFactory(),
+                        new PresentationRequestFactory(defaults(GenerationSettings.class)),
                         new OpenAiResponseReader(json, new PresentationContentCodec(json)),
                         history,
                         "unit-test-key",

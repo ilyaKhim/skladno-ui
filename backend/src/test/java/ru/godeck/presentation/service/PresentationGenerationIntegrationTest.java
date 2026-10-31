@@ -1,5 +1,8 @@
 package ru.godeck.presentation.service;
 
+import static ru.godeck.support.TestSettings.defaults;
+import ru.godeck.presentation.config.GenerationSettings;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -70,6 +73,12 @@ import java.util.concurrent.TimeUnit;
         properties = {
             "godeck.auth.dev-bypass=true",
             "godeck.generation.poll-ms=86400000",
+            "godeck.generation.max-generations-per-window=6",
+            "godeck.generation.max-active-presentations=4",
+            "godeck.generation.quota-window=1h",
+            "godeck.generation.job-timeout=4m",
+            "godeck.generation.edit-lease-timeout=4m",
+            "godeck.generation.source-retention=7d",
             "spring.datasource.hikari.schema=generation_test",
             "spring.flyway.default-schema=generation_test",
             "spring.flyway.schemas=generation_test"
@@ -300,6 +309,28 @@ class PresentationGenerationIntegrationTest {
         }
         assertThat(db.queryForObject("SELECT count(*) FROM generated_presentations", Long.class))
                 .isZero();
+    }
+
+    @Test
+    void configuredSourceRetentionStartsAtTerminalStateAndLaterPublicationsDoNotExtendIt() throws Exception {
+        var source = new SourceMaterial("txt", "input.txt", "Private source text");
+        when(generator.generate(any(), anyString(), anyMap(), anyList(), anyString(), any(GenerationInput.class)))
+                .thenReturn(typedPlan("Source retention"));
+        UUID id = create(USER, "aurora", "Source retention", "openai", null, null, null, null, source).id();
+        worker.processOne();
+        assertThat(db.queryForObject("SELECT generation_input_expires_at FROM generated_presentations WHERE id=?",
+                java.sql.Timestamp.class, id)).isNull();
+        var before = java.time.Instant.now();
+        var saved = editor.save(USER, id, snapshot(editor.get(USER, id)));
+        editor.commit(USER, id, 0, saved.draftRevision());
+        var expires = db.queryForObject("SELECT generation_input_expires_at FROM generated_presentations WHERE id=?",
+                java.sql.Timestamp.class, id).toInstant();
+        assertThat(expires).isBetween(before.plus(java.time.Duration.ofDays(7)),
+                java.time.Instant.now().plus(java.time.Duration.ofDays(7)));
+        saved = editor.save(USER, id, snapshot(editor.get(USER, id)));
+        editor.commit(USER, id, 1, saved.draftRevision());
+        assertThat(db.queryForObject("SELECT generation_input_expires_at FROM generated_presentations WHERE id=?",
+                java.sql.Timestamp.class, id).toInstant()).isEqualTo(expires);
     }
 
     @Test
@@ -645,7 +676,7 @@ class PresentationGenerationIntegrationTest {
         UUID id = readyManual();
         var old = transactions.beginEdit(USER, id, null);
         db.update(
-                "UPDATE generated_presentations SET edit_started_at=now()-interval '6 minutes'"
+                "UPDATE generated_presentations SET edit_started_at=now()-interval '270 seconds'"
                         + " WHERE id=?",
                 id);
         var current = transactions.beginEdit(USER, id, "gpt-6-astra");
@@ -796,7 +827,7 @@ class PresentationGenerationIntegrationTest {
         service.submitManual(USER, id, typedPlan("Interrupted"));
         var job = transactions.claim().orElseThrow();
         db.update(
-                "UPDATE generated_presentations SET updated_at=now()-interval '6 minutes' WHERE"
+                "UPDATE generated_presentations SET updated_at=now()-interval '270 seconds' WHERE"
                         + " id=?",
                 id);
         assertThat(transactions.claim()).isEmpty();
@@ -907,15 +938,29 @@ class PresentationGenerationIntegrationTest {
     }
 
     @Test
+    void configuredGenerationQuotaUsesItsOwnRollingWindow() {
+        for (int i = 0; i < 6; i++) {
+            var presentation = create(USER, "aurora", "Topic " + i, "manual", null, null);
+            service.cancel(USER, presentation.id());
+        }
+        assertThatThrownBy(() -> create(USER, "aurora", "Over quota", "manual", null, null))
+                .isInstanceOfSatisfying(GenerationException.class,
+                        error -> assertThat(error.code()).isEqualTo("generation_limit"));
+        db.update("UPDATE generated_presentations SET created_at=created_at-interval '2 hours'");
+        assertThat(create(USER, "aurora", "New window", "manual", null, null)).isNotNull();
+    }
+
+    @Test
     void activeQuotaBlocksNewJobsButStillPermitsAnIdempotentRetry() {
         String key = UUID.randomUUID().toString();
         var first = create(USER, "aurora", "One", "manual", key, null);
         create(USER, "aurora", "Two", "manual", null, null);
         create(USER, "aurora", "Three", "manual", null, null);
+        create(USER, "aurora", "Four", "manual", null, null);
         assertThat(
                         assertThrows(
                                         GenerationException.class,
-                                        () -> create(USER, "aurora", "Four", "manual", null, null))
+                                        () -> create(USER, "aurora", "Five", "manual", null, null))
                                 .code())
                 .isEqualTo("generation_limit");
         assertThat(create(USER, "aurora", "One", "manual", key, null).id()).isEqualTo(first.id());
@@ -1139,7 +1184,7 @@ class PresentationGenerationIntegrationTest {
                 new PresentationContentGenerator(
                         builder.build(),
                         json,
-                        new PresentationRequestFactory(),
+                        new PresentationRequestFactory(defaults(GenerationSettings.class)),
                         new OpenAiResponseReader(json, codec),
                         aiHistory,
                         "integration-test-key",

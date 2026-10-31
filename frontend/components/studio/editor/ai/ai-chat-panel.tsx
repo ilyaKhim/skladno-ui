@@ -121,7 +121,7 @@ export function AiChatPanel({ chat, deck, target, block, layout, showHeader = tr
       <div className="flex shrink-0 flex-col gap-2 border-t border-border px-3 py-3">
         {state.quota && (
           <p className="text-[11px] text-muted-foreground">
-            Осталось {state.quota.remaining} {plural(state.quota.remaining, 'правка', 'правки', 'правок')} сегодня
+            Доступно {state.quota.remaining} {plural(state.quota.remaining, 'правка', 'правки', 'правок')}
           </p>
         )}
         {catalogError && (

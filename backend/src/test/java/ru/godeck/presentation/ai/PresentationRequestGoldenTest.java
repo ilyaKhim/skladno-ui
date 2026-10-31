@@ -1,5 +1,8 @@
 package ru.godeck.presentation.ai;
 
+import static ru.godeck.support.TestSettings.defaults;
+import ru.godeck.presentation.config.GenerationSettings;
+
 import static org.assertj.core.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
@@ -41,7 +44,7 @@ class PresentationRequestGoldenTest {
         fields.put("SUBTITLE", 110);
         fields.put("STATEMENT", 46);
         var request =
-                new PresentationRequestFactory()
+                new PresentationRequestFactory(defaults(GenerationSettings.class))
                         .create(
                                 "Описание шаблона (JSON):\n{\"name\":\"Тест\"}\n\nЗадача"
                                         + " пользователя: GoDeck для отделов продаж",

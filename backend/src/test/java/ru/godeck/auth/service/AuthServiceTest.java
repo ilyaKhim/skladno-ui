@@ -15,7 +15,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import ru.godeck.auth.entity.*;
 import ru.godeck.auth.exception.*;
-import ru.godeck.auth.policy.AuthPolicy;
+import ru.godeck.auth.config.AuthSettings;
+import ru.godeck.support.TestSettings;
 import ru.godeck.auth.repository.*;
 
 import java.sql.SQLException;
@@ -32,6 +33,7 @@ class AuthServiceTest {
     private final PasswordEncoder passwords = mock(PasswordEncoder.class);
     private final AuthMailService mail = mock(AuthMailService.class);
     private AuthService service;
+    private final AuthSettings settings = TestSettings.defaults(AuthSettings.class);
 
     @BeforeEach
     void setUp() {
@@ -43,7 +45,8 @@ class AuthServiceTest {
                         verifications,
                         passwords,
                         mail,
-                        Clock.fixed(NOW, ZoneOffset.UTC));
+                        Clock.fixed(NOW, ZoneOffset.UTC),
+                        settings);
     }
 
     @Test
@@ -121,7 +124,7 @@ class AuthServiceTest {
         var pending = new EmailVerification(EMAIL);
         UUID challenge = UUID.randomUUID();
         pending.startRegistration(
-                challenge, "password-hash", "code-hash", NOW.minus(AuthPolicy.CODE_TTL), NOW);
+                challenge, "password-hash", "code-hash", NOW.minus(settings.codeTtl()), NOW);
         when(verifications.findByEmail(EMAIL)).thenReturn(Optional.of(pending));
         assertThatThrownBy(() -> service.verify(EMAIL, "123456", challenge))
                 .isInstanceOf(AuthException.class)
@@ -129,6 +132,56 @@ class AuthServiceTest {
                 .isEqualTo("expired-code");
         verify(passwords, never()).matches(anyString(), anyString());
         verifyNoInteractions(users);
+    }
+
+    @Test
+    void configuredAttemptThresholdAndLockDurationAreApplied() {
+        useCustomSettings();
+        var user = new UserAccount(UUID.randomUUID(), EMAIL, "stored", NOW, NOW);
+        when(users.findByEmailForUpdate(EMAIL)).thenReturn(Optional.of(user));
+        assertThatThrownBy(() -> service.signIn(EMAIL, "wrong-password"))
+                .isInstanceOf(AuthException.class);
+        assertThat(user.getLockedUntil()).isNull();
+        assertThatThrownBy(() -> service.signIn(EMAIL, "wrong-password"))
+                .isInstanceOf(AuthException.class);
+        assertThat(user.getFailedLogins()).isEqualTo(2);
+        assertThat(user.getLockedUntil()).isEqualTo(NOW.plusSeconds(30));
+        assertThatThrownBy(() -> service.signIn(EMAIL, "wrong-password"))
+                .isInstanceOfSatisfying(AuthException.class,
+                        error -> assertThat(error.code()).isEqualTo("rate-limited"));
+    }
+
+    @Test
+    void configuredResendCooldownAndVerificationDeadlineUseTheSameSettings() {
+        useCustomSettings();
+        UUID challenge = UUID.randomUUID();
+        var pending = new EmailVerification(EMAIL);
+        pending.startRegistration(challenge, "password-hash", "code-hash", NOW, NOW.plusSeconds(180));
+        when(verifications.findByEmailAndChallengeId(EMAIL, challenge)).thenReturn(Optional.of(pending));
+        when(verifications.findByEmail(EMAIL)).thenReturn(Optional.of(pending));
+        assertThat(service.identify(EMAIL, challenge).challenge().resendAfterSeconds()).isEqualTo(90);
+        assertThatThrownBy(() -> service.resend(EMAIL, challenge)).isInstanceOf(AuthException.class);
+        pending.startRegistration(challenge, "password-hash", "code-hash", NOW.minusSeconds(91), NOW);
+        service.resend(EMAIL, challenge);
+        assertThat(pending.getExpiresAt()).isEqualTo(NOW.plusSeconds(180));
+        verify(mail).sendCode(eq(EMAIL), anyString());
+    }
+
+    @Test
+    void configuredPasswordResetDeadlineIsStoredOnTheAccount() {
+        useCustomSettings();
+        var user = new UserAccount(UUID.randomUUID(), EMAIL, "stored", NOW, NOW);
+        when(users.findByEmailForUpdate(EMAIL)).thenReturn(Optional.of(user));
+        service.requestReset(EMAIL);
+        assertThat(user.getResetExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(7)));
+        verify(mail).sendReset(eq(EMAIL), anyString());
+    }
+
+    private void useCustomSettings() {
+        var custom = new AuthSettings(Duration.ofMinutes(3), Duration.ofMinutes(7),
+                Duration.ofSeconds(30), Duration.ofSeconds(90), 2, settings.ip());
+        service = new AuthService(registrations, users, verifications, passwords, mail,
+                Clock.fixed(NOW, ZoneOffset.UTC), custom);
     }
 
     private DataIntegrityViolationException duplicate(String constraint) {

@@ -1,5 +1,8 @@
 package ru.godeck.presentation.ai;
 
+import static ru.godeck.support.TestSettings.defaults;
+import ru.godeck.presentation.config.GenerationSettings;
+
 import static org.assertj.core.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
@@ -17,7 +20,7 @@ class PresentationRequestFactoryTest {
         fields.put("TITLE", 80);
         fields.put("BODY", 300);
         var request =
-                new PresentationRequestFactory()
+                new PresentationRequestFactory(defaults(GenerationSettings.class))
                         .create(
                                 "Topic",
                                 fields,

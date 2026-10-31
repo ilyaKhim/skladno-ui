@@ -1,5 +1,8 @@
 package ru.godeck.presentation.ai;
 
+import static ru.godeck.support.TestSettings.defaults;
+import ru.godeck.presentation.config.GenerationSettings;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
@@ -20,7 +23,7 @@ class PresentationModelCatalogTest {
                 new PresentationContentGenerator(
                         org.springframework.web.client.RestClient.create(),
                         new ObjectMapper(),
-                        new PresentationRequestFactory(),
+                        new PresentationRequestFactory(defaults(GenerationSettings.class)),
                         new OpenAiResponseReader(
                                 new ObjectMapper(),
                                 new PresentationContentCodec(new ObjectMapper())),

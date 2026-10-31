@@ -10,12 +10,12 @@ import ru.godeck.common.security.Hashing;
 import ru.godeck.common.text.BackendMessages;
 import ru.godeck.presentation.ai.PresentationModelCatalog;
 import ru.godeck.presentation.aiedit.action.TextEditAction;
-import ru.godeck.presentation.aiedit.action.TextEditActionRegistry;
+import ru.godeck.presentation.aiedit.action.TextEditActionCatalog;
+import ru.godeck.presentation.aiedit.config.TextEditPromptSettings;
 import ru.godeck.presentation.aiedit.ai.ResponsesUsage;
 import ru.godeck.presentation.aiedit.ai.TextEditLlm;
 import ru.godeck.presentation.aiedit.ai.TextEditOutcome;
 import ru.godeck.presentation.aiedit.ai.TextEditPrompt;
-import ru.godeck.presentation.aiedit.core.AiEditContext;
 import ru.godeck.presentation.aiedit.core.AiEditStatus;
 import ru.godeck.presentation.aiedit.core.AiEditTarget;
 import ru.godeck.presentation.aiedit.core.ResolvedTextTarget;
@@ -66,7 +66,7 @@ public class AiTextEditService {
             "AI text edit: edit={} presentation={} action={} model={} status={} inputTokens={}"
                     + " cachedTokens={} outputTokens={} reasoningTokens={} durationMs={} error={}";
 
-    private final TextEditActionRegistry actions;
+    private final TextEditActionCatalog actions;
     private final PresentationModelCatalog models;
     private final TargetResolver targets;
     private final PresentationAiEditRepository edits;
@@ -76,9 +76,10 @@ public class AiTextEditService {
     private final ObjectMapper json;
     private final Clock clock;
     private final String defaultModel;
+    private final TextEditPromptSettings promptSettings;
 
     public AiTextEditService(
-            TextEditActionRegistry actions,
+            TextEditActionCatalog actions,
             PresentationModelCatalog models,
             TargetResolver targets,
             PresentationAiEditRepository edits,
@@ -87,7 +88,8 @@ public class AiTextEditService {
             TextResultSanitizer sanitizer,
             ObjectMapper json,
             Clock clock,
-            @Value("${godeck.ai-edit.model:gpt-5.4-mini}") String defaultModel) {
+            @Value("${godeck.ai-edit.model:gpt-5.4-mini}") String defaultModel,
+            TextEditPromptSettings promptSettings) {
         this.actions = actions;
         this.models = models;
         this.targets = targets;
@@ -99,11 +101,12 @@ public class AiTextEditService {
         this.clock = clock;
         // Fail at startup rather than on the first edit when the configured model is unknown.
         this.defaultModel = models.resolve(defaultModel.strip());
+        this.promptSettings = promptSettings;
     }
 
     /** Public action catalog; {@code enabled} is false when AI is not configured. */
     public AiActionCatalogView catalog(UUID userId) {
-        return actions.catalog(new AiEditContext(userId, null), llm.enabled());
+        return actions.catalog(llm.enabled());
     }
 
     /**
@@ -119,7 +122,7 @@ public class AiTextEditService {
         long started = System.nanoTime();
         AiEditTarget target = target(request.target());
         TextEditAction action =
-                actions.require(request.action(), target.kind(), new AiEditContext(userId, null));
+                actions.require(request.action());
         Map<String, String> params = actions.validate(action, request.paramsOrEmpty());
         String model = models.resolve(request.model() == null ? defaultModel : request.model());
         ResolvedTextTarget resolved =
@@ -159,9 +162,9 @@ public class AiTextEditService {
                                     presentationId,
                                     model,
                                     action.id(),
-                                    action.task(params, resolved)
+                                    action.task()
                                             + TARGET_LENGTH.formatted(
-                                                    action.targetLength(resolved, request.text())),
+                                                    action.targetLength(resolved, request.text(), promptSettings.shortenRatio())),
                                     resolved.maxChars(),
                                     resolved.hardMaxChars(),
                                     resolved.role(),

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import ru.godeck.presentation.config.GenerationSettings;
 import ru.godeck.presentation.dto.EditorAssetView;
 import ru.godeck.presentation.dto.EditorDeckView;
 import ru.godeck.presentation.dto.EditorDraftSavedView;
@@ -21,20 +22,15 @@ import ru.godeck.presentation.mapper.PresentationContentCodec;
 import ru.godeck.presentation.mapper.PresentationEditorDraftCodec;
 import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.model.PresentationEditorDraft;
-import ru.godeck.presentation.policy.PresentationPolicy;
 import ru.godeck.presentation.repository.PresentationRepository;
 import ru.godeck.presentation.storage.PresentationFiles;
-import ru.godeck.presentation.template.EditorTextLimits;
 import ru.godeck.presentation.template.PresentationTemplateService;
 import ru.godeck.presentation.template.TextLengthMode;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -51,7 +47,7 @@ import java.util.UUID;
  *       database transaction, and atomically publishes a new immutable revision.
  * </ol>
  *
- * <p>This separation is why frequent autosaves do not create files or consume the daily edit quota.
+ * <p>This separation is why frequent autosaves do not create files or consume the edit quota.
  * It also gives commit a stable server-side snapshot and prevents a stale browser tab from
  * overwriting a newer draft.
  */
@@ -67,6 +63,8 @@ public class PresentationEditorService {
     private final PresentationEditorDraftCodec editorCodec;
     private final PresentationFiles files;
     private final Clock clock;
+    private final GenerationSettings settings;
+    private final EditorDraftAssembler drafts;
 
     public PresentationEditorService(
             PresentationRepository presentations,
@@ -75,7 +73,9 @@ public class PresentationEditorService {
             PresentationContentCodec contentCodec,
             PresentationEditorDraftCodec editorCodec,
             PresentationFiles files,
-            Clock clock) {
+            Clock clock,
+            GenerationSettings settings,
+            EditorDraftAssembler drafts) {
         this.presentations = presentations;
         this.transactions = transactions;
         this.templates = templates;
@@ -83,6 +83,8 @@ public class PresentationEditorService {
         this.editorCodec = editorCodec;
         this.files = files;
         this.clock = clock;
+        this.settings = settings;
+        this.drafts = drafts;
     }
 
     /**
@@ -141,13 +143,14 @@ public class PresentationEditorService {
         if (presentation.getEditId() != null
                 && presentation
                         .getEditStartedAt()
-                        .isAfter(clock.instant().minus(PresentationPolicy.EDIT_LEASE_TIMEOUT)))
+                        .isAfter(clock.instant().minus(settings.editLeaseTimeout())))
             throw new GenerationException(GenerationError.EDIT_IN_PROGRESS);
         if (presentation.getCurrentVersion() != input.baseVersion()
                 || presentation.getEditorRevision() != input.draftRevision())
             throw new GenerationException(GenerationError.EDIT_EXPIRED);
 
-        PresentationEditorDraft draft = apply(presentation, input);
+        PresentationEditorDraft draft = drafts.assemble(
+                id, presentation.getTemplateId(), currentDraft(presentation), input);
         long revision = presentation.getEditorRevision() + 1;
         var now = clock.instant();
         presentation.saveEditorDraft(
@@ -249,106 +252,6 @@ public class PresentationEditorService {
     }
 
     /**
-     * Applies a browser snapshot to the current semantic document and enforces round-trip
-     * invariants.
-     *
-     * <p>The client must return exactly the included source slides and exactly the template fields
-     * available on each slide. Repeated semantic fields must agree across occurrences. Template
-     * layout ids are validated against the source PPTX, and every image must resolve inside this
-     * presentation's asset namespace. These checks stop a crafted request from introducing unknown
-     * placeholders, foreign assets, or shape ids that the renderer cannot address.
-     */
-    private PresentationEditorDraft apply(Presentation presentation, SaveEditorDraftRequest input) {
-        PresentationEditorDraft current = currentDraft(presentation);
-        PresentationContent content = current.content();
-        Map<Integer, PresentationContent.Slide> decisions = new LinkedHashMap<>();
-        for (var slide : content.slides()) decisions.put(slide.slide(), slide);
-
-        LinkedHashSet<Integer> expectedSlides = new LinkedHashSet<>();
-        for (var slide : content.slides())
-            if (Boolean.TRUE.equals(slide.include())) expectedSlides.add(slide.slide());
-        LinkedHashSet<Integer> actualSlides = new LinkedHashSet<>();
-        for (var slide : input.slides()) {
-            if (!actualSlides.add(slide.sourceSlideNumber())) invalid();
-        }
-        if (!new HashSet<>(actualSlides).equals(expectedSlides)) invalid();
-        Map<Integer, List<String>> manifest = manifest(presentation.getTemplateId());
-        Map<String, String> changedValues = new LinkedHashMap<>();
-        Map<Integer, String> names = new LinkedHashMap<>();
-        List<PresentationContent.Slide> reordered = new ArrayList<>();
-        for (var inputSlide : input.slides()) {
-            int source = inputSlide.sourceSlideNumber();
-            var decision = decisions.get(source);
-            if (decision == null || !Boolean.TRUE.equals(decision.include())) invalid();
-            names.put(source, inputSlide.name().strip());
-
-            LinkedHashMap<String, String> values = new LinkedHashMap<>();
-            for (var block : inputSlide.blocks()) {
-                if (values.putIfAbsent(block.fieldKey(), block.text()) != null) invalid();
-            }
-            if (!values.keySet()
-                    .equals(new LinkedHashSet<>(manifest.getOrDefault(source, List.of()))))
-                invalid();
-            for (var value : values.entrySet()) {
-                String previous = changedValues.putIfAbsent(value.getKey(), value.getValue());
-                if (previous != null && !previous.equals(value.getValue())) invalid();
-            }
-            List<PresentationContent.TextBlock> customBlocks =
-                    inputSlide.customBlocksOrEmpty().stream()
-                            .map(
-                                    block ->
-                                            new PresentationContent.TextBlock(
-                                                    block.id(),
-                                                    block.text(),
-                                                    block.x(),
-                                                    block.y(),
-                                                    block.width(),
-                                                    block.height(),
-                                                    block.fontSize(),
-                                                    block.weight(),
-                                                    block.align(),
-                                                    block.color()))
-                            .toList();
-            List<PresentationContent.ImageBlock> imageBlocks =
-                    inputSlide.imagesOrEmpty().stream()
-                            .map(image -> validatedImageBlock(presentation.getId(), image))
-                            .toList();
-            List<PresentationContent.TextLayout> textLayouts =
-                    validatedTextLayouts(
-                            presentation.getTemplateId(), source, decision, inputSlide);
-            reordered.add(
-                    new PresentationContent.Slide(
-                            source,
-                            true,
-                            decision.reason(),
-                            inputSlide.hidden(),
-                            customBlocks,
-                            imageBlocks,
-                            textLayouts));
-        }
-        for (var decision : content.slides())
-            if (!Boolean.TRUE.equals(decision.include())) reordered.add(decision);
-
-        Map<String, String> fields = new LinkedHashMap<>(content.fields());
-        fields.putAll(changedValues);
-        Map<String, Integer> limits = templates.fields(presentation.getTemplateId());
-        if (!fields.keySet().equals(limits.keySet())) invalid();
-        for (var field : fields.entrySet()) {
-            Integer limit = limits.get(field.getKey());
-            if (field.getValue() == null
-                    || field.getValue().contains("{{")
-                    || field.getValue().contains("}}")
-                    || limit == null
-                    || field.getValue().length() > EditorTextLimits.hard(limit)) invalid();
-        }
-        PresentationContent updated =
-                templates.normalizeEditor(
-                        presentation.getTemplateId(),
-                        new PresentationContent(Map.copyOf(fields), List.copyOf(reordered)));
-        return new PresentationEditorDraft(input.title().strip(), Map.copyOf(names), updated);
-    }
-
-    /**
      * Selects the valid staging snapshot or reconstructs editor state from published content.
      *
      * <p>An editor JSON value based on an older published version is never merged implicitly. This
@@ -385,7 +288,7 @@ public class PresentationEditorService {
      * them makes old presentations usable before they have an explicit editor draft.
      */
     private Map<Integer, String> defaultNames(String templateId, PresentationContent content) {
-        Map<Integer, List<String>> manifest = manifest(templateId);
+        Map<Integer, List<String>> manifest = templates.fieldsBySlide(templateId);
         Map<Integer, String> names = new LinkedHashMap<>();
         for (var decision : content.slides()) {
             if (!Boolean.TRUE.equals(decision.include())) continue;
@@ -401,17 +304,6 @@ public class PresentationEditorService {
         return Map.copyOf(names);
     }
 
-    /**
-     * Converts the template manifest into a slide-to-field map used for exact request validation.
-     */
-    @SuppressWarnings("unchecked")
-    private Map<Integer, List<String>> manifest(String templateId) {
-        Map<Integer, List<String>> result = new LinkedHashMap<>();
-        for (var slide : templates.slideManifest(templateId))
-            result.put((Integer) slide.get("slide"), (List<String>) slide.get("fields"));
-        return result;
-    }
-
     /** Resolves a presentation only inside the authenticated owner's tenant boundary. */
     private Presentation owned(UUID userId, UUID id) {
         return presentations
@@ -425,11 +317,6 @@ public class PresentationEditorService {
             throw new GenerationException(GenerationError.PRESENTATION_NOT_READY);
     }
 
-    /** Throws the stable public error used for malformed editor snapshots. */
-    private static void invalid() {
-        throw new GenerationException(GenerationError.INVALID_CONTENT);
-    }
-
     private static GenerationException missing() {
         return new GenerationException(GenerationError.PRESENTATION_NOT_FOUND);
     }
@@ -437,62 +324,6 @@ public class PresentationEditorService {
     /** Builds an authenticated API URL; storage paths never leave the backend. */
     private static String imageUrl(UUID presentationId, UUID assetId) {
         return "/api/generation/v1/presentations/" + presentationId + "/editor/assets/" + assetId;
-    }
-
-    /**
-     * Resolves and verifies an image reference supplied inside draft JSON.
-     *
-     * <p>The lookup is deliberately performed during autosave, not deferred until export, so a
-     * draft cannot acknowledge a missing or cross-presentation asset.
-     */
-    private PresentationContent.ImageBlock validatedImageBlock(
-            UUID presentationId, SaveEditorDraftRequest.ImageBlock image) {
-        UUID assetId;
-        try {
-            assetId = UUID.fromString(image.assetId());
-        } catch (IllegalArgumentException invalidAssetId) {
-            throw new GenerationException(GenerationError.INVALID_CONTENT);
-        }
-        files.image(presentationId, assetId);
-        return new PresentationContent.ImageBlock(
-                image.id(),
-                assetId.toString(),
-                image.alt(),
-                image.x(),
-                image.y(),
-                image.width(),
-                image.height());
-    }
-
-    /**
-     * Accepts only the complete set of layout ids discovered for the source slide.
-     *
-     * <p>Requiring the exact set prevents partial snapshots from silently resetting other shapes
-     * and prevents unknown ids from being persisted until a later render failure.
-     */
-    private List<PresentationContent.TextLayout> validatedTextLayouts(
-            String templateId,
-            int slideNumber,
-            PresentationContent.Slide current,
-            SaveEditorDraftRequest.Slide input) {
-        if (input.layoutsOrEmpty().isEmpty()) return current.textLayoutsOrEmpty();
-        var expected = new LinkedHashSet<>(templates.textLayoutIds(templateId, slideNumber));
-        var actual = new LinkedHashSet<String>();
-        List<PresentationContent.TextLayout> layouts =
-                input.layoutsOrEmpty().stream()
-                        .map(
-                                layout -> {
-                                    if (!actual.add(layout.id())) invalid();
-                                    return new PresentationContent.TextLayout(
-                                            layout.id(),
-                                            layout.x(),
-                                            layout.y(),
-                                            layout.width(),
-                                            layout.height());
-                                })
-                        .toList();
-        if (!actual.equals(expected)) invalid();
-        return layouts;
     }
 
     /** Removes path components and control characters before a filename becomes editor alt text. */

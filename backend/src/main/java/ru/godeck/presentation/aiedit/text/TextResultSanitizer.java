@@ -66,7 +66,7 @@ public class TextResultSanitizer {
             int length = text.length();
             if (length > target.maxChars()) warnings.add(OVER_LIMIT);
             if (length > target.hardMaxChars()) warnings.add(EXCEEDS_HARD_LIMIT);
-            warnings.addAll(action.warnings(source, text, target));
+            warnings.addAll(action.warnings(source, text));
             if (removedBreaks.contains(text)) warnings.add(LINE_BREAKS_REMOVED);
             views.add(
                     new TextVariantView(
