@@ -1,6 +1,7 @@
 package ru.godeck.presentation.generation;
 
 import org.springframework.stereotype.Component;
+import ru.godeck.presentation.model.DataBlock;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -58,6 +59,7 @@ public class PresentationRequestFactory {
                         slides.stream().map(slide -> slide.get("slide")).toList()));
         slideProperties.put("include", Map.of("type", "boolean"));
         slideProperties.put("reason", Map.of("type", "string"));
+        slideProperties.put("dataBlocks", dataBlockSchema());
         var properties = new LinkedHashMap<String, Object>();
         properties.put("fields", objectSchema(fieldProperties));
         properties.put("slides", Map.of("type", "array", "items", objectSchema(slideProperties)));
@@ -105,6 +107,20 @@ public class PresentationRequestFactory {
                 settings.maxOutputTokens(),
                 "store",
                 false);
+    }
+
+    /** AI supplies bounded data, not executable chart markup. Keep the wire schema out of the model. */
+    private static Map<String, Object> dataBlockSchema() {
+        var cell = Map.of("type", "string");
+        var properties = new LinkedHashMap<String, Object>();
+        properties.put("id", Map.of("type", "string"));
+        properties.put("type", Map.of("type", "string", "enum", DataBlock.TYPES));
+        for (String key : List.of("x", "y", "width", "height")) properties.put(key, Map.of("type", "number"));
+        properties.put("headers", Map.of("type", "array", "items", cell, "minItems", 2, "maxItems", DataBlock.MAX_COLUMNS));
+        properties.put("rows", Map.of("type", "array", "minItems", 1, "maxItems", DataBlock.MAX_ROWS,
+                "items", Map.of("type", "array", "items", cell, "minItems", 2, "maxItems", DataBlock.MAX_COLUMNS)));
+        properties.put("horizontal", Map.of("type", "boolean"));
+        return Map.of("type", "array", "maxItems", DataBlock.MAX_BLOCKS, "items", objectSchema(properties));
     }
 
     /** Builds a strict JSON object schema with every declared property required. */

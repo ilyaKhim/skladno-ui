@@ -23,6 +23,7 @@ export function toDeck(source: EditorDeck): Deck {
         minimumDigits: slide.slide_number.minimum_digits,
       } } : {}),
       hidden: slide.hidden,
+      dataBlocks: slide.data_blocks ?? [],
       blocks: slide.blocks.map((block) => ({
         id: block.id,
         fieldKey: block.field_key ?? undefined,
@@ -43,6 +44,7 @@ export function toDeck(source: EditorDeck): Deck {
         fontFamily: block.font_family ?? undefined,
         italic: block.italic,
         underline: block.underline,
+        verticalAlign: block.vertical_align,
         ...(block.text_style ? { textStyle: block.text_style } : {}),
         paragraph: block.paragraph
           ? {
@@ -97,6 +99,7 @@ export function serialize(deck: Deck, baseVersion: number, draftRevision: number
         source_slide_number: slide.sourceSlideNumber ?? 0,
         name: slide.name,
         hidden: slide.hidden,
+        data_blocks: slide.dataBlocks ?? [],
         blocks: [...fields].map(([field_key, text]) => ({ field_key, text })),
         layouts: [...layouts.values()],
         custom_blocks: slide.blocks

@@ -109,7 +109,9 @@ public class EditorDraftAssembler {
                             inputSlide.hidden(),
                             customBlocks,
                             imageBlocks,
-                            textLayouts));
+                            textLayouts,
+                            inputSlide.dataBlocks() == null
+                                    ? decision.dataBlocksOrEmpty() : inputSlide.dataBlocks()));
         }
         for (var decision : content.slides())
             if (!Boolean.TRUE.equals(decision.include())) reordered.add(decision);

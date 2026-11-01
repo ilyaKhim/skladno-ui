@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.Valid;
 import ru.godeck.presentation.model.TextStyle;
+import ru.godeck.presentation.model.DataBlock;
 
 import tools.jackson.databind.annotation.JsonNaming;
 import tools.jackson.databind.PropertyNamingStrategies;
@@ -31,7 +32,12 @@ public record SaveEditorDraftRequest(
             @NotEmpty List<@Valid TextBlock> blocks,
             List<@Valid CustomTextBlock> customBlocks,
             List<@Valid ImageBlock> images,
-            List<@Valid TextLayout> layouts) {
+            List<@Valid TextLayout> layouts,
+            List<DataBlock> dataBlocks) {
+        public Slide(int sourceSlideNumber, String name, boolean hidden, List<TextBlock> blocks,
+                List<CustomTextBlock> customBlocks, List<ImageBlock> images, List<TextLayout> layouts) {
+            this(sourceSlideNumber, name, hidden, blocks, customBlocks, images, layouts, null);
+        }
         public List<CustomTextBlock> customBlocksOrEmpty() {
             return customBlocks == null ? List.of() : customBlocks;
         }

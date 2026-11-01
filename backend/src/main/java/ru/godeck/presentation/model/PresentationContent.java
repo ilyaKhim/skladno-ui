@@ -35,6 +35,7 @@ public record PresentationContent(
      * @param textBlocks freeform text boxes created by the editor
      * @param imageBlocks presentation-scoped images created by the editor
      * @param textLayouts geometry overrides for text shapes originating in the template
+     * @param dataBlocks editable tables and grouped bar charts, empty for older documents
      */
     public record Slide(
             @Min(1) int slide,
@@ -43,7 +44,16 @@ public record PresentationContent(
             Boolean hidden,
             List<TextBlock> textBlocks,
             List<ImageBlock> imageBlocks,
-            List<TextLayout> textLayouts) {
+            List<TextLayout> textLayouts,
+            List<DataBlock> dataBlocks) {
+        public Slide(int slide, Boolean include, String reason, Boolean hidden,
+                List<TextBlock> textBlocks, List<ImageBlock> imageBlocks, List<TextLayout> textLayouts) {
+            this(slide, include, reason, hidden, textBlocks, imageBlocks, textLayouts, List.of());
+        }
+
+        public List<DataBlock> dataBlocksOrEmpty() {
+            return dataBlocks == null ? List.of() : dataBlocks;
+        }
         public Slide(int slide, Boolean include, String reason) {
             this(slide, include, reason, false, List.of(), List.of(), List.of());
         }

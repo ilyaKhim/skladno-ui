@@ -1,7 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from 'react'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Copy, Pencil, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { createDataBlock, dataBlockError, DATA_LIMITS, type DataBlock } from '@/lib/data-blocks'
+import { DataBlockEditor } from './data-block-editor'
 import {
   createEditorImage,
   duplicateEditorImage,
@@ -80,6 +83,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState('')
+  const [editingData, setEditingData] = useState<DataBlock | null>(null)
   const [processing, setProcessing] = useState<'export' | 'leave' | 'reload' | null>(null)
   const busy = useRef(false)
   const lastExport = useRef<ExportOptions>({ format: 'pptx', includeHidden: false })
@@ -103,7 +107,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   })
 
   const protectUnload = useEffectEvent((event: BeforeUnloadEvent) => {
-    if (!editor.hasUnsavedChanges() && !imageUploading) return
+    if (!editor.hasUnsavedChanges() && !imageUploading && !editingData) return
     event.preventDefault()
     event.returnValue = 'unsaved'
   })
@@ -184,6 +188,12 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   const slide = deck.slides[slideIndex]
   const block = slide.blocks.find((item) => item.id === selectedElementId) ?? null
   const image = slide.images.find((item) => item.id === selectedElementId) ?? null
+  const dataBlock = editingData ?? slide.dataBlocks?.find((item) => item.id === selectedElementId) ?? null
+  // Preview only valid local data. The canonical deck and autosave are untouched until Apply.
+  const previewSlide = !editingData || dataBlockError(editingData) ? slide : { ...slide, dataBlocks:
+    slide.dataBlocks?.some((item) => item.id === editingData.id)
+      ? slide.dataBlocks.map((item) => item.id === editingData.id ? editingData : item)
+      : [...(slide.dataBlocks ?? []), editingData] }
   const hiddenCount = deck.slides.filter((item) => item.hidden).length
 
   const selectSlide = (slideId: string) => {
@@ -209,6 +219,12 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   const finishEditing = () => {
     setEditingBlockId(null)
     editor.sealHistory()
+  }
+  const openDataEditor = (data: DataBlock) => {
+    finishEditing()
+    if (!isWide) closeChat()
+    setSelectedElementId(data.id)
+    setEditingData(data)
   }
   const formatBlock = (patch: EditorTextStyle) => {
     if (!block) return
@@ -302,11 +318,24 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     setEditingBlockId(null)
   }
 
-  const duplicateElement = () => image ? duplicateImage() : duplicateBlock()
-  const removeElement = () => image ? removeImage() : removeBlock()
+  const duplicateElement = () => {
+    if (dataBlock) {
+      if ((slide.dataBlocks?.length ?? 0) >= DATA_LIMITS.blocks) return
+      const copy = { ...dataBlock, id: `data-${crypto.randomUUID()}`,
+        x: Math.min(dataBlock.x + 2, 100 - dataBlock.width), y: Math.min(dataBlock.y + 2, 100 - dataBlock.height) }
+      editor.setDataBlock(slide.id, copy)
+      setSelectedElementId(copy.id)
+    } else if (image) duplicateImage()
+    else duplicateBlock()
+  }
+  const removeElement = () => {
+    if (dataBlock) { editor.removeDataBlock(slide.id, dataBlock.id); setSelectedElementId(null) }
+    else if (image) removeImage()
+    else removeBlock()
+  }
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.defaultPrevented || busy.current || publicationPending) return
+    if (event.defaultPrevented || busy.current || publicationPending || editingData) return
     const mod = event.metaKey || event.ctrlKey
     const key = event.key.toLowerCase()
 
@@ -333,7 +362,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     if (event.key === 'Enter' && block && !event.isComposing) {
       event.preventDefault()
       activateBlock(block.id)
-    } else if (mod && key === 'd' && (block || image)) {
+    } else if (mod && key === 'd' && (block || image || dataBlock)) {
       event.preventDefault()
       duplicateElement()
     } else if (mod && key === 'z') {
@@ -346,12 +375,15 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
     } else if (event.key === 'Escape') {
       setEditingBlockId(null)
       setSelectedElementId(null)
-    } else if ((event.key === 'Backspace' || event.key === 'Delete') && (image || (block && !block.fieldKey))) {
+    } else if ((event.key === 'Backspace' || event.key === 'Delete') && (dataBlock || image || (block && !block.fieldKey))) {
       event.preventDefault()
       removeElement()
     } else if (key === 't' && !mod) {
       event.preventDefault()
       insertTextBlock()
+    } else if (dataBlock && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+      event.preventDefault()
+      editor.setDataBlock(slide.id, { ...dataBlock, ...moveEditorElement(dataBlock, event.key as 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown', event.shiftKey ? 2 : 0.5) }, `${dataBlock.id}:keyboard-move`)
     } else if (block && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
       event.preventDefault()
       editor.updateBlock(
@@ -372,7 +404,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   })
 
   const onCopy = useEffectEvent((event: ClipboardEvent) => {
-    if (busy.current) return
+    if (busy.current || editingData) return
     if ((!block && !image) || isEditableTarget(event.target) || !event.clipboardData) return
     event.preventDefault()
     event.clipboardData.setData(
@@ -383,7 +415,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   })
 
   const onPaste = useEffectEvent((event: ClipboardEvent) => {
-    if (busy.current || publicationPending) return
+    if (busy.current || publicationPending || editingData) return
     if (isEditableTarget(event.target) || !event.clipboardData) return
     const pastedImage = [...event.clipboardData.items]
       .find((item) => item.kind === 'file' && ['image/png', 'image/jpeg'].includes(item.type))
@@ -450,12 +482,12 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <div inert={processing !== null || publicationPending}>
+      <div inert={processing !== null || publicationPending || Boolean(editingData)} className={editingData ? 'opacity-50' : undefined}>
         <EditorToolbar
           title={deck.title}
           slideCount={deck.slides.length}
           hiddenCount={hiddenCount}
-          saveStatus={editor.saveStatus}
+          saveStatus={editingData ? 'dirty' : editor.saveStatus}
           canUndo={editor.canUndo && !publicationPending}
           canRedo={editor.canRedo && !publicationPending}
           chatAvailable={Boolean(aiEdit)}
@@ -466,6 +498,8 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
           onRedo={editor.redo}
           onSave={() => void editor.saveNow()}
           onAddText={() => insertTextBlock()}
+          onAddData={(type) => openDataEditor(createDataBlock(type))}
+          dataBlocksFull={(slide.dataBlocks?.length ?? 0) >= DATA_LIMITS.blocks}
           onAddImage={onUploadImage ? (file) => void uploadAndInsertImage(file) : undefined}
           imageUploading={imageUploading}
           onExport={onExport ? exportDocument : undefined}
@@ -481,7 +515,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
         canRestore={Boolean(recovery.candidate && restoreRecovery(recovery.candidate.copy,
           { ...initialDeck, baseVersion: getVersion?.().base ?? initialDeck.baseVersion }))}
         storageError={recovery.storageError}
-        busy={processing !== null}
+        busy={processing !== null || Boolean(editingData)}
         onRetry={() => {
           if (operationError?.operation === 'export') void exportDocument().catch(() => {})
           else void editor.saveNow()
@@ -508,12 +542,20 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
           onSelectSlide={selectSlide}
           onMoveSlide={editor.moveSlide}
           onToggleHidden={toggleSlideHidden}
+          dataEditing={Boolean(editingData)}
         />
 
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <TextFormatToolbar theme={slide.theme} block={block} image={image} onFormat={formatBlock}
+          <div inert={Boolean(editingData)} className={editingData ? 'opacity-50' : undefined}>
+          {dataBlock ? <div role="toolbar" aria-label="Параметры данных" className="flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-card px-3">
+            <span className="mr-2 text-xs text-muted-foreground">Блок данных</span>
+            <Button variant="outline" size="sm" onClick={() => openDataEditor(dataBlock)}><Pencil />Изменить данные</Button>
+            <Button variant="ghost" size="icon-sm" onClick={duplicateElement} disabled={(slide.dataBlocks?.length ?? 0) >= DATA_LIMITS.blocks} aria-label="Дублировать блок данных"><Copy /></Button>
+            <Button variant="ghost" size="icon-sm" onClick={removeElement} aria-label="Удалить блок данных"><Trash2 /></Button>
+          </div> : <TextFormatToolbar theme={slide.theme} block={block} image={image} onFormat={formatBlock}
             onImageAlt={(alt) => { if (image) editor.updateImage(slide.id, image.id, { alt }, `${image.id}:alt`) }}
-            onDuplicate={duplicateElement} onDelete={removeElement} onCommit={editor.sealHistory} />
+            onDuplicate={duplicateElement} onDelete={removeElement} onCommit={editor.sealHistory} />}
+          </div>
           {imageError && (
             <div role="alert" className="absolute top-12 left-1/2 z-20 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-lg border border-destructive/25 bg-card px-3 py-2 text-xs text-destructive shadow-md">
               <AlertCircle className="size-4 shrink-0" />
@@ -521,31 +563,35 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
               <button type="button" className="ml-1 underline underline-offset-2" onClick={() => setImageError('')}>Закрыть</button>
             </div>
           )}
-          <div className="min-h-0 flex-1"><SlideCanvas
+          <div inert={Boolean(editingData)} className="min-h-0 flex-1"><SlideCanvas
             editingBlockId={editingBlockId}
             onFinishEditing={finishEditing}
-            slide={slide}
+            slide={previewSlide}
             slideIndex={slideIndex}
             slideCount={deck.slides.length}
             selectedElementId={selectedElementId}
-            selectedElementKind={image ? 'image' : block ? 'text' : null}
-            selectedElementCanMove={Boolean(image || block)}
+            selectedElementKind={dataBlock ? 'data' : image ? 'image' : block ? 'text' : null}
+            selectedElementCanMove={Boolean(dataBlock || image || block)}
             onSelectElement={(id) => { setSelectedElementId(id); if (id !== editingBlockId) setEditingBlockId(null) }}
             onActivateBlock={activateBlock}
             onToggleHidden={() => toggleSlideHidden(slide.id)}
             onRenameSlide={(name) => editor.updateSlide(slide.id, { name }, `${slide.id}:name`)}
             onUpdateBlock={(blockId, patch, coalesceKey) => editor.updateBlock(slide.id, blockId, patch, coalesceKey)}
             onUpdateImage={(imageId, patch, coalesceKey) => editor.updateImage(slide.id, imageId, patch, coalesceKey)}
+            onUpdateData={(data, key) => editor.setDataBlock(slide.id, data, key)}
+            onEditData={openDataEditor}
             onCommitElement={editor.sealHistory}
           /></div>
+          {editingData && <DataBlockEditor key={editingData.id} block={editingData} onChange={setEditingData} onClose={() => setEditingData(null)}
+            onApply={(data) => { editor.setDataBlock(slide.id, data); setSelectedElementId(data.id); setEditingBlockId(null) }} />}
           {block && block.maxChars && block.text.length > block.maxChars && <p role="status" className="shrink-0 px-4 py-2 text-xs text-muted-foreground">
             Текст длиннее рекомендованного для макета ({block.text.length} / {block.maxChars}). Весь текст сохранится; проверьте, помещается ли он в блок.
           </p>}
         </main>
 
-        {chatVisible && isWide && chatPanel}
+        {chatVisible && isWide && <div inert={Boolean(editingData)} className="flex shrink-0">{chatPanel}</div>}
       </div>
-      {chatVisible && !isWide && <div inert={processing !== null || publicationPending} className="fixed inset-x-0 bottom-0 z-30 flex flex-col">{chatPanel}</div>}
+      {chatVisible && !isWide && !editingData && <div inert={processing !== null || publicationPending} className="fixed inset-x-0 bottom-0 z-30 flex flex-col">{chatPanel}</div>}
     </div>
   )
 }

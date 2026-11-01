@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, CircleDot, Download, ImagePlus, LoaderCircle, Sparkles, Redo2, Type, Undo2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Check, ChevronDown, CircleDot, Download, ImagePlus, LoaderCircle, Sparkles, Redo2, Table2, Type, Undo2, LayoutPanelTop, type LucideIcon } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import type { ExportFormat, ExportOptions, SaveStatus } from './editor-types'
+import { DATA_BLOCK_NAMES, type DataBlock } from '@/lib/data-blocks'
 
 interface EditorToolbarProps {
   title: string
@@ -23,6 +24,8 @@ interface EditorToolbarProps {
   onSave: () => void
   onAddText?: () => void
   onAddImage?: (file: File) => void
+  onAddData?: (type: DataBlock['type']) => void
+  dataBlocksFull?: boolean
   imageUploading?: boolean
   onExport?: (options: ExportOptions) => Promise<void>
   onToggleChat: () => void
@@ -47,6 +50,8 @@ export function EditorToolbar({
   onSave,
   onAddText,
   onAddImage,
+  onAddData,
+  dataBlocksFull,
   imageUploading = false,
   onExport,
   onToggleChat,
@@ -56,7 +61,8 @@ export function EditorToolbar({
 }: EditorToolbarProps) {
   const imageInput = useRef<HTMLInputElement>(null)
   return (
-    <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-card px-2 py-1 sm:h-12 sm:flex-nowrap sm:px-3 sm:py-0">
+    <header className="shrink-0 border-b border-border bg-card">
+      <div className="flex h-12 min-w-0 items-center gap-1.5 px-2 sm:px-3">
       <a
         href="/studio"
         onClick={(event) => {
@@ -95,13 +101,23 @@ export function EditorToolbar({
         {slideCount} слайдов{hiddenCount > 0 && `, ${hiddenCount} скрыт`}
       </span>
 
-      <div className="ml-auto flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto">
+      <div className="ml-auto flex shrink-0 items-center justify-end gap-1">
         <SaveIndicator status={saveStatus} onSave={onSave} />
         <span aria-hidden className="mx-1 hidden h-5 w-px bg-border sm:block" />
+        <Button variant="ghost" size="icon-sm" onClick={onUndo} disabled={!canUndo} aria-label="Отменить" title="Отменить (Ctrl+Z)">
+          <Undo2 />
+        </Button>
+        <Button variant="ghost" size="icon-sm" onClick={onRedo} disabled={!canRedo} aria-label="Повторить" title="Повторить (Ctrl+Shift+Z)"><Redo2 /></Button>
+        {chatAvailable && <Button variant={chatOpen ? 'secondary' : 'ghost'} size="icon-sm" onClick={onToggleChat}
+          aria-pressed={chatOpen} aria-controls="editor-ai-chat" aria-label="AI-чат" title="AI-чат (Ctrl+J)"><Sparkles /></Button>}
+        <ExportMenu title={title} hiddenCount={hiddenCount} onExport={onExport} firstPublication={firstPublication} />
+      </div>
+      </div>
+      <div role="toolbar" aria-label="Вставка" className="flex h-11 items-center justify-start gap-1 overflow-x-auto border-t border-border px-2 sm:justify-center">
         {onAddText && (
-          <Button variant="outline" size="sm" onClick={onAddText} title="Добавить текст (T)">
+          <Button variant="ghost" size="sm" onClick={onAddText} title="Добавить текст (T)">
             <Type />
-            <span className="hidden sm:inline">Текст</span>
+            Текст
           </Button>
         )}
         {onAddImage && (
@@ -119,47 +135,38 @@ export function EditorToolbar({
               }}
             />
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               disabled={imageUploading}
               onClick={() => imageInput.current?.click()}
               title="Добавить изображение"
             >
               {imageUploading ? <LoaderCircle className="animate-spin" /> : <ImagePlus />}
-              <span className="hidden lg:inline">Изображение</span>
+              Изображение
             </Button>
           </>
         )}
-        <Button variant="ghost" size="icon-sm" onClick={onUndo} disabled={!canUndo} aria-label="Отменить" title="Отменить (Ctrl+Z)">
-          <Undo2 />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onRedo}
-          disabled={!canRedo}
-          aria-label="Повторить"
-          title="Повторить (Ctrl+Shift+Z)"
-        >
-          <Redo2 />
-        </Button>
-        {chatAvailable && (
-          <Button
-            variant={chatOpen ? 'secondary' : 'ghost'}
-            size="icon-sm"
-            onClick={onToggleChat}
-            aria-pressed={chatOpen}
-            aria-controls="editor-ai-chat"
-            aria-label="AI-чат"
-            title="AI-чат (Ctrl+J)"
-          >
-            <Sparkles />
-          </Button>
-        )}
-        <ExportMenu title={title} hiddenCount={hiddenCount} onExport={onExport} firstPublication={firstPublication} />
+        {onAddData && <>
+          <Button variant="ghost" size="sm" onClick={() => onAddData('table')} disabled={dataBlocksFull} aria-label="Добавить таблицу" title="Добавить таблицу"><Table2 />Таблица</Button>
+          <DataBlockMenu label="Графики" icon={BarChart3} types={['bar', 'line', 'doughnut']} onAdd={onAddData} disabled={dataBlocksFull} />
+          <DataBlockMenu label="Блоки" icon={LayoutPanelTop} types={['kpi', 'comparison']} onAdd={onAddData} disabled={dataBlocksFull} />
+        </>}
       </div>
     </header>
   )
+}
+
+function DataBlockMenu({ label, icon: Icon, types, onAdd, disabled }: {
+  label: string; icon: LucideIcon; types: DataBlock['type'][]; onAdd: (type: DataBlock['type']) => void; disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  return <Popover open={open} onOpenChange={setOpen}>
+    <PopoverTrigger render={<Button variant="ghost" size="sm" disabled={disabled} />}><Icon />{label}<ChevronDown className="size-3" /></PopoverTrigger>
+    <PopoverContent align="end" className="w-64 p-1">
+      {types.map((type) =>
+        <Button key={type} variant="ghost" className="w-full justify-start" onClick={() => { setOpen(false); onAdd(type) }}>{DATA_BLOCK_NAMES[type]}</Button>)}
+    </PopoverContent>
+  </Popover>
 }
 
 const SAVE_LABELS: Record<SaveStatus, string> = {

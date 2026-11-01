@@ -1,6 +1,7 @@
 package ru.godeck.presentation.editor.dto;
 
 import ru.godeck.presentation.model.TextStyle;
+import ru.godeck.presentation.model.DataBlock;
 import tools.jackson.databind.annotation.JsonNaming;
 import tools.jackson.databind.PropertyNamingStrategies;
 
@@ -28,7 +29,8 @@ public record EditorDeckView(
             boolean hidden,
             List<TextBlock> blocks,
             List<ImageBlock> images,
-            SlideNumber slideNumber) {}
+            SlideNumber slideNumber,
+            List<DataBlock> dataBlocks) {}
 
     /** Read-only source styling; the browser computes the current position after every reorder. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -57,7 +59,8 @@ public record EditorDeckView(
             String fontFamily,
             boolean italic,
             boolean underline,
-            TextStyle textStyle) {}
+            TextStyle textStyle,
+            String verticalAlign) {}
 
     /**
      * Browser-safe subset of the PowerPoint paragraph model.

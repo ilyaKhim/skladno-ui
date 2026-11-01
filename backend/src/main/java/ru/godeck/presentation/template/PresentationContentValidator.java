@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.exception.GenerationException;
 import ru.godeck.presentation.model.PresentationContent;
+import ru.godeck.presentation.model.DataBlock;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -92,7 +93,8 @@ public class PresentationContentValidator {
                                                     normalizeImageBlocks(
                                                             slide.imageBlocksOrEmpty(), blockIds),
                                                     normalizeTextLayouts(
-                                                            slide.textLayoutsOrEmpty())))
+                                                            slide.textLayoutsOrEmpty()),
+                                                    normalizeDataBlocks(slide.dataBlocksOrEmpty(), blockIds)))
                             .toList();
             return new PresentationContent(
                     Collections.unmodifiableMap(values), List.copyOf(slides));
@@ -136,6 +138,15 @@ public class PresentationContentValidator {
     private static boolean finite(double... values) {
         for (double value : values) if (!Double.isFinite(value)) return false;
         return true;
+    }
+
+    private static List<DataBlock> normalizeDataBlocks(List<DataBlock> blocks, Set<String> ids) {
+        if (blocks.size() > DataBlock.MAX_BLOCKS) throw new IllegalArgumentException();
+        return blocks.stream().map(block -> {
+            DataBlock validated = block.validated();
+            if (!ids.add(validated.id())) throw new IllegalArgumentException();
+            return validated;
+        }).toList();
     }
 
     /** Validates image references and geometry without reading the underlying asset. */

@@ -103,6 +103,8 @@ type EditorTextBlock = {
   font_family?: string | null
   italic?: boolean
   underline?: boolean
+  /** Source-template text-frame alignment; read-only, not a formatting override. */
+  vertical_align?: 'top' | 'center' | 'bottom'
   text_style?: EditorTextStyle | null
   paragraph: {
     index: number
@@ -125,6 +127,7 @@ type EditorSlide = {
   hidden: boolean
   blocks: EditorTextBlock[]
   images: EditorImageBlock[]
+  data_blocks?: import('./data-blocks').DataBlock[]
   slide_number?: {
     x: number; y: number; width: number; height: number
     font_size: number; font_family: string | null; font_color: string | null
@@ -199,6 +202,7 @@ export type SaveEditorDraft = {
       width: number
       height: number
     }[]
+    data_blocks?: import('./data-blocks').DataBlock[]
   }[]
 }
 

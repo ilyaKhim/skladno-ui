@@ -1,6 +1,8 @@
+import { dataBlockError, DATA_LIMITS, type DataBlock } from './data-blocks.ts'
+
 export type LlmContent = {
   fields: Record<string, string>
-  slides: { slide: number; include: boolean; reason: string }[]
+  slides: { slide: number; include: boolean; reason: string; dataBlocks?: DataBlock[] }[]
 }
 
 type TemplateContext = { fields: Record<string, number>; slides: { slide: number }[] }
@@ -58,12 +60,20 @@ export function parseLlmResponse(text: string, context?: TemplateContext): LlmCo
   if (Object.values(fields).some((field) => field.includes('{{') || field.includes('}}'))) throw new Error(ERRORS.markers)
 
   const seen = new Set<number>()
+  const ids = new Set<string>()
   const slides = value.slides.map((slide) => {
     if (!isObject(slide) || typeof slide.slide !== 'number' || !Number.isInteger(slide.slide) || slide.slide < 1
       || seen.has(slide.slide) || typeof slide.include !== 'boolean' || typeof slide.reason !== 'string' || !slide.reason.trim()
-      || Object.keys(slide).some((key) => !['slide', 'include', 'reason'].includes(key))) throw new Error(ERRORS.slides)
+      || Object.keys(slide).some((key) => !['slide', 'include', 'reason', 'dataBlocks'].includes(key))) throw new Error(ERRORS.slides)
+    if (slide.dataBlocks !== undefined && (!Array.isArray(slide.dataBlocks) || slide.dataBlocks.length > DATA_LIMITS.blocks
+      || slide.dataBlocks.some((block) => {
+        if (dataBlockError(block) || ids.has(block.id)) return true
+        ids.add(block.id)
+        return false
+      }))) throw new Error('Проверьте данные таблиц и диаграмм в ответе AI.')
     seen.add(slide.slide)
-    return { slide: slide.slide, include: slide.include, reason: slide.reason }
+    return { slide: slide.slide, include: slide.include, reason: slide.reason,
+      ...(slide.dataBlocks !== undefined ? { dataBlocks: slide.dataBlocks as DataBlock[] } : {}) }
   })
   if (!slides.some((slide) => slide.include)) throw new Error(ERRORS.selection)
   if (context) {
