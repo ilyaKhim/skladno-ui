@@ -30,6 +30,40 @@ test('axis formatting preserves small magnitudes and bounds large-label width', 
   assert.equal(formatChartValue(12.5), '12.5')
 })
 
+test('new block types have bounded, distinct data semantics without silently dropping cells', () => {
+  for (const type of ['kpi', 'comparison', 'line']) assert.equal(dataBlockError(createDataBlock(type)), null)
+  const ring = createDataBlock('doughnut')
+  assert.ok(dataBlockError(ring), 'zero total is not a meaningful distribution')
+  ring.rows[0][1] = '30'
+  ring.rows[1][1] = '70'
+  assert.equal(dataBlockError(ring), null)
+  assert.ok(dataBlockError({ ...ring, rows: [['A', '-1'], ['B', '30']] }))
+  assert.ok(dataBlockError({ ...ring, headers: ['A', 'B', 'C'], rows: [['A', '10', '20']] }))
+  const kpi = createDataBlock('kpi')
+  assert.equal(dataBlockError({ ...kpi, rows: [['Конверсия', '42%']] }), null)
+  assert.ok(dataBlockError({ ...kpi, rows: [['A', '1'], ['B', '2']] }))
+  assert.ok(dataBlockError({ ...kpi, rows: [['A', 'x'.repeat(41)]] }))
+  assert.ok(dataBlockError({ ...kpi, rows: [['x'.repeat(81), '42%']] }))
+  assert.ok(dataBlockError({ ...createDataBlock('comparison'), headers: ['A', 'B'], rows: [['A', 'B']] }))
+  assert.ok(dataBlockError({ ...createDataBlock('line'), rows: [['A', '2%']] }))
+})
+
+test('all new AI block types survive parsing, editor hydration, serialization, and history', () => {
+  for (const type of ['kpi', 'comparison', 'line', 'doughnut']) {
+    const block = createDataBlock(type)
+    if (type === 'doughnut') block.rows[0][1] = '73'
+    const content = { fields: {}, slides: [{ slide: 1, include: true, reason: 'Source', dataBlocks: [block] }] }
+    assert.deepEqual(parseLlmResponse(JSON.stringify(content)), content)
+    const deck = toDeck({ id: 'deck', title: type, base_version: 1, draft_revision: 0, slides: [
+      { id: 's1', source_slide_number: 1, name: 'Slide', theme: 'paper', hidden: false, blocks: [], images: [], data_blocks: [block] },
+    ] })
+    assert.deepEqual(serialize(deck, 1, 0).slides[0].data_blocks, [block])
+    const history = { past: [], present: deck, future: [], lastKey: null }
+    const changed = historyReducer(history, { type: 'apply', action: { type: 'setDataBlock', slideId: 's1', block: { ...block, x: 20 } } })
+    assert.deepEqual(historyReducer(changed, { type: 'undo' }).present, deck)
+  }
+})
+
 test('data block edits are immutable, undoable, and serialize through the API without losing data', () => {
   const block = createDataBlock('table')
   const source = { id: 'deck', title: 'Data', base_version: 1, draft_revision: 0,

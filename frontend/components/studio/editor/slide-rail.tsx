@@ -13,9 +13,10 @@ interface SlideRailProps {
   onSelectSlide: (slideId: string) => void
   onMoveSlide: (fromIndex: number, toIndex: number) => void
   onToggleHidden: (slideId: string) => void
+  dataEditing?: boolean
 }
 
-export function SlideRail({ slides, selectedSlideId, onSelectSlide, onMoveSlide, onToggleHidden }: SlideRailProps) {
+export function SlideRail({ slides, selectedSlideId, onSelectSlide, onMoveSlide, onToggleHidden, dataEditing = false }: SlideRailProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const hiddenCount = slides.filter((slide) => slide.hidden).length
@@ -34,7 +35,8 @@ export function SlideRail({ slides, selectedSlideId, onSelectSlide, onMoveSlide,
   return (
     <nav
       aria-label="Слайды"
-      className="flex shrink-0 flex-col border-t border-border bg-card md:w-48 md:border-t-0 md:border-r"
+      inert={dataEditing}
+      className={cn('flex shrink-0 flex-col border-t border-border bg-card md:w-48 md:border-t-0 md:border-r', dataEditing && 'hidden opacity-50 md:flex')}
     >
       <div className="hidden h-10 shrink-0 items-center justify-between border-b border-border px-3 text-xs md:flex">
         <span className="font-medium text-foreground">Слайды</span>

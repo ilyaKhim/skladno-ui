@@ -142,7 +142,12 @@ final class TemplateEditorMapper {
                                             run == null ? null : run.getFontFamily(),
                                             run != null && run.isItalic(),
                                             run != null && run.isUnderlined(),
-                                            override == null ? null : override.textStyle()));
+                                            override == null ? null : override.textStyle(),
+                                            switch (textShape.getVerticalAlignment()) {
+                                                case MIDDLE -> "center";
+                                                case BOTTOM -> "bottom";
+                                                case null, default -> "top";
+                                            }));
                         }
                     }
                 }
@@ -169,7 +174,8 @@ final class TemplateEditorMapper {
                                     block.textStyle() == null ? "Arial" : block.textStyle().fontFamily(),
                                     block.textStyle() != null && Boolean.TRUE.equals(block.textStyle().italic()),
                                     block.textStyle() != null && Boolean.TRUE.equals(block.textStyle().underline()),
-                                    block.textStyle()));
+                                    block.textStyle(),
+                                    "top"));
                 }
                 List<EditorDeckView.ImageBlock> images =
                         decision.imageBlocksOrEmpty().stream()

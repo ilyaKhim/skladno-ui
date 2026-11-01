@@ -91,6 +91,90 @@ class DataBlockRendererTest {
     }
 
     @Test
+    void lineAndDoughnutHaveNativeSeriesEditableWorkbooksAndVisiblePdfGraphics() throws Exception {
+        for (String type : List.of("line", "doughnut")) {
+            var block = new DataBlock("new-" + type, type, 15, 35, 70, 50,
+                    List.of("Квартал", "Продажи"), List.of(List.of("Q1", "30"), List.of("Q2", "70")), false);
+            var bytes = templates.render("opal", plan(List.of(block)));
+            try (var show = new XMLSlideShow(new ByteArrayInputStream(bytes))) {
+                var chart = show.getCharts().getFirst();
+                var nativeData = chart.getChartSeries().getFirst();
+                assertThat(nativeData.getClass().getSimpleName()).isEqualTo(type.equals("line") ? "XDDFLineChartData" : "XDDFDoughnutChartData");
+                assertThat(nativeData.getSeries(0).getValuesData().getPointAt(1).doubleValue()).isEqualTo(70);
+                assertThat(chart.getWorkbook().getSheetAt(0).getRow(1).getCell(1).getNumericCellValue()).isEqualTo(30);
+                if (type.equals("line")) {
+                    var series = chart.getCTChart().getPlotArea().getLineChartArray(0).getSerArray(0);
+                    assertThat(series.getSmooth().getVal()).isFalse();
+                    assertThat(series.getSpPr().getLn().getSolidFill().getSrgbClr().getVal()).containsExactly((byte) 0x33, (byte) 0x5c, (byte) 0xc5);
+                } else {
+                    var ring = chart.getCTChart().getPlotArea().getDoughnutChartArray(0);
+                    assertThat(ring.getSerArray(0).getDPtList()).hasSize(2);
+                    assertThat(ring.getFirstSliceAng().getVal()).isZero();
+                }
+            }
+            var file = directory.resolve(type + ".pptx");
+            Files.write(file, bytes);
+            try (var pdf = Loader.loadPDF(new PresentationPdfRenderer(new PdfExportSettings(72, 1)).render(file, false))) {
+                var image = new PDFRenderer(pdf).renderImage(0);
+                int blue = 0;
+                for (int y = 0; y < image.getHeight(); y++) for (int x = 0; x < image.getWidth(); x++)
+                    if ((image.getRGB(x, y) & 0xffffff) == 0x335cc5) blue++;
+                assertThat(blue).as(type + " PDF pixels").isGreaterThan(type.equals("line") ? 100 : 500);
+            }
+            assertThat(Files.readAllBytes(file)).isEqualTo(bytes);
+        }
+    }
+
+    @Test
+    void kpiAndComparisonExportAsEditableTextAndCells() throws Exception {
+        var kpi = new DataBlock("kpi", "kpi", 15, 35, 70, 50, List.of("Показатель", "Значение"), List.of(List.of("Конверсия", "42%")), false);
+        var comparison = new DataBlock("compare", "comparison", 15, 35, 70, 50,
+                List.of("Критерий", "Старт", "Бизнес"), List.of(List.of("Поддержка", "Email", "24/7")), false);
+        try (var show = new XMLSlideShow(new ByteArrayInputStream(templates.render("opal", plan(List.of(kpi, comparison)))))) {
+            assertThat(show.getCharts()).isEmpty();
+            var slide = show.getSlides().getFirst();
+            assertThat(slide.getShapes().stream().filter(org.apache.poi.xslf.usermodel.XSLFTextShape.class::isInstance)
+                    .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast).map(org.apache.poi.xslf.usermodel.XSLFTextShape::getText).toList())
+                    .contains("42%", "Конверсия");
+            var table = slide.getShapes().stream().filter(XSLFTable.class::isInstance).map(XSLFTable.class::cast).findFirst().orElseThrow();
+            assertThat(table.getCell(1, 2).getText()).isEqualTo("24/7");
+            assertThat(table.getCell(1, 0).getTextParagraphs().getFirst().getTextRuns().getFirst().isBold()).isTrue();
+        }
+    }
+
+    @Test
+    void newTypesRejectMisleadingDistributionsAndInvalidKpiComparisonShapes() {
+        var headers = List.of("Категория", "Число");
+        for (var invalid : List.of(
+                new DataBlock("bad", "doughnut", 15, 35, 70, 50, headers, List.of(List.of("A", "0")), false),
+                new DataBlock("bad", "doughnut", 15, 35, 70, 50, headers, List.of(List.of("A", "-1"), List.of("B", "20")), false),
+                new DataBlock("bad", "doughnut", 15, 35, 70, 50, List.of("A", "B", "C"), List.of(List.of("A", "1", "2")), false),
+                new DataBlock("bad", "kpi", 15, 35, 70, 50, headers, List.of(List.of("A", "1"), List.of("B", "2")), false),
+                new DataBlock("bad", "kpi", 15, 35, 70, 50, headers, List.of(List.of("A", "x".repeat(41))), false),
+                new DataBlock("bad", "kpi", 15, 35, 70, 50, headers, List.of(List.of("x".repeat(81), "42%")), false),
+                new DataBlock("bad", "comparison", 15, 35, 70, 50, headers, List.of(List.of("A", "B")), false),
+                new DataBlock("bad", "line", 15, 35, 70, 50, headers, List.of(List.of("A", "NaN")), false)))
+            assertThatThrownBy(() -> templates.normalizeEditor("opal", plan(List.of(invalid))))
+                    .isInstanceOf(ru.godeck.presentation.exception.GenerationException.class);
+    }
+
+    @Test
+    void kpiUsesOneUndistortedViewportForWideAndTallBlocks() throws Exception {
+        for (double width : List.of(70.0, 30.0)) {
+            var kpi = new DataBlock("kpi", "kpi", 15, 30, width, 60, List.of("Показатель", "Значение"), List.of(List.of("Конверсия", "89%")), false);
+            try (var show = new XMLSlideShow(new ByteArrayInputStream(templates.render("opal", plan(List.of(kpi)))))) {
+                var value = show.getSlides().getFirst().getShapes().stream()
+                        .filter(org.apache.poi.xslf.usermodel.XSLFTextShape.class::isInstance)
+                        .map(org.apache.poi.xslf.usermodel.XSLFTextShape.class::cast).filter(shape -> shape.getText().equals("89%")).findFirst().orElseThrow();
+                var page = TemplateShapes.pageBounds(show);
+                double scale = Math.min(page.getWidth() * width / 100 / 600, page.getHeight() * .6 / 320);
+                assertThat(value.getTextParagraphs().getFirst().getTextRuns().getFirst().getFontSize()).isCloseTo(76 * scale, within(.01));
+                assertThat(value.getAnchor().getCenterX()).isCloseTo(page.getWidth() * (.15 + width / 200), within(.01));
+            }
+        }
+    }
+
+    @Test
     void rejectsNonRectangularNonFiniteDuplicateAndOversizedDataBeforeRendering() {
         var valid = block("bar", false);
         for (String value : List.of("", "NaN", "Infinity", "10%", "1,5", "0x1p2", "1000000000001")) {

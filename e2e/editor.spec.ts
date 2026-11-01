@@ -36,7 +36,14 @@ test('создать презентацию через студию и откр�
   expect(pixel.slice(0, 3)).not.toEqual([255, 255, 255])
   await page.mouse.move(0, 0)
   await page.evaluate(() => document.fonts.ready)
-  await expect(canvas(page)).toHaveScreenshot('opal-list.png', { animations: 'disabled', maxDiffPixelRatio: 0.01 })
+  await expect(canvas(page).locator('[data-slide-number]')).toHaveText('02')
+  // The centered canvas has fractional coordinates. Use integer capture bounds so a
+  // toolbar-height change cannot add a rounding-only pixel to the reference image.
+  const bounds = (await canvas(page).boundingBox())!
+  await expect(page).toHaveScreenshot('opal-list.png', {
+    clip: { x: Math.floor(bounds.x), y: Math.floor(bounds.y), width: Math.ceil(bounds.width), height: Math.ceil(bounds.height) },
+    animations: 'disabled', maxDiffPixelRatio: 0.01,
+  })
 })
 
 test('изменить текст и передвинуть shape, дождаться autosave и перезагрузить', async ({ page, deckId }) => {

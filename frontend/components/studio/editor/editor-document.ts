@@ -44,6 +44,7 @@ export function toDeck(source: EditorDeck): Deck {
         fontFamily: block.font_family ?? undefined,
         italic: block.italic,
         underline: block.underline,
+        verticalAlign: block.vertical_align,
         ...(block.text_style ? { textStyle: block.text_style } : {}),
         paragraph: block.paragraph
           ? {

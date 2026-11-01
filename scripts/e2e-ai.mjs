@@ -24,13 +24,24 @@ export async function startAiFixture() {
       const approved = JSON.stringify(input.input).match(/E2E approved (?:PDF|DOCX|TXT) 73/)?.[0]
       const reviewFixture = JSON.stringify(input.input).includes('E2E outline')
       const dataFixture = JSON.stringify(input.input).includes('E2E data blocks 73')
+      const expandedType = JSON.stringify(input.input).match(/E2E fill (kpi|comparison|line|doughnut) 73/)?.[1]
+      if (expandedType && !schema.properties.slides.items.properties.dataBlocks.items.properties.type.enum.includes(expandedType))
+        throw new Error('Requested block type missing from strict schema')
+      const updated = JSON.stringify(input.input).includes('E2E update value 89')
+      const value = updated ? '89' : '73'
+      const expandedBlock = expandedType ? { id: `ai-${expandedType}-73`, type: expandedType, x: 15, y: 40, width: 70, height: 40,
+        headers: expandedType === 'comparison' ? ['Критерий', 'Старт', 'Бизнес'] : ['Показатель', 'Значение'],
+        rows: expandedType === 'kpi' ? [['Конверсия', `${value}%`]]
+          : expandedType === 'comparison' ? [['Лимит', value, '100'], ['Поддержка', 'Email', '24/7']]
+          : [['Январь', value], ['Февраль', '27']], horizontal: false } : null
       const fields = Object.fromEntries(fieldNames.map((name) => [name, 'Тест']))
       fields.TITLE = approved ?? 'E2E presentation'
       const content = {
         fields,
         slides: slideNumbers.map((slide, index) => ({ slide, include: reviewFixture ? [1, 9, 13].includes(slide) : index === 0, reason: 'E2E fixture',
-          dataBlocks: dataFixture && index === 0 ? [{ id: 'ai-data-73', type: 'bar', x: 15, y: 40, width: 70, height: 40,
-            headers: ['Категория', 'Значение'], rows: [['Материал', '73']], horizontal: false }] : [],
+          dataBlocks: index !== 0 ? [] : expandedBlock ? [expandedBlock]
+            : dataFixture ? [{ id: 'ai-data-73', type: 'bar', x: 15, y: 40, width: 70, height: 40,
+              headers: ['Категория', 'Значение'], rows: [['Материал', '73']], horizontal: false }] : [],
         })),
       }
       response.end(JSON.stringify({

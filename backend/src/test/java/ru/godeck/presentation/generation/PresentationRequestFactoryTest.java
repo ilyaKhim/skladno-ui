@@ -40,6 +40,6 @@ class PresentationRequestFactoryTest {
         assertThat(data.path("maxItems").asInt()).isEqualTo(10);
         assertThat(data.path("items").path("additionalProperties").asBoolean()).isFalse();
         assertThat(data.path("items").path("properties").path("type").path("enum").toString())
-                .isEqualTo("[\"table\",\"bar\"]");
+                .isEqualTo("[\"table\",\"bar\",\"kpi\",\"comparison\",\"line\",\"doughnut\"]");
     }
 }

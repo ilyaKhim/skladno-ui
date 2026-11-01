@@ -103,6 +103,8 @@ type EditorTextBlock = {
   font_family?: string | null
   italic?: boolean
   underline?: boolean
+  /** Source-template text-frame alignment; read-only, not a formatting override. */
+  vertical_align?: 'top' | 'center' | 'bottom'
   text_style?: EditorTextStyle | null
   paragraph: {
     index: number

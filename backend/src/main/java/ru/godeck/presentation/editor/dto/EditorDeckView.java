@@ -59,7 +59,8 @@ public record EditorDeckView(
             String fontFamily,
             boolean italic,
             boolean underline,
-            TextStyle textStyle) {}
+            TextStyle textStyle,
+            String verticalAlign) {}
 
     /**
      * Browser-safe subset of the PowerPoint paragraph model.

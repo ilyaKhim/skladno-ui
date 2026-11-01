@@ -92,6 +92,22 @@ class TemplateTextStylesTest {
         }
     }
 
+    @Test
+    void projectsSourceVerticalAlignmentWithoutMovingOrReformattingTheTemplate() throws Exception {
+        var initial = plan(null, null);
+        var content = new PresentationContent(initial.fields(), initial.slides().stream()
+                .map(slide -> new PresentationContent.Slide(slide.slide(), slide.slide() == 1, "Anchor")).toList());
+        var blocks = templates.editorDeck("opal", UUID.randomUUID(), "Anchor", 1, 0, Map.of(), content).slides().getFirst().blocks();
+        assertThat(blocks.stream().filter(block -> "TITLE".equals(block.fieldKey())).findFirst().orElseThrow().verticalAlign()).isEqualTo("bottom");
+        assertThat(blocks.stream().filter(block -> "SUBTITLE".equals(block.fieldKey())).findFirst().orElseThrow().verticalAlign()).isEqualTo("top");
+        try (var show = new XMLSlideShow(new ByteArrayInputStream(templates.render("opal", content)))) {
+            var title = TemplateShapes.allShapes(show.getSlides().getFirst().getShapes()).stream()
+                    .filter(XSLFTextShape.class::isInstance).map(XSLFTextShape.class::cast)
+                    .filter(shape -> shape.getText().equals("Text TITLE")).findFirst().orElseThrow();
+            assertThat(title.getVerticalAlignment()).isEqualTo(org.apache.poi.sl.usermodel.VerticalAlignment.BOTTOM);
+        }
+    }
+
     private PresentationContent plan(PresentationContent.TextLayout layout, PresentationContent.TextBlock custom) {
         Map<String, String> fields = new LinkedHashMap<>();
         templates.fields("opal").keySet().forEach(key -> fields.put(key, "Text " + key));

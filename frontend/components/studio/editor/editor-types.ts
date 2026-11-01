@@ -61,6 +61,8 @@ export interface TextBlock {
   textStyle?: EditorTextStyle
   /** Present for template fields; geometry remains owned by layoutKey. */
   paragraph?: TextParagraphStyle
+  /** Read-only alignment inside the owning source shape; old documents default to top. */
+  verticalAlign?: 'top' | 'center' | 'bottom'
 }
 
 export interface ImageBlock {

@@ -114,7 +114,7 @@ public class PresentationRequestFactory {
         var cell = Map.of("type", "string");
         var properties = new LinkedHashMap<String, Object>();
         properties.put("id", Map.of("type", "string"));
-        properties.put("type", Map.of("type", "string", "enum", List.of("table", "bar")));
+        properties.put("type", Map.of("type", "string", "enum", DataBlock.TYPES));
         for (String key : List.of("x", "y", "width", "height")) properties.put(key, Map.of("type", "number"));
         properties.put("headers", Map.of("type", "array", "items", cell, "minItems", 2, "maxItems", DataBlock.MAX_COLUMNS));
         properties.put("rows", Map.of("type", "array", "minItems", 1, "maxItems", DataBlock.MAX_ROWS,

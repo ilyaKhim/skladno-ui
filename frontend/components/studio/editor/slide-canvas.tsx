@@ -274,6 +274,9 @@ export function SlideSurface({
         const style = shapeStyle(anchor)
         const editing = shape.blocks.some((block) => block.id === editingBlockId)
         const content = textShapeContent(shape, slide.theme, editingBlockId, onUpdateBlock, onFinishEditing, onCommitElement)
+        // Align the whole paragraph flow, not individual fields, inside its source PPTX frame.
+        const contentStyle: CSSProperties = { justifyContent: anchor.verticalAlign === 'bottom' ? 'flex-end'
+          : anchor.verticalAlign === 'center' ? 'center' : 'flex-start' }
 
         if (!interactive) {
           return (
@@ -283,7 +286,7 @@ export function SlideSurface({
               className="absolute whitespace-pre-line"
               style={style}
             >
-              <span className="block h-full overflow-hidden">{content}</span>
+              <span className="flex h-full flex-col overflow-hidden" style={contentStyle}><span className="block shrink-0">{content}</span></span>
             </div>
           )
         }
@@ -344,7 +347,7 @@ export function SlideSurface({
                 {selectedBlock?.fieldKey ? BLOCK_ROLE_LABELS[selectedBlock.role] : 'Свободный текст'}
               </span>
             )}
-            <span className={cn('block h-full', !editing && 'overflow-hidden')}>{content}</span>
+            <span className={cn('flex h-full flex-col', !editing && 'overflow-hidden')} style={contentStyle}><span className="block shrink-0">{content}</span></span>
             {selected && (
               <span
                 aria-hidden

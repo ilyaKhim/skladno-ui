@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { groupTextBlocks } from '../components/studio/editor/text-shape-groups.ts'
+import { serialize, toDeck } from '../components/studio/editor/editor-document.ts'
 
 const block = (id, fieldKey, layoutKey, paragraph) => ({
   id,
@@ -57,4 +58,17 @@ test('custom text remains an independent shape and fields in one paragraph keep 
   assert.equal(groups.length, 2)
   assert.deepEqual(groups[0].paragraphs[0].blocks.map(({ id }) => id), ['prefix', 'value'])
   assert.equal(groups[1].id, 'block:custom')
+})
+
+test('source vertical alignment hydrates read-only and is not written as a user override', () => {
+  const source = { id: 'deck', title: 'Anchor', base_version: 1, draft_revision: 0, slides: [
+    { id: 's1', source_slide_number: 1, name: 'Slide', theme: 'paper', hidden: false, images: [], blocks: [
+      { ...block('title', 'TITLE', 'layout-1'), field_key: 'TITLE', layout_id: 'layout-1', font_size: 40, vertical_align: 'bottom' },
+    ] },
+  ] }
+  const deck = toDeck(source)
+  assert.equal(deck.slides[0].blocks[0].verticalAlign, 'bottom')
+  assert.ok(!JSON.stringify(serialize(deck, 1, 0)).includes('vertical'))
+  delete source.slides[0].blocks[0].vertical_align
+  assert.equal(toDeck(source).slides[0].blocks[0].verticalAlign, undefined)
 })

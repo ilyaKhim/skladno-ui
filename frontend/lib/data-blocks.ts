@@ -1,7 +1,7 @@
 /** Stored data is shared by tables and charts; it never contains HTML, formulas, or executable code. */
 export interface DataBlock {
   id: string
-  type: 'table' | 'bar'
+  type: 'table' | 'bar' | 'kpi' | 'comparison' | 'line' | 'doughnut'
   x: number
   y: number
   width: number
@@ -13,14 +13,21 @@ export interface DataBlock {
 
 export const DATA_LIMITS = { blocks: 10, rows: 12, columns: 6, cellLength: 160 } as const
 export const SERIES_COLORS = ['#335cc5', '#008577', '#c57525', '#9167bd', '#bd4566']
+export const DATA_BLOCK_NAMES: Record<DataBlock['type'], string> = {
+  table: 'Таблица', bar: 'Столбчатая диаграмма', kpi: 'KPI / крупное число',
+  comparison: 'Сравнение', line: 'Линейный график', doughnut: 'Кольцевая диаграмма',
+}
+export const isNumericChart = (type: DataBlock['type']) => ['bar', 'line', 'doughnut'].includes(type)
 
 export function createDataBlock(type: DataBlock['type']): DataBlock {
-  return { id: `data-${crypto.randomUUID()}`, type, x: 15, y: 30, width: 70, height: 50,
-    headers: ['Категория', 'Значение'], rows: [['Категория 1', '0'], ['Категория 2', '0'], ['Категория 3', '0']], horizontal: false }
+  const data = type === 'kpi' ? { headers: ['Показатель', 'Значение'], rows: [['Название показателя', '0']] }
+    : type === 'comparison' ? { headers: ['Критерий', 'Вариант A', 'Вариант B'], rows: [['Критерий 1', '', ''], ['Критерий 2', '', '']] }
+    : { headers: ['Категория', 'Значение'], rows: [['Категория 1', '0'], ['Категория 2', '0'], ['Категория 3', '0']] }
+  return { id: `data-${crypto.randomUUID()}`, type, x: 15, y: 30, width: 70, height: 50, ...data, horizontal: false }
 }
 
 export function dataBlockError(value: DataBlock): string | null {
-  if (!value || typeof value.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(value.id) || !['table', 'bar'].includes(value.type)
+  if (!value || typeof value.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(value.id) || !Object.hasOwn(DATA_BLOCK_NAMES, value.type)
     || ![value.x, value.y, value.width, value.height].every(Number.isFinite)
     || value.x < 0 || value.y < 0 || value.width < 20 || value.height < 15
     || value.x + value.width > 100.001 || value.y + value.height > 100.001 || typeof value.horizontal !== 'boolean')
@@ -31,9 +38,21 @@ export function dataBlockError(value: DataBlock): string | null {
     return 'Допустимо от 2 до 6 столбцов и от 1 до 12 строк одинаковой длины.'
   if ([...value.headers, ...value.rows.flat()].some((cell) => typeof cell !== 'string' || cell.length > DATA_LIMITS.cellLength))
     return 'В одной ячейке может быть не более 160 символов.'
-  if (value.type === 'bar' && value.rows.some((row) => row.slice(1).some((cell) => !chartNumber(cell))))
+  if (isNumericChart(value.type) && value.rows.some((row) => row.slice(1).some((cell) => !chartNumber(cell))))
     return 'После названия категории введите числа без единиц измерения. Дробная часть — через точку.'
+  if (value.type === 'kpi' && (value.headers.length !== 2 || value.rows.length !== 1 || value.rows[0][0].length > 80 || value.rows[0][1].length > 40))
+    return 'Для KPI нужна одна строка: подпись до 80 и значение до 40 символов (можно с единицами измерения).'
+  if (value.type === 'comparison' && value.headers.length < 3)
+    return 'Для сравнения нужны критерий и минимум два варианта — от 3 до 6 столбцов.'
+  if (value.type === 'doughnut' && (value.headers.length !== 2 || value.rows.some((row) => Number(row[1]) < 0)
+    || !value.rows.some((row) => Number(row[1]) > 0)))
+    return 'Для кольца нужны два столбца и неотрицательные числа, хотя бы одно больше нуля.'
   return null
+}
+
+/** Same conservative font fitting in the browser and native PowerPoint KPI text boxes. */
+export function kpiFontSize(text: string, width: number, height: number, max: number): number {
+  return Math.max(8, Math.min(max, (width - 28) / Math.max(1, [...text].length) / .65, height / 1.3))
 }
 
 function chartNumber(value: string): boolean {
