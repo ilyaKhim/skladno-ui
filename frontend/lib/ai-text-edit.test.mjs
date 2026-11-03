@@ -1,12 +1,18 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { GenerationApiError } from './generation-client.ts'
 import { historyReducer } from '../components/studio/editor/use-editor-state.ts'
 import {
+  allowsEmptySource,
   chipLabel,
+  customRequest,
   disabledReason,
+  EMPTY_BLOCK_HINT,
   findTargetBlock,
+  inputDisabledReason,
   inputLimit,
+  planSubmit,
   sharedFieldSlides,
   targetFor,
   targetKey,
@@ -19,11 +25,15 @@ import {
   checkApply,
   errorReply,
   initialChatState,
+  noTargetMessage,
+  replyText,
   requestWithRetry,
   sourceFor,
 } from '../components/studio/editor/ai/chat-reducer.ts'
 import {
   CONTRACT_ACTION_CATALOG,
+  CONTRACT_ALTERNATIVE_RESPONSE,
+  CONTRACT_HISTORY_PAGE,
   CONTRACT_TEXT_EDIT_REQUEST,
   CONTRACT_TEXT_EDIT_RESPONSE,
   createMockAiEditPort,
@@ -279,6 +289,18 @@ test('error replies use the server message and fall back by contract code', () =
   assert.equal(errorReply(new GenerationApiError('Войдите в GoDeck, чтобы открыть студию.', 401)).retryable, false)
 })
 
+test('retry is offered only when repeating can help, with the same request id when the first may have run', () => {
+  const reply = (code, status) => errorReply(new GenerationApiError('Текст.', status, code))
+  for (const code of ['ai_edit_limit', 'invalid_input', 'invalid_params', 'invalid_text', 'text_too_long', 'unsupported_action',
+    'unsupported_model', 'idempotency_conflict', 'presentation_not_found', 'content_unavailable'])
+    assert.equal(reply(code, 422).retryable, false, code)
+  assert.deepEqual([reply('ai_edit_failed', 502).retryable, reply('ai_edit_failed', 502).sameRequest], [true, false])
+  assert.deepEqual([reply('invalid_target', 422).retryable, reply('invalid_target', 422).sameRequest], [true, false])
+  assert.deepEqual([reply('ai_edit_in_progress', 409).retryable, reply('ai_edit_in_progress', 409).sameRequest], [true, true])
+  const offline = errorReply(new GenerationApiError('Не удалось связаться с сервером.'))
+  assert.deepEqual([offline.retryable, offline.sameRequest], [true, true])
+})
+
 // Applying a proposal goes through the editor history.
 
 test('applying a proposal changes only the text, in every copy of the field, as one undo step', () => {
@@ -321,10 +343,10 @@ test('the mock serves the contract catalog and the contract example response', a
 
 test('the mock computes lengths and warnings by the contract formulas without cutting text', () => {
   const variant = describeVariant(CONTRACT_TEXT_EDIT_RESPONSE.variants[0].text, CONTRACT_TEXT_EDIT_REQUEST.text, 'custom', 46, 146)
-  // UTF-16 length of the contract example text is 60, so over_by is 14 (the contract example says 59/13).
   assert.equal(variant.length, 60)
   assert.equal(variant.over_by, 14)
   assert.deepEqual(variant.warnings, ['over_limit'])
+  assert.deepEqual(CONTRACT_TEXT_EDIT_RESPONSE.variants[0], variant)
 })
 
 test('the mock plays every scenario of the contract', async () => {
@@ -337,7 +359,8 @@ test('the mock plays every scenario of the contract', async () => {
   const huge = await port.textEdit('demo', request({ text: 'Текст __HUGE__' }))
   assert.ok(huge.variants[0].warnings.includes('exceeds_hard_limit'))
   assert.equal(huge.variants[0].length, 166)
-  assert.equal((await port.textEdit('demo', request({ action: 'custom', params: { instruction: 'добавь слайд про цены' } }))).status, 'unsupported')
+  const scope = await port.textEdit('demo', request({ action: 'custom', params: { instruction: 'переделай слайд 5' } }))
+  assert.deepEqual([scope.status, scope.reason, scope.variants.length], ['alternative', 'out_of_scope', 0])
   assert.equal((await port.textEdit('demo', request({ text: 'Текст __SAME__' }))).status, 'unchanged')
   await assert.rejects(port.textEdit('demo', request({ text: 'Текст __FAIL__' })), (error) => error.code === 'ai_edit_failed' && error.status === 502)
   await assert.rejects(port.textEdit('demo', request({ text: 'Текст __LIMIT__' })), (error) => error.code === 'ai_edit_limit' && error.status === 429)
@@ -365,4 +388,159 @@ test('the mock request can be cancelled', async () => {
   const pending = port.textEdit('demo', CONTRACT_TEXT_EDIT_REQUEST, controller.signal)
   controller.abort()
   await assert.rejects(pending, (error) => error.name === 'AbortError')
+})
+
+test('the fixtures repeat the JSON examples of the stage 1 contract', () => {
+  const spec = readFileSync(new URL('../../docs/ai-chat-v2.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  const contract = spec.slice(spec.indexOf('<!-- BEGIN:ai-chat-v2-stage1-contract'), spec.indexOf('<!-- END:ai-chat-v2-stage1-contract'))
+  const [alternative, history, outcome] = [...contract.matchAll(/```json\n([\s\S]*?)```/g)].map((match) => JSON.parse(match[1]))
+  assert.deepEqual(CONTRACT_ALTERNATIVE_RESPONSE, alternative)
+  assert.deepEqual(CONTRACT_HISTORY_PAGE, history)
+  assert.deepEqual(outcome, { outcome: 'applied', variant: 0 })
+})
+
+const mockRequest = (instruction, overrides = {}) => ({ ...CONTRACT_TEXT_EDIT_REQUEST, request_id: crypto.randomUUID(), params: { instruction },
+  text: 'Оппозитный двигатель остаётся основой марки', ...overrides })
+
+test('control phrases on the mock: nothing ends without an action', async () => {
+  const port = createMockAiEditPort({ delayMs: 0 })
+  const ask = (instruction, overrides) => port.textEdit('demo', mockRequest(instruction, overrides))
+  const joke = await ask('перескажи в виде анекдота')
+  assert.equal(joke.status, 'ok')
+  assert.equal(joke.variants.length, 1)
+  const quote = await ask('добавь цитату главного инженера Subaru')
+  assert.deepEqual([quote.status, quote.reason], ['alternative', 'needs_source'])
+  assert.ok(quote.suggestions.length > 0)
+  assert.equal((await ask(quote.suggestions[0])).status, 'ok')
+  assert.equal((await ask(quote.suggestions[1])).status, 'ok')
+  assert.equal((await ask('поставь другой шрифт')).reason, 'style_panel')
+  assert.equal((await ask('что здесь можно улучшить?')).reason, 'advice')
+  assert.equal((await ask('сделай лучше')).reason, 'clarify')
+  assert.equal((await ask('заполни этот блок', { text: '' })).status, 'ok')
+  for (const phrase of ['добавь цитату', 'поставь другой шрифт', 'переделай слайд 5', 'что улучшить?', 'сделай лучше', 'сократи']) {
+    const answer = await ask(phrase)
+    assert.ok(answer.variants.length > 0 || (answer.message && answer.suggestions.length > 0), phrase)
+  }
+  for (const suggestion of Object.values(['поставь другой шрифт', 'переделай слайд 5', 'что улучшить?', 'сделай лучше'])) {
+    for (const text of (await ask(suggestion)).suggestions) assert.equal((await ask(text)).status, 'ok', text)
+  }
+})
+
+test('the mock keeps quick actions on an empty block rejected and flags facts to check', async () => {
+  const port = createMockAiEditPort({ delayMs: 0 })
+  await assert.rejects(port.textEdit('demo', mockRequest('', { action: 'shorten', params: {}, text: '  ' })), (error) => error.code === 'invalid_text')
+  const facts = await port.textEdit('demo', mockRequest('сделай формальнее', { text: 'Текст __CHECK_FACTS__' }))
+  assert.ok(facts.variants[0].warnings.includes('check_facts'))
+})
+
+test('the mock history is newest first, paged, tracks outcomes and is cleared', async () => {
+  const port = createMockAiEditPort({ delayMs: 0 })
+  const bodies = ['первая', 'вторая', 'третья'].map((instruction) => mockRequest(instruction))
+  const answers = []
+  for (const body of bodies) answers.push(await port.textEdit('demo', body))
+  const first = await port.history('demo', { limit: 2 })
+  assert.deepEqual(first.items.map((item) => item.instruction), ['третья', 'вторая'])
+  assert.ok(first.next_before)
+  const second = await port.history('demo', { limit: 2, before: first.next_before })
+  assert.deepEqual(second.items.map((item) => item.instruction), ['первая'])
+  assert.equal(second.next_before, null)
+  await assert.rejects(port.history('demo', { limit: 0 }), (error) => error.code === 'invalid_input')
+  await assert.rejects(port.history('demo', { before: 'x' }), (error) => error.code === 'invalid_input')
+
+  await port.outcome('demo', answers[0].edit_id, { outcome: 'applied', variant: 0 })
+  await port.outcome('demo', answers[0].edit_id, { outcome: 'reverted', variant: null })
+  await port.outcome('demo', answers[0].edit_id, { outcome: 'applied', variant: 0 })
+  assert.deepEqual([second.items[0].outcome, (await port.history('demo')).items.at(-1).outcome], [null, 'applied'])
+  await assert.rejects(port.outcome('demo', answers[0].edit_id, { outcome: 'applied', variant: 5 }), (error) => error.code === 'invalid_input')
+  await assert.rejects(port.outcome('demo', answers[0].edit_id, { outcome: 'rejected', variant: 0 }), (error) => error.code === 'invalid_input')
+  await assert.rejects(port.outcome('demo', 'unknown', { outcome: 'rejected', variant: null }), (error) => error.code === 'ai_edit_not_found')
+
+  await port.clearHistory('demo')
+  await port.clearHistory('demo')
+  assert.deepEqual(await port.history('demo'), { items: [], next_before: null })
+  await assert.rejects(port.outcome('demo', answers[0].edit_id, { outcome: 'rejected', variant: null }), (error) => error.status === 404)
+  await assert.rejects(port.textEdit('demo', bodies[0]), (error) => error.code === 'ai_edit_failed' && error.status === 502)
+})
+
+test('a failed request stays in the mock history without its source', async () => {
+  const port = createMockAiEditPort({ delayMs: 0 })
+  await assert.rejects(port.textEdit('demo', mockRequest('сделай', { text: 'Текст __FAIL__' })))
+  const [item] = (await port.history('demo')).items
+  assert.deepEqual([item.status, item.source_text, item.max_chars, item.hard_max_chars], ['failed', null, null, null])
+})
+
+// Replies instead of refusals
+
+const alternative = (reason, overrides = {}) => okResponse('edit-alt', 'x', { status: 'alternative', variants: [], reason,
+  message: `Ответ ${reason}`, suggestions: ['Первая просьба', 'Вторая просьба'], ...overrides })
+const reply = (response) => received(initialChatState(), { requestId: 'r1', source: sourceFor(initialChatState(), targetKey(fieldTarget), 'Текст'), response })
+
+test('every alternative reason becomes a reply with its target, reason and suggestions and no card', () => {
+  for (const reason of ['needs_source', 'style_panel', 'out_of_scope', 'advice', 'clarify', 'future_reason']) {
+    const state = reply(alternative(reason))
+    const message = state.messages.at(-1)
+    assert.equal(message.kind, 'reply', reason)
+    assert.deepEqual(message.target, fieldTarget)
+    assert.equal(message.reason, reason)
+    assert.equal(message.text, `Ответ ${reason}`)
+    assert.deepEqual(message.suggestions, ['Первая просьба', 'Вторая просьба'])
+    assert.equal(message.editId, 'edit-alt')
+    assert.equal(state.pending.size, 0)
+  }
+})
+
+test('an old unsupported answer is still shown, also from a response without the new fields', () => {
+  const { reason: _reason, suggestions: _suggestions, ...legacy } = okResponse('edit-old', 'x', { status: 'unsupported', variants: [], message: 'Старый ответ' })
+  const message = reply(legacy).messages.at(-1)
+  assert.equal(message.text, 'Старый ответ')
+  assert.deepEqual(message.suggestions, [])
+  assert.equal(message.reason, null)
+})
+
+test('a reply is never empty and the fallback promises no refusal', () => {
+  for (const reason of ['needs_source', 'style_panel', 'out_of_scope', 'advice', 'clarify', 'constructor', 'future_reason', null]) {
+    assert.ok(replyText('alternative', reason, '  ').length > 0, String(reason))
+    assert.equal(typeof replyText('alternative', reason, null), 'string')
+  }
+  assert.equal(replyText('unchanged', null, null), 'Менять нечего: текст уже подходит.')
+  assert.doesNotMatch(replyText('unsupported', null, null), /только текст выбранного блока/)
+})
+
+test('a suggestion is a free-form request built from the catalog', () => {
+  assert.deepEqual(customRequest(CONTRACT_ACTION_CATALOG, fieldTarget, 'Вставь заглушку'),
+    { actionId: 'custom', params: { instruction: 'Вставь заглушку' }, label: 'Вставь заглушку' })
+  assert.equal(customRequest(CONTRACT_ACTION_CATALOG, fieldTarget, 'x'.repeat(400)).params.instruction.length, 300)
+  assert.equal(customRequest(null, fieldTarget, 'x'), null)
+  assert.equal(customRequest({ actions: CONTRACT_ACTION_CATALOG.actions.filter((action) => action.ui !== 'input') }, fieldTarget, 'x'), null)
+})
+
+// Empty block and no selection
+
+test('an empty block closes quick actions but not the input field', () => {
+  const statement = { ...deck.slides[2].blocks[1], text: '  ' }
+  assert.equal(disabledReason(statement, CONTRACT_ACTION_CATALOG), 'Пустой текст')
+  assert.equal(disabledReason(statement, CONTRACT_ACTION_CATALOG, '  ', true), null)
+  assert.equal(inputDisabledReason(statement, CONTRACT_ACTION_CATALOG, '  ', true), null)
+  assert.equal(allowsEmptySource('custom'), true)
+  assert.equal(allowsEmptySource('shorten'), false)
+  assert.equal(EMPTY_BLOCK_HINT, 'Опишите, что написать в этом блоке')
+  assert.equal(disabledReason({ ...statement, text: 'x'.repeat(147) }, CONTRACT_ACTION_CATALOG, undefined, true), 'Текст длиннее 146 символов — сократите вручную')
+})
+
+test('without a selected block the field stays open unless AI is off', () => {
+  assert.equal(inputDisabledReason(null, CONTRACT_ACTION_CATALOG), null)
+  assert.equal(inputDisabledReason(null, null), null)
+  assert.equal(inputDisabledReason(null, { ...CONTRACT_ACTION_CATALOG, enabled: false }), 'AI не настроен')
+})
+
+test('sending without a target goes nowhere and keeps the draft', () => {
+  assert.deepEqual(planSubmit('  сделай формальнее ', null, false), { kind: 'ask_target' })
+  assert.deepEqual(planSubmit('сделай формальнее', fieldTarget, true), { kind: 'send', text: 'сделай формальнее' })
+  assert.deepEqual(planSubmit('сделай формальнее', fieldTarget, false), { kind: 'none' })
+  assert.deepEqual(planSubmit('   ', null, true), { kind: 'none' })
+  const state = chatReducer(initialChatState(), { type: 'notice', message: noTargetMessage('n1') })
+  assert.equal(state.messages[0].text, 'Выберите на слайде блок, к которому относится просьба. Текст просьбы сохранён')
+  assert.equal(state.messages[0].target, null)
+  assert.equal(state.inFlight.size, 0)
+  assert.equal(state.quota, null)
 })

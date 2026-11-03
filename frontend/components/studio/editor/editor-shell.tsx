@@ -101,6 +101,7 @@ export function EditorShell({ initialDeck, onSave, onExport, onUploadImage, cont
   const chat = useAiChat({
     config: aiEdit,
     editor,
+    deck,
     // Custom blocks are validated against the saved document, so unsaved edits are saved first.
     ensureSaved: onSave ? () => (editor.hasUnsavedChanges() ? editor.saveNow() : Promise.resolve(true)) : undefined,
     active: chatOpen && (isWide || chatFocusRequest > 0),

@@ -90,8 +90,8 @@ godeck:
     retention-batch-size: ${AI_EDIT_RETENTION_BATCH_SIZE:1000}
     retention-cron: ${AI_EDIT_RETENTION_CRON:0 17 3 * * *}
     prompt:
-      max-output-tokens: ${AI_EDIT_MAX_OUTPUT_TOKENS:2048}
-      base-output-tokens: ${AI_EDIT_BASE_OUTPUT_TOKENS:256}
+      max-output-tokens: ${AI_EDIT_MAX_OUTPUT_TOKENS:4096}
+      base-output-tokens: ${AI_EDIT_BASE_OUTPUT_TOKENS:1024}
       shorten-ratio: ${AI_EDIT_SHORTEN_RATIO:0.7}
       title-max-chars: ${AI_EDIT_TITLE_MAX_CHARS:80}
       role-max-chars: ${AI_EDIT_ROLE_MAX_CHARS:160}

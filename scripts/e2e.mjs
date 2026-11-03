@@ -3,8 +3,11 @@ import { randomBytes } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 import { startAiFixture } from './e2e-ai.mjs'
+import { acquireE2eRun } from './e2e-run-guard.mjs'
+import toolCommands from './tool-commands.cjs'
 
 // One schema and one directory per run keep quotas, uploads and drafts independent of real projects.
 const schema = `editor_e2e_${randomBytes(6).toString('hex')}`
@@ -15,6 +18,7 @@ const env = {
   ...process.env,
   NEXT_DIST_DIR: '.next-e2e',
   BACKEND_URL: 'http://127.0.0.1:18081',
+  FRONTEND_URL: 'http://127.0.0.1:13000',
   STATIC_EXPORT: '0',
   NEXT_TELEMETRY_DISABLED: '1',
   E2E_SCHEMA: schema,
@@ -29,7 +33,8 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 function run(args) {
   return new Promise((resolve, reject) => {
-    const child = spawn('pnpm', args, { stdio: 'inherit', env })
+    const invocation = toolCommands.pnpmCommand(args)
+    const child = spawn(invocation.command, invocation.args, { stdio: 'inherit', env })
     activeChild = child
     child.on('error', reject)
     child.on('exit', (code, signal) => resolve(code ?? (signal ? 130 : 1)))
@@ -39,7 +44,9 @@ function run(args) {
 let connected = false
 let schemaCreated = false
 let aiFixture
+let releaseRun
 try {
+  releaseRun = await acquireE2eRun(fileURLToPath(new URL('../.tools/e2e-run.lock', import.meta.url)), [env.BACKEND_URL, env.FRONTEND_URL])
   aiFixture = await startAiFixture()
   env.E2E_AI_URL = aiFixture.url
   await database.connect()
@@ -50,7 +57,7 @@ try {
   process.exitCode = buildCode || await run(['exec', 'playwright', 'test', ...process.argv.slice(2)])
 } catch (error) {
   console.error(`E2E could not start: ${error.message}`)
-  console.error('Start local PostgreSQL with pnpm infra:up, or set E2E_DATABASE_URL to a dedicated test database.')
+  if (releaseRun && !connected) console.error('Start local PostgreSQL with pnpm infra:up, or set E2E_DATABASE_URL to a dedicated test database.')
   process.exitCode = 1
 } finally {
   try {
@@ -59,8 +66,12 @@ try {
       await database.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`)
     }
   } finally {
-    if (connected) await database.end()
-    if (aiFixture) await aiFixture.close()
-    await rm(dataDir, { recursive: true, force: true })
+    try {
+      if (connected) await database.end()
+      if (aiFixture) await aiFixture.close()
+      await rm(dataDir, { recursive: true, force: true })
+    } finally {
+      await releaseRun?.()
+    }
   }
 }

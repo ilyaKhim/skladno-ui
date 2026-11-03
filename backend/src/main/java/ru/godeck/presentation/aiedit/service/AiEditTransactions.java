@@ -1,10 +1,12 @@
 package ru.godeck.presentation.aiedit.service;
 
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import ru.godeck.common.text.BackendMessages;
 import ru.godeck.presentation.aiedit.ai.ResponsesUsage;
+import ru.godeck.presentation.aiedit.core.AiEditFailureReason;
 import ru.godeck.presentation.aiedit.core.AiEditStatus;
 import ru.godeck.presentation.aiedit.dto.AiQuotaView;
 import ru.godeck.presentation.aiedit.dto.TextEditView;
@@ -35,17 +37,23 @@ import java.util.function.Function;
 public class AiEditTransactions {
     private static final DateTimeFormatter RESET_TIME =
             DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm").withZone(ZoneId.of("Europe/Moscow"));
+    /** First key of the two-key advisory lock; the second key is derived from the user id. */
+    private static final int QUOTA_LOCK = 71983403;
+
     private final PresentationAiEditRepository edits;
+    private final JdbcClient db;
     private final ObjectMapper json;
     private final Clock clock;
     private final AiEditSettings settings;
 
     public AiEditTransactions(
             PresentationAiEditRepository edits,
+            JdbcClient db,
             ObjectMapper json,
             Clock clock,
             AiEditSettings settings) {
         this.edits = edits;
+        this.db = db;
         this.json = json;
         this.clock = clock;
         this.settings = settings;
@@ -60,15 +68,21 @@ public class AiEditTransactions {
      *       ai_edit_in_progress};
      *   <li>running but stale: marked failed, {@code ai_edit_failed};
      *   <li>completed: the stored response with {@code replayed: true}, no quota spent;
+     *   <li>cleared from the feed: {@code ai_edit_failed}, the stored response is gone;
      *   <li>failed: {@code ai_edit_failed} again.
      * </ul>
      *
      * Otherwise reaching the configured quota in the window gives {@code
-     * ai_edit_limit}. Two concurrent first requests race on {@code UNIQUE (user_id, request_id)};
-     * the loser's insert fails and the caller retries after rollback, then sees the winner's row.
+     * ai_edit_limit}. A per-user lock held until commit serializes these steps, so concurrent
+     * requests cannot pass the quota check together, and a duplicate of a running request sees its
+     * row instead of the quota error. Different users do not wait for each other.
      */
     @Transactional(noRollbackFor = GenerationException.class)
     public Start start(PresentationAiEdit candidate) {
+        db.sql("SELECT pg_advisory_xact_lock(?, ?)")
+                .params(QUOTA_LOCK, candidate.getUserId().hashCode())
+                .query(Object.class)
+                .single();
         var existing = edits.findByUserIdAndRequestId(candidate.getUserId(), candidate.getRequestId());
         if (existing.isPresent()) return existing(existing.get(), candidate.getRequestHash());
         Instant now = clock.instant();
@@ -83,12 +97,19 @@ public class AiEditTransactions {
     private Start existing(PresentationAiEdit edit, String requestHash) {
         if (!edit.getRequestHash().equals(requestHash))
             throw new GenerationException(GenerationError.IDEMPOTENCY_CONFLICT);
+        if (edit.getClearedAt() != null)
+            throw new GenerationException(GenerationError.AI_EDIT_FAILED);
         switch (edit.getStatus()) {
             case RUNNING -> {
                 Instant now = clock.instant();
                 if (edit.getCreatedAt().isAfter(now.minus(settings.staleAfter())))
                     throw new GenerationException(GenerationError.AI_EDIT_IN_PROGRESS);
-                edit.fail(GenerationError.AI_EDIT_FAILED.code(), null, now);
+                edit.fail(
+                        GenerationError.AI_EDIT_FAILED.code(),
+                        null,
+                        AiEditFailureReason.INTERNAL,
+                        null,
+                        now);
                 throw new GenerationException(GenerationError.AI_EDIT_FAILED);
             }
             case FAILED -> throw new GenerationException(GenerationError.AI_EDIT_FAILED);
@@ -102,25 +123,43 @@ public class AiEditTransactions {
     /**
      * Stores the outcome; the quota in the response is computed after the insert of this edit.
      *
+     * @param telemetry numbers and codes of this edit
      * @param view builds the response from the current quota
      */
     @Transactional
     public TextEditView complete(
             UUID editId,
             AiEditStatus status,
-            ResponsesUsage usage,
+            Telemetry telemetry,
             Function<AiQuotaView, TextEditView> view) {
         PresentationAiEdit edit = edits.findById(editId).orElseThrow();
+        // The feed was cleared after this row went stale: its texts must not come back.
+        if (edit.getClearedAt() != null)
+            throw new GenerationException(GenerationError.AI_EDIT_FAILED);
         Instant now = clock.instant();
         TextEditView result = view.apply(quota(edit.getUserId(), now));
-        edit.complete(status, json.writeValueAsString(result), usage, now);
+        edit.complete(
+                status,
+                json.writeValueAsString(result),
+                telemetry.usage(),
+                telemetry.alternativeReason(),
+                telemetry.factGuard(),
+                telemetry.durationMs(),
+                now);
         return result;
     }
 
     /** Marks the edit failed; a retry with the same request id gets the same error. */
     @Transactional
-    public void fail(UUID editId, String errorCode, ResponsesUsage usage) {
-        edits.findById(editId).orElseThrow().fail(errorCode, usage, clock.instant());
+    public void fail(
+            UUID editId,
+            String errorCode,
+            ResponsesUsage usage,
+            AiEditFailureReason failureReason,
+            long durationMs) {
+        edits.findById(editId)
+                .orElseThrow()
+                .fail(errorCode, usage, failureReason, durationMs, clock.instant());
     }
 
     /**
@@ -152,4 +191,14 @@ public class AiEditTransactions {
      * @param replay stored response when the request was already completed, otherwise {@code null}
      */
     public record Start(UUID editId, TextEditView replay) {}
+
+    /**
+     * Journal values of a completed edit; codes and numbers only.
+     *
+     * @param alternativeReason value of {@code reason}, or {@code null}
+     * @param factGuard strongest {@code FactGuard} action
+     * @param durationMs time of the whole request
+     */
+    public record Telemetry(
+            ResponsesUsage usage, String alternativeReason, String factGuard, long durationMs) {}
 }

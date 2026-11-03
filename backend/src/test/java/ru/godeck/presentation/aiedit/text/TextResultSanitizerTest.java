@@ -35,6 +35,33 @@ class TextResultSanitizerTest {
     }
 
     @Test
+    void removesPairedEmphasisInsideTheText() {
+        assertThat(texts(sanitize(List.of("Это **очень важно**, правда", "__Весь текст__ и **ещё**"), "Источник")))
+                .containsExactly("Это очень важно, правда", "Весь текст и ещё");
+    }
+
+    @Test
+    void removesHeadingsOnEveryLineOfAMultilineVariant() {
+        assertThat(texts(sanitize(List.of("# Первая\n###### Вторая\n####### Третья"), "Было\nдве строки")))
+                .containsExactly("Первая\nВторая\n####### Третья");
+    }
+
+    @Test
+    void keepsSymbolsThatAreNotMarkdown() {
+        List<String> plain =
+                List.of(
+                        "#1 в рейтинге",
+                        "#продажи растут",
+                        "##важно",
+                        "C# и F#",
+                        "2**10 и 3**4",
+                        "Поле snake__case и other__name",
+                        "Имя: ____ Дата: ____",
+                        "Сноска* и ещё одна*");
+        assertThat(texts(sanitize(plain, "Источник"))).containsExactlyElementsOf(plain);
+    }
+
+    @Test
     void keepsQuotesThatAreNotFraming() {
         assertThat(texts(sanitize(List.of("«Альфа» и «Бета»"), "Исходник")))
                 .containsExactly("«Альфа» и «Бета»");
@@ -101,6 +128,25 @@ class TextResultSanitizerTest {
         assertThat(result.changed()).isFalse();
         assertThat(result.variants()).isEmpty();
         assertThat(sanitize(List.of("", "  "), "Текст").changed()).isFalse();
+    }
+
+    @Test
+    void emptySourceIsNotAMatchForAVariant() {
+        for (String empty : List.of("", "   ")) {
+            var result = sanitize(List.of("Новый текст"), empty);
+            assertThat(result.changed()).isTrue();
+            assertThat(texts(result)).containsExactly("Новый текст");
+        }
+        assertThat(sanitize(List.of("  ", "**"), "").changed()).isFalse();
+    }
+
+    @Test
+    void cleanKeepsWhatSanitizeKeeps() {
+        String raw = "«Первая строка\nвторая»";
+        assertThat(sanitizer.clean(raw, "Одна строка"))
+                .isEqualTo(texts(sanitize(List.of(raw), "Одна строка")).getFirst())
+                .isEqualTo("Первая строка вторая");
+        assertThat(sanitizer.clean("**", "Текст")).isEmpty();
     }
 
     private TextResultSanitizer.Result sanitize(List<String> variants, String source) {

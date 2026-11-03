@@ -29,6 +29,17 @@ try {
   await db.query(await readFile(new URL('V13__unpublished_editor_drafts.sql', directory), 'utf8'))
   await db.query(await readFile(new URL('V14__presentation_ai_edits.sql', directory), 'utf8'))
   assert.equal((await db.query('SELECT count(*)::int AS count FROM presentation_ai_edits')).rows[0].count, 0)
+  // Old journal rows survive the telemetry migration and stay readable as "not tracked".
+  const oldEdit = randomUUID()
+  await db.query(`INSERT INTO presentation_ai_edits(id,presentation_id,user_id,kind,request_id,request_hash,action,params_json,target_kind,target_ref,source_length,status,result_json,model,created_at)
+    VALUES($1,$2,$3,'TEXT_EDIT',$4,$5,'custom','{"instruction":"old"}','template_field','slide-1/TITLE',3,'unsupported','{"status":"unsupported"}','gpt-5.4-mini',now())`,
+  [oldEdit, ids.succeeded, owner, randomUUID(), 'b'.repeat(64)])
+  await db.query(await readFile(new URL('V15__presentation_ai_edit_telemetry.sql', directory), 'utf8'))
+  const { rows: [oldRow] } = await db.query('SELECT status,result_json,prompt_version,outcome,cleared_at FROM presentation_ai_edits WHERE id=$1', [oldEdit])
+  assert.deepEqual(oldRow, { status: 'unsupported', result_json: '{"status":"unsupported"}', prompt_version: null, outcome: null, cleared_at: null })
+  await db.query("UPDATE presentation_ai_edits SET status='alternative', outcome='applied', outcome_variant=0 WHERE id=$1", [oldEdit])
+  await assert.rejects(db.query("UPDATE presentation_ai_edits SET status='maybe' WHERE id=$1", [oldEdit]), /presentation_ai_edits_status_check/)
+  await assert.rejects(db.query("UPDATE presentation_ai_edits SET outcome='maybe' WHERE id=$1", [oldEdit]), /presentation_ai_edits_outcome_check/)
   for (const status of ['awaiting_review', 'queued', 'running']) {
     const { rows: [row] } = await db.query('SELECT status,current_version,content_json FROM generated_presentations WHERE id=$1', [ids[status]])
     assert.equal(row.status, 'draft')
@@ -38,7 +49,7 @@ try {
   const { rows: [published] } = await db.query('SELECT status,current_version FROM generated_presentations WHERE id=$1', [ids.succeeded])
   assert.deepEqual(published, { status: 'succeeded', current_version: 4 })
   assert.equal((await db.query('SELECT count(*)::int AS count FROM presentation_revisions')).rows[0].count, 1)
-  console.log('Draft and AI-edit migrations: old prepared jobs preserved; published v4 unchanged; AI journal ready.')
+  console.log('Draft and AI-edit migrations: old prepared jobs preserved; published v4 unchanged; AI journal ready; old journal rows survive telemetry.')
 } finally {
   await db.query('RESET search_path')
   await db.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)

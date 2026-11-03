@@ -1,5 +1,8 @@
 package ru.godeck.presentation.aiedit.ai;
 
+import ru.godeck.presentation.aiedit.core.AiEditFailureReason;
+import ru.godeck.presentation.exception.GenerationError;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
@@ -12,7 +15,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
-import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.ai.AiCallContext;
 import ru.godeck.presentation.ai.AiOperation;
 import ru.godeck.presentation.ai.PresentationAiCallHistory;
@@ -57,10 +59,35 @@ class AiResponsesClientTest {
         server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
                 .body("provider error " + KEY));
         assertThatThrownBy(() -> client.call(context, "gpt-5.4-mini", Map.of(), Function.identity()))
-                .isInstanceOf(AiGenerationException.class);
+                .isInstanceOfSatisfying(
+                        TextEditCallException.class,
+                        failure -> {
+                            assertThat(failure.failureReason()).isEqualTo(AiEditFailureReason.PROVIDER_HTTP);
+                            assertThat(failure.error()).isEqualTo(GenerationError.AI_EDIT_FAILED);
+                        });
         verify(history).complete(callId, "provider error [REDACTED]", 429,
                 "ai_edit_failed", ResponsesUsage.NONE);
         server.verify();
+    }
+
+    @Test
+    void networkFailureIsATimeoutForTheJournal() {
+        when(history.start(any(), anyString(), anyString())).thenReturn(callId);
+        server.expect(requestTo(URL)).andRespond(request -> { throw new java.net.SocketTimeoutException("read timed out"); });
+        assertThatThrownBy(() -> client.call(context, "gpt-5.4-mini", Map.of(), Function.identity()))
+                .isInstanceOfSatisfying(
+                        TextEditCallException.class,
+                        failure -> assertThat(failure.failureReason()).isEqualTo(AiEditFailureReason.TIMEOUT));
+        verify(history).complete(callId, null, null, "ai_edit_failed", ResponsesUsage.NONE);
+    }
+
+    @Test
+    void readerFailureStaysTheReaderFailure() {
+        when(history.start(any(), anyString(), anyString())).thenReturn(callId);
+        server.expect(requestTo(URL)).andRespond(withSuccess("{\"status\":\"incomplete\"}", MediaType.APPLICATION_JSON));
+        var failure = new TextEditCallException(AiEditFailureReason.INCOMPLETE_OTHER, new ResponsesUsage(1, 0, 2, 2), null);
+        assertThatThrownBy(() -> client.call(context, "gpt-5.4-mini", Map.of(), body -> { throw failure; }))
+                .isSameAs(failure);
     }
 
     @Test

@@ -250,7 +250,7 @@ export type TextEditRequest = {
   variants: number
   model: string | null
 }
-export type TextVariantWarning = 'over_limit' | 'exceeds_hard_limit' | 'not_shorter' | 'line_breaks_removed'
+export type TextVariantWarning = 'over_limit' | 'exceeds_hard_limit' | 'not_shorter' | 'line_breaks_removed' | 'check_facts'
 export type TextVariant = {
   text: string
   length: number
@@ -268,8 +268,12 @@ export type TextEditResponse = {
   edit_id: string
   request_id: string
   refines_edit_id: string | null
-  status: 'ok' | 'unchanged' | 'unsupported'
+  /** `unsupported` no longer comes from new requests but stays in old records and replays. */
+  status: 'ok' | 'unchanged' | 'alternative' | 'unsupported'
+  /** An open string: an unknown value is shown as an ordinary reply. */
+  reason: string | null
   message: string | null
+  suggestions: string[]
   action: string
   target: TextEditTarget
   source_text: string
@@ -281,3 +285,28 @@ export type TextEditResponse = {
   quota: AiQuota
   replayed: boolean
 }
+export type AiEditOutcome = 'applied' | 'rejected' | 'reverted'
+export type AiOutcomeRequest = { outcome: AiEditOutcome; variant: number | null }
+export type AiHistoryItem = {
+  edit_id: string
+  created_at: string
+  refines_edit_id: string | null
+  action: string
+  instruction: string | null
+  target: TextEditTarget
+  status: 'ok' | 'unchanged' | 'alternative' | 'unsupported' | 'failed'
+  reason: string | null
+  message: string | null
+  suggestions: string[]
+  /** The three source fields are null for `failed`: the source of those requests is not stored. */
+  source_text: string | null
+  max_chars: number | null
+  hard_max_chars: number | null
+  variants: TextVariant[]
+  outcome: AiEditOutcome | null
+  outcome_variant: number | null
+  /** False for records older than outcome tracking: there a null outcome does not mean “not applied”. */
+  tracked: boolean
+}
+export type AiHistoryPage = { items: AiHistoryItem[]; next_before: string | null }
+export type AiHistoryQuery = { limit?: number; before?: string }

@@ -1,22 +1,40 @@
 'use client'
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type Ref } from 'react'
-import { AlertCircle, LoaderCircle, Repeat2, Scissors, SendHorizontal, Sparkles, X, type LucideIcon } from 'lucide-react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
+import { AlertCircle, LoaderCircle, Repeat2, Scissors, SendHorizontal, Sparkles, Trash2, X, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import type { AiAction, TextEditTarget } from '@/lib/generation-types'
 import { cn } from '@/lib/utils'
 import type { Deck, TextBlock } from '../editor-types'
 import { AiProposalCard } from './ai-proposal-card'
-import { actionSupports, chipLabel, disabledReason, inputLimit, isInputAction, NO_TARGET_REASON, targetKey } from './ai-target'
+import { canClearHistory } from './chat-history'
+import {
+  actionSupports,
+  allowsEmptySource,
+  chipLabel,
+  customRequest,
+  DEFAULT_INPUT_MAX,
+  disabledReason,
+  EMPTY_BLOCK_HINT,
+  findTargetBlock,
+  inputDisabledReason,
+  inputLimit,
+  isInputAction,
+  NO_TARGET_REASON,
+  planSubmit,
+  targetKey,
+} from './ai-target'
 import { sourceFor, type ChatMessage } from './chat-reducer'
 import { plural } from './plural'
 import type { AiChat } from './use-ai-chat'
 
 /** Icons are the only per-action UI kept locally; labels and the action list come from the catalog. */
 const ACTION_ICONS: Record<string, LucideIcon> = { shorten: Scissors, rephrase: Repeat2 }
-const DEFAULT_INPUT_MAX = 300
+const STYLE_PANEL_HINT = 'Шрифт, размер и цвет меняются на панели над слайдом'
+const RETENTION_NOTE = 'История хранится 90 дней'
 
 export type AiChatLayout = 'column' | 'sheet'
 
@@ -26,7 +44,7 @@ type AiChatPanelProps = {
   target: TextEditTarget | null
   block: TextBlock | null
   layout: AiChatLayout
-  inputRef: Ref<HTMLTextAreaElement>
+  inputRef: RefObject<HTMLTextAreaElement | null>
   onClose: () => void
   /** Esc closes the mobile chat; the wide column stays until closed explicitly. */
   onDismiss?: () => void
@@ -35,29 +53,66 @@ type AiChatPanelProps = {
 
 export function AiChatPanel({ chat, deck, target, block, layout, inputRef, onClose, onDismiss, id }: AiChatPanelProps) {
   const ids = useId()
-  const [draft, setDraft] = useState('')
+  const focusedReply = useRef<string | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const feed = useRef<HTMLDivElement>(null)
   const feedEnd = useRef<HTMLDivElement>(null)
-  const { state, catalog, catalogError } = chat
+  const feedAnchor = useRef({ first: undefined as string | undefined, last: undefined as string | undefined, height: 0 })
+  const { state, catalog, catalogError, draft, setDraft, history } = chat
+  const hasFeed = state.messages.length > 0
+  const clearable = canClearHistory(state.messages.length, history.status)
   const key = target ? targetKey(target) : null
   const running = key ? state.inFlight.has(key) : false
   const source = key && block && catalog ? sourceFor(state, key, block.text, inputLimit(block, catalog)) : null
   const refining = Boolean(source?.refinesEditId)
-  const reason = !target ? NO_TARGET_REASON : !catalog ? null : disabledReason(block, catalog, source?.text ?? block?.text)
-  const ready = Boolean(target && catalog && !reason)
+  const quickReason = !target ? NO_TARGET_REASON : !catalog ? null : disabledReason(block, catalog, source?.text ?? block?.text)
+  const quickReady = Boolean(target && catalog && !quickReason)
   const actions = catalog?.actions.filter((action) => !target || actionSupports(action, target)) ?? []
   const quickActions = actions.filter((action) => !isInputAction(action))
   const inputAction = actions.find(isInputAction)
   const inputParam = inputAction?.params.find((param) => param.type === 'string') ?? inputAction?.params[0]
   const inputMax = inputParam?.max_length ?? DEFAULT_INPUT_MAX
+  const allowEmpty = Boolean(inputAction && allowsEmptySource(inputAction.id))
+  const inputReason = inputDisabledReason(block, catalog, source?.text ?? block?.text, allowEmpty)
+  const inputReady = Boolean(target && catalog && inputAction && !inputReason)
+  const emptyBlock = Boolean(block && !(source?.text ?? block.text).trim())
+  const hint = inputReason ?? (!target
+    ? NO_TARGET_REASON
+    : emptyBlock ? EMPTY_BLOCK_HINT : refining ? 'Следующая просьба уточнит текущее предложение' : 'Выберите текст на слайде, чтобы сменить')
 
+  // Older records appear above the reader: keep the view on the same message instead of jumping down.
+  useLayoutEffect(() => {
+    const element = feed.current
+    const previous = feedAnchor.current
+    const first = state.messages[0]?.id
+    const last = state.messages.at(-1)?.id
+    if (element && previous.first && first !== previous.first && last === previous.last)
+      element.scrollTop += element.scrollHeight - previous.height
+    else feedEnd.current?.scrollIntoView({ block: 'end' })
+    feedAnchor.current = { first, last, height: element?.scrollHeight ?? 0 }
+  }, [state.messages.length, state.inFlight.size]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A question needs an answer in the field; old questions in the history must not take the focus.
   useEffect(() => {
-    feedEnd.current?.scrollIntoView({ block: 'end' })
-  }, [state.messages.length, state.inFlight.size])
+    const last = state.messages.at(-1)
+    if (last?.kind !== 'reply' || last.reason !== 'clarify' || last.fromHistory || focusedReply.current === last.id) return
+    focusedReply.current = last.id
+    inputRef.current?.focus()
+  }, [state.messages, inputRef])
+
+  const showEarlier = () => {
+    feedAnchor.current.height = feed.current?.scrollHeight ?? 0
+    void chat.loadEarlier()
+  }
 
   const submit = () => {
-    const text = draft.trim()
-    if (!target || !inputAction || !inputParam || !text || !ready || running) return
-    chat.sendAction(target, { actionId: inputAction.id, params: { [inputParam.name]: text.slice(0, inputMax) }, label: text })
+    if (inputReason) return
+    const plan = planSubmit(draft, target, inputReady && !running)
+    if (plan.kind === 'ask_target') chat.askForTarget()
+    if (plan.kind !== 'send' || !target) return
+    const request = customRequest(catalog, target, plan.text)
+    if (!request) return
+    chat.sendAction(target, request)
     setDraft('')
   }
 
@@ -68,6 +123,7 @@ export function AiChatPanel({ chat, deck, target, block, layout, inputRef, onClo
   }
 
   return (
+    <>
     <aside
       id={id}
       aria-label="AI-чат"
@@ -83,19 +139,40 @@ export function AiChatPanel({ chat, deck, target, block, layout, inputRef, onClo
             <Sparkles className="size-3.5 text-primary" /> AI-чат
           </h2>
           <div className="flex items-center gap-0.5">
+            {clearable && <span className="mr-1 text-[11px] text-muted-foreground">{RETENTION_NOTE}</span>}
+            {clearable && (
+              <Button variant="ghost" size="icon-xs" onClick={() => setConfirmClear(true)} aria-label="Очистить историю чата" title="Очистить историю">
+                <Trash2 />
+              </Button>
+            )}
             <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Закрыть AI-чат" title="Закрыть">
               <X />
             </Button>
           </div>
         </div>
 
-      <div role="log" aria-live="polite" aria-label="Лента AI-чата" className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {state.messages.length === 0 ? (
-          <div className="flex flex-col gap-1.5 px-1 py-2 text-xs leading-relaxed text-muted-foreground">
-            <p className="font-medium text-foreground">Чат правит текст выбранного блока</p>
-            <p>Выберите текст на слайде и попросите сократить, переформулировать или изменить тон своими словами — например, «сделай формальнее». Вариант появится здесь, применить его можно одной кнопкой.</p>
+      <div ref={feed} role="log" aria-live="polite" aria-label="Лента AI-чата" className="min-h-0 flex-1 overflow-y-auto px-3 py-3 [overflow-anchor:none]">
+        {history.status === 'error' && (
+          <div className="mb-3 flex items-center justify-between gap-2 rounded-lg bg-muted px-3 py-1.5 text-xs text-foreground">
+            <span>Не удалось загрузить историю</span>
+            <Button variant="outline" size="xs" onClick={showEarlier}>Повторить</Button>
           </div>
-        ) : (
+        )}
+        {history.status !== 'error' && history.nextBefore && (
+          <div className="mb-3 flex justify-center">
+            <Button variant="ghost" size="xs" disabled={history.status === 'loading'} onClick={showEarlier}>Показать раньше</Button>
+          </div>
+        )}
+        {history.status === 'loading' && !history.nextBefore && (
+          <p role="status" className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground"><LoaderCircle className="size-3 animate-spin" /> Загружаем историю…</p>
+        )}
+        {!hasFeed ? (history.status === 'loading' ? null : (
+          <div className="flex flex-col gap-1.5 px-1 py-2 text-xs leading-relaxed text-muted-foreground">
+            <p className="font-medium text-foreground">Чат помогает с текстом на слайде</p>
+            <p>Выберите блок и напишите, что сделать: сократить, сменить тон, пересказать иначе или заполнить пустое поле. Вариант появится здесь, применить его можно одной кнопкой. Если правку сделать нельзя, чат объяснит почему и предложит, что сделать вместо неё.</p>
+            <p>{RETENTION_NOTE}</p>
+          </div>
+        )) : (
           <ol className="flex flex-col gap-3">
             {state.messages.map((message) => (
               <li key={message.id}>
@@ -130,7 +207,7 @@ export function AiChatPanel({ chat, deck, target, block, layout, inputRef, onClo
             </span>
           ) : null}
           <p className="text-[11px] text-muted-foreground" id={`${ids}-hint`}>
-            {reason ?? (refining ? 'Следующая просьба уточнит текущее предложение' : 'Выберите текст на слайде, чтобы сменить')}
+            {hint}
           </p>
         </div>
 
@@ -140,7 +217,7 @@ export function AiChatPanel({ chat, deck, target, block, layout, inputRef, onClo
               <QuickAction
                 key={action.id}
                 action={action}
-                disabled={!ready || running}
+                disabled={!quickReady || running}
                 onSend={(params, label) => target && chat.sendAction(target, { actionId: action.id, params, label })}
               />
             ))}
@@ -166,13 +243,13 @@ export function AiChatPanel({ chat, deck, target, block, layout, inputRef, onClo
                 }}
                 rows={2}
                 maxLength={inputMax}
-                disabled={Boolean(reason)}
+                disabled={Boolean(inputReason)}
                 placeholder="Например: сделай формальнее"
                 aria-label="Запрос к AI"
                 aria-describedby={`${ids}-hint ${ids}-count`}
                 className="max-h-32 min-h-10 bg-background text-sm"
               />
-              <Button type="submit" size="icon" disabled={!ready || running || !draft.trim()} aria-label="Отправить запрос AI">
+              <Button type="submit" size="icon" disabled={Boolean(inputReason) || !draft.trim() || (Boolean(target) && (!inputReady || running))} aria-label="Отправить запрос AI">
                 <SendHorizontal />
               </Button>
             </div>
@@ -183,15 +260,28 @@ export function AiChatPanel({ chat, deck, target, block, layout, inputRef, onClo
         )}
       </div>
     </aside>
+    {/* Outside the panel: Esc in the dialog must not reach the panel handler and close the sheet. */}
+    <Dialog open={confirmClear} onOpenChange={(open) => { if (!open && !chat.clearing) setConfirmClear(false) }}>
+      <DialogContent className="w-[min(26rem,calc(100vw-2rem))] gap-4 p-6">
+        <DialogTitle>Очистить историю чата?</DialogTitle>
+        <DialogDescription>Презентация не изменится</DialogDescription>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" disabled={chat.clearing} onClick={() => setConfirmClear(false)}>Отмена</Button>
+          <Button variant="destructive" disabled={chat.clearing} onClick={() => { void chat.clearHistory().finally(() => setConfirmClear(false)) }}>Очистить</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 
 function FeedMessage({ message, chat, deck }: { message: ChatMessage; chat: AiChat; deck: Deck }) {
   const inFlight = chat.state.inFlight.get(message.targetKey)
+  const label = message.target ? chipLabel(deck, message.target) : message.chipLabel
   if (message.kind === 'user') {
     return (
       <div className="flex flex-col items-end gap-1">
-        <span className="text-[11px] text-muted-foreground">{message.chipLabel}</span>
+        <span className="text-[11px] text-muted-foreground">{label}</span>
         <p className="max-w-[90%] rounded-lg bg-primary px-3 py-1.5 text-sm break-words whitespace-pre-wrap text-primary-foreground">{message.text}</p>
         {inFlight?.messageId === message.id && (
           <p role="status" className="flex items-center gap-1.5 self-start text-xs text-muted-foreground">
@@ -216,25 +306,44 @@ function FeedMessage({ message, chat, deck }: { message: ChatMessage; chat: AiCh
     )
   }
   if (message.kind === 'reply') {
+    const { target } = message
+    const actionable = Boolean(target && findTargetBlock(deck, target) && chat.catalog?.enabled && customRequest(chat.catalog, target, ''))
     return (
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] text-muted-foreground">{message.chipLabel}</span>
+        {label && <span className="text-[11px] text-muted-foreground">{label}</span>}
+        {/* Model output is plain text: never parsed as HTML or markdown. */}
         <p className="w-fit max-w-[90%] rounded-lg bg-muted px-3 py-1.5 text-sm break-words whitespace-pre-wrap text-foreground">{message.text}</p>
+        {message.reason === 'style_panel' && <p className="text-xs leading-snug text-muted-foreground">{STYLE_PANEL_HINT}</p>}
+        {target && actionable && message.suggestions.length > 0 && (
+          <div className="flex flex-col items-start gap-1.5 pt-0.5" role="group" aria-label="Что сделать дальше">
+            {message.suggestions.map((suggestion, index) => (
+              <Button
+                key={index}
+                variant="outline"
+                size="sm"
+                disabled={Boolean(inFlight)}
+                onClick={() => chat.sendSuggestion(target, suggestion)}
+                className="h-auto min-h-7 max-w-full justify-start py-1 text-left break-words whitespace-normal"
+              >
+                {suggestion}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
     )
   }
-  const retry = message.retry
   return (
-    <div role="alert" className="flex flex-col gap-1.5 rounded-lg border border-destructive/25 px-3 py-2 text-sm text-destructive">
-      <span className="text-[11px] text-muted-foreground">{message.chipLabel}</span>
+    <div role={message.fromHistory ? undefined : 'alert'} className="flex flex-col gap-1.5 rounded-lg border border-destructive/25 px-3 py-2 text-sm text-destructive">
+      {label && <span className="text-[11px] text-muted-foreground">{label}</span>}
       <p className="flex items-start gap-1.5"><AlertCircle className="mt-0.5 size-3.5 shrink-0" /> <span className="break-words">{message.text}</span></p>
-      {retry && (
+      {message.retry && (
         <Button
           variant="outline"
           size="xs"
           className="w-fit"
           disabled={Boolean(inFlight)}
-          onClick={() => chat.retry(retry)}
+          onClick={() => chat.retry(message.id)}
           aria-label={`Повторить запрос для блока «${message.chipLabel}»`}
         >
           Повторить

@@ -4,6 +4,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 import ru.godeck.presentation.aiedit.config.TextEditPromptSettings;
+import ru.godeck.presentation.aiedit.core.AlternativeReason;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -27,7 +28,12 @@ import java.util.Map;
 public class TextEditRequestFactory {
     public static final String SCHEMA_NAME = "text_edit";
     public static final String STATUS_OK = "ok";
-    public static final String STATUS_UNSUPPORTED = "unsupported";
+    public static final String STATUS_ALTERNATIVE = "alternative";
+    public static final String REASON_NONE = "none";
+
+    /** Journal name of the prompt; changes together with the first line of the prompt file. */
+    public static final String PROMPT_VERSION = "text-edit-v2";
+
     private static final String INSTRUCTIONS = read("text-edit-instructions.txt");
     private final ObjectMapper json;
     private final TextEditPromptSettings settings;
@@ -88,13 +94,21 @@ public class TextEditRequestFactory {
         return input;
     }
 
-    /** {@code {status: ok|unsupported, message, variants: [{text}]}}, all required, strict. */
+    /**
+     * {@code {status: ok|alternative, reason, message, suggestions: [string], variants: [{text,
+     * check_facts}]}}, all required, strict.
+     */
     private static Map<String, Object> schema() {
         Map<String, Object> variant = new LinkedHashMap<>();
         variant.put("text", Map.of("type", "string"));
+        variant.put("check_facts", Map.of("type", "boolean"));
+        List<String> reasons = new ArrayList<>(List.of(REASON_NONE));
+        for (AlternativeReason reason : AlternativeReason.values()) reasons.add(reason.value());
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("status", Map.of("type", "string", "enum", List.of(STATUS_OK, STATUS_UNSUPPORTED)));
+        properties.put("status", Map.of("type", "string", "enum", List.of(STATUS_OK, STATUS_ALTERNATIVE)));
+        properties.put("reason", Map.of("type", "string", "enum", reasons));
         properties.put("message", Map.of("type", "string"));
+        properties.put("suggestions", Map.of("type", "array", "items", Map.of("type", "string")));
         properties.put("variants", Map.of("type", "array", "items", objectSchema(variant)));
         return objectSchema(properties);
     }

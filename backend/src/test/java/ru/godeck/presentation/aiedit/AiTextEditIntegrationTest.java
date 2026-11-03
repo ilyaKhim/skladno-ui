@@ -39,6 +39,7 @@ import ru.godeck.presentation.model.PresentationContent;
 import ru.godeck.presentation.PresentationService;
 import ru.godeck.presentation.template.PresentationTemplateService;
 import ru.godeck.presentation.generation.PresentationWorker;
+import ru.godeck.support.TestSettings;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -56,6 +57,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
@@ -89,6 +93,7 @@ class AiTextEditIntegrationTest {
             Path.of(System.getProperty("java.io.tmpdir"), "godeck-ai-edit-test-" + UUID.randomUUID());
     static final String TEXTS = "/api/generation/v1/presentations/{id}/editor/ai/text-edits";
     static final String ACTIONS = "/api/generation/v1/editor/ai/actions";
+    static final int CONCURRENT_REQUESTS = 8;
 
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate db;
@@ -121,6 +126,11 @@ class AiTextEditIntegrationTest {
     void productionYamlKeepsTheExactReasoningModelKeys() {
         assertThat(promptSettings.reasoningEfforts()).containsExactlyInAnyOrderEntriesOf(
                 Map.of("gpt-5.4-mini", "low", "gpt-5.4", "low"));
+    }
+
+    @Test
+    void productionYamlKeepsThePromptSettingDefaults() {
+        assertThat(promptSettings).isEqualTo(TestSettings.defaults(TextEditPromptSettings.class));
     }
 
     @BeforeEach
@@ -283,6 +293,25 @@ class AiTextEditIntegrationTest {
     }
 
     @Test
+    void refinementMustPointToAnEditOfTheSameTarget() throws Exception {
+        String editId = read(ok(request("rephrase", Map.of(), fieldTarget(), "Текст поля для уточнения"))).path("edit_id").asText();
+        var otherBlock = request("custom", Map.of("instruction", "ещё короче"), blockTarget(), "Текст поля для уточнения");
+        otherBlock.put("refines_edit_id", editId);
+        error(otherBlock, 422, "invalid_input");
+
+        var otherField = fieldTarget();
+        otherField.put("field_key", "TITLE");
+        var otherFieldRefine = request("custom", Map.of("instruction", "ещё короче"), otherField, "Текст поля для уточнения");
+        otherFieldRefine.put("refines_edit_id", editId);
+        error(otherFieldRefine, 422, "invalid_input");
+
+        var sameTarget = request("custom", Map.of("instruction", "ещё короче"), fieldTarget(), "Текст поля для уточнения");
+        sameTarget.put("refines_edit_id", editId);
+        ok(sameTarget).andExpect(jsonPath("$.refines_edit_id").value(editId));
+        verify(llm, times(2)).edit(any());
+    }
+
+    @Test
     void longResultIsReturnedInFullWithOneModelCall() throws Exception {
         ok(request("custom", Map.of("instruction", "сделай длиннее"), fieldTarget(), "Текст " + ScriptedTextEditLlm.LONG))
                 .andExpect(jsonPath("$.status").value("ok"))
@@ -299,12 +328,67 @@ class AiTextEditIntegrationTest {
     }
 
     @Test
-    void outOfScopeRequestIsUnsupported() throws Exception {
+    void outOfScopeRequestIsAnAlternativeWithSuggestions() throws Exception {
+        var request = request("custom", Map.of("instruction", "добавь слайд про цены " + ScriptedTextEditLlm.ALT_SCOPE), fieldTarget(), "Текст поля");
+        JsonNode first =
+                read(ok(request)
+                        .andExpect(jsonPath("$.status").value("alternative"))
+                        .andExpect(jsonPath("$.reason").value("out_of_scope"))
+                        .andExpect(jsonPath("$.variants.length()").value(0))
+                        .andExpect(jsonPath("$.message").value("Сейчас чат правит один блок."))
+                        .andExpect(jsonPath("$.suggestions[0]").isString())
+                        .andExpect(jsonPath("$.quota.remaining").value(6)));
+        assertThat(db.queryForObject("SELECT status FROM presentation_ai_edits", String.class)).isEqualTo("alternative");
+        JsonNode replay = read(ok(request).andExpect(jsonPath("$.replayed").value(true)));
+        assertThat(replay.path("suggestions")).isEqualTo(first.path("suggestions"));
+        assertThat(replay.path("reason")).isEqualTo(first.path("reason"));
+        verify(llm, times(1)).edit(any());
+    }
+
+    @Test
+    void wordsOfARequestNoLongerDecideTheAnswer() throws Exception {
         ok(request("custom", Map.of("instruction", "добавь слайд про цены"), fieldTarget(), "Текст поля"))
+                .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(jsonPath("$.reason").doesNotExist())
+                .andExpect(jsonPath("$.suggestions.length()").value(0));
+    }
+
+    @Test
+    void oldUnsupportedRecordIsStillReplayed() throws Exception {
+        var request = request("custom", Map.of("instruction", "старая просьба"), fieldTarget(), "Текст поля");
+        ok(request);
+        // A row stored by the previous version: its result_json has neither reason nor suggestions.
+        JsonNode stored = json.readTree(db.queryForObject("SELECT result_json FROM presentation_ai_edits", String.class));
+        var old = new LinkedHashMap<String, Object>();
+        stored.properties().forEach(field -> old.put(field.getKey(), field.getValue()));
+        old.remove("reason");
+        old.remove("suggestions");
+        old.put("status", "unsupported");
+        old.put("message", "Я могу менять только текст выбранного блока.");
+        db.update("UPDATE presentation_ai_edits SET status='unsupported', result_json=?", json.writeValueAsString(old));
+
+        ok(request)
                 .andExpect(jsonPath("$.status").value("unsupported"))
-                .andExpect(jsonPath("$.variants.length()").value(0))
+                .andExpect(jsonPath("$.replayed").value(true))
+                .andExpect(jsonPath("$.reason").doesNotExist())
+                .andExpect(jsonPath("$.suggestions.length()").value(0))
                 .andExpect(jsonPath("$.message").value("Я могу менять только текст выбранного блока."));
-        assertThat(db.queryForObject("SELECT status FROM presentation_ai_edits", String.class)).isEqualTo("unsupported");
+        verify(llm, times(1)).edit(any());
+    }
+
+    @Test
+    void emptyBlockIsFilledOnlyByAFreeFormRequest() throws Exception {
+        for (String empty : List.of("", "   "))
+            ok(request("custom", Map.of("instruction", "заполни этот блок"), fieldTarget(), empty))
+                    .andExpect(jsonPath("$.status").value("ok"))
+                    .andExpect(jsonPath("$.source_text").value(empty))
+                    .andExpect(jsonPath("$.variants[0].text").value(ScriptedTextEditLlm.EMPTY_SOURCE_TEXT));
+        verify(llm, times(2)).edit(any());
+        for (String action : List.of("shorten", "rephrase"))
+            for (String empty : List.of("", "   "))
+                error(request(action, Map.of(), fieldTarget(), empty), 422, "invalid_text");
+        error(request("custom", Map.of("instruction", "заполни"), fieldTarget(), "{{TITLE}}"), 422, "invalid_text");
+        verify(llm, times(2)).edit(any());
     }
 
     @Test
@@ -395,6 +479,44 @@ class AiTextEditIntegrationTest {
     }
 
     @Test
+    void oversizedAndMalformedValuesGetTheCodeOfTheirFieldNotInvalidInput() throws Exception {
+        String text = "Нормальный текст поля";
+        String longValue = "x".repeat(500);
+
+        error(request(longValue, Map.of(), fieldTarget(), text), 422, "unsupported_action");
+        error(request("  ", Map.of(), fieldTarget(), text), 422, "unsupported_action");
+
+        var longSlide = fieldTarget();
+        longSlide.put("slide_id", "slide-" + "1".repeat(100));
+        error(request("shorten", Map.of(), longSlide, text), 422, "invalid_target");
+        var blankSlide = fieldTarget();
+        blankSlide.put("slide_id", " ");
+        error(request("shorten", Map.of(), blankSlide, text), 422, "invalid_target");
+        var longField = fieldTarget();
+        longField.put("field_key", longValue);
+        error(request("shorten", Map.of(), longField, text), 422, "invalid_target");
+        var longBlock = blockTarget();
+        longBlock.put("block_id", longValue);
+        error(request("shorten", Map.of(), longBlock, text), 422, "invalid_target");
+
+        for (String value : List.of(longValue, "gpt model!", "", "   ")) {
+            var model = request("shorten", Map.of(), fieldTarget(), text);
+            model.put("model", value);
+            error(model, 422, "unsupported_model");
+        }
+
+        var noAction = request("shorten", Map.of(), fieldTarget(), text);
+        noAction.remove("action");
+        error(noAction, 422, "invalid_input");
+        var noSlide = fieldTarget();
+        noSlide.remove("slide_id");
+        error(request("shorten", Map.of(), noSlide, text), 422, "invalid_input");
+
+        verify(llm, never()).edit(any());
+        assertThat(db.queryForObject("SELECT count(*) FROM presentation_ai_edits", Integer.class)).isZero();
+    }
+
+    @Test
     void configuredQuotaStopsTheEighthEditWithoutAModelCall() throws Exception {
         Instant now = Instant.now();
         for (int i = 0; i < 7; i++)
@@ -410,6 +532,37 @@ class AiTextEditIntegrationTest {
         db.update("UPDATE presentation_ai_edits SET created_at = created_at - interval '2 hours'");
         ok(request("shorten", Map.of(), fieldTarget(), "Текст поля после окна"))
                 .andExpect(jsonPath("$.quota.remaining").value(6));
+    }
+
+    @Test
+    void concurrentRequestsCannotExceedTheQuota() throws Exception {
+        Instant now = Instant.now();
+        for (int i = 0; i < 5; i++)
+            insertEdit(OWNER, id, "ok", now.minus(i, ChronoUnit.MINUTES));
+        List<Map<String, Object>> requests = new ArrayList<>();
+        for (int i = 0; i < CONCURRENT_REQUESTS; i++)
+            requests.add(request("shorten", Map.of(), fieldTarget(), "Параллельный запрос номер " + i));
+
+        List<Integer> statuses = inParallel(requests);
+
+        assertThat(statuses).filteredOn(status -> status == 200).hasSize(2);
+        assertThat(statuses).filteredOn(status -> status == 429).hasSize(CONCURRENT_REQUESTS - 2);
+        verify(llm, times(2)).edit(any());
+        assertThat(db.queryForObject("SELECT count(*) FROM presentation_ai_edits", Integer.class)).isEqualTo(7);
+    }
+
+    @Test
+    void duplicatesOfTheLastQuotaUnitAreNotReportedAsTheLimit() throws Exception {
+        Instant now = Instant.now();
+        for (int i = 0; i < 6; i++)
+            insertEdit(OWNER, id, "ok", now.minus(i, ChronoUnit.MINUTES));
+        var request = request("shorten", Map.of(), fieldTarget(), "Один и тот же запрос");
+
+        List<Integer> statuses = inParallel(java.util.Collections.nCopies(CONCURRENT_REQUESTS, request));
+
+        assertThat(statuses).contains(200).doesNotContain(429, 500);
+        verify(llm, times(1)).edit(any());
+        assertThat(db.queryForObject("SELECT count(*) FROM presentation_ai_edits", Integer.class)).isEqualTo(7);
     }
 
     @Test
@@ -525,6 +678,25 @@ class AiTextEditIntegrationTest {
     }
 
     // ---- helpers ----
+
+    /** Sends the requests from separate threads released together; returns the HTTP statuses. */
+    private List<Integer> inParallel(List<Map<String, Object>> requests) throws Exception {
+        CountDownLatch gate = new CountDownLatch(1);
+        try (ExecutorService pool = Executors.newFixedThreadPool(requests.size())) {
+            List<Future<Integer>> results = new ArrayList<>();
+            for (Map<String, Object> request : requests)
+                results.add(
+                        pool.submit(
+                                () -> {
+                                    gate.await();
+                                    return perform(OWNER, id, request).andReturn().getResponse().getStatus();
+                                }));
+            gate.countDown();
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> result : results) statuses.add(result.get(30, TimeUnit.SECONDS));
+            return statuses;
+        }
+    }
 
     private ResultActions ok(Map<String, Object> request) throws Exception {
         return perform(OWNER, id, request).andExpect(status().isOk());

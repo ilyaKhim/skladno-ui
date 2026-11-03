@@ -1,7 +1,10 @@
 import type { AiAction, AiActionCatalog, TextEditTarget } from '../../../../lib/generation-types'
 import { BLOCK_ROLE_LABELS, CUSTOM_TEXT_MAX_CHARS, type Deck, type Slide, type TextBlock } from '../editor-types.ts'
+import type { ActionRequest } from './chat-reducer'
 
 export const NO_TARGET_REASON = 'Выберите текст на слайде'
+export const EMPTY_BLOCK_HINT = 'Опишите, что написать в этом блоке'
+export const DEFAULT_INPUT_MAX = 300
 
 export function targetFor(slide: Pick<Slide, 'id'>, block: Pick<TextBlock, 'id' | 'fieldKey'>): TextEditTarget {
   return block.fieldKey
@@ -48,21 +51,58 @@ export function inputLimit(block: Pick<TextBlock, 'fieldKey' | 'maxChars' | 'har
 
 /**
  * Why the chat cannot send a request for this block. `text` is the source that would be sent,
- * which is the current proposal during refinement.
+ * which is the current proposal during refinement. `allowEmpty` is for requests that write new text.
  */
 export function disabledReason(
   block: Pick<TextBlock, 'fieldKey' | 'maxChars' | 'hardMaxChars' | 'text'> | null,
   catalog: Pick<AiActionCatalog, 'limits' | 'enabled'> | null,
   text = block?.text ?? '',
+  allowEmpty = false,
 ): string | null {
   if (!block) return NO_TARGET_REASON
   if (catalog && !catalog.enabled) return 'AI не настроен'
-  if (!text.trim()) return 'Пустой текст'
+  if (!text.trim() && !allowEmpty) return 'Пустой текст'
   if (catalog) {
     const limit = inputLimit(block, catalog)
     if (text.length > limit) return `Текст длиннее ${limit} символов — сократите вручную`
   }
   return null
+}
+
+/** Only a free-form request can write into an empty block; quick actions have nothing to work on. */
+export const allowsEmptySource = (actionId: string) => actionId === 'custom'
+
+/** Why the input field is closed. Without a selected block it stays open: the request is kept. */
+export function inputDisabledReason(
+  block: Pick<TextBlock, 'fieldKey' | 'maxChars' | 'hardMaxChars' | 'text'> | null,
+  catalog: Pick<AiActionCatalog, 'limits' | 'enabled'> | null,
+  text?: string,
+  allowEmpty = false,
+) {
+  if (!catalog) return null
+  if (!block) return catalog.enabled ? null : 'AI не настроен'
+  return disabledReason(block, catalog, text, allowEmpty)
+}
+
+export type SubmitPlan = { kind: 'none' } | { kind: 'ask_target' } | { kind: 'send'; text: string }
+
+/**
+ * What pressing “send” does. Until chat turns exist a request needs a block: without one nothing goes
+ * to the server and the draft stays. Stage 2 replaces the `ask_target` line with a turn.
+ */
+export function planSubmit(draft: string, target: TextEditTarget | null, canSend: boolean): SubmitPlan {
+  const text = draft.trim()
+  if (!text) return { kind: 'none' }
+  if (!target) return { kind: 'ask_target' }
+  return canSend ? { kind: 'send', text } : { kind: 'none' }
+}
+
+/** A free-form request for `target`, built from the catalog; null while the catalog has no such action. */
+export function customRequest(catalog: Pick<AiActionCatalog, 'actions'> | null, target: TextEditTarget, text: string): ActionRequest | null {
+  const action = catalog?.actions.find((item) => isInputAction(item) && actionSupports(item, target))
+  const param = action?.params.find((item) => item.type === 'string') ?? action?.params[0]
+  if (!action || !param) return null
+  return { actionId: action.id, params: { [param.name]: text.slice(0, param.max_length ?? DEFAULT_INPUT_MAX) }, label: text }
 }
 
 /** Number of slides whose text changes together with this block. */

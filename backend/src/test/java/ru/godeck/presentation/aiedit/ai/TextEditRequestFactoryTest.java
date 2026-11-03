@@ -102,7 +102,9 @@ class TextEditRequestFactoryTest {
         assertThat(request.path("store").asBoolean(true)).isFalse();
         assertThat(request.path("model").asText()).isEqualTo("gpt-5.4-mini");
         assertThat(request.path("instructions").asText()).isEqualTo(TextEditRequestFactory.instructions());
-        assertThat(TextEditRequestFactory.instructions()).hasSizeLessThanOrEqualTo(900).doesNotContain("\r");
+        assertThat(TextEditRequestFactory.instructions()).hasSizeLessThanOrEqualTo(1800).doesNotContain("\r");
+        assertThat(TextEditRequestFactory.instructions().lines().findFirst()).contains("GoDeck text edit v2");
+        assertThat(TextEditRequestFactory.PROMPT_VERSION).isEqualTo("text-edit-v2");
         JsonNode input = json.readTree(request.path("input").asText());
         assertThat(fieldNames(input))
                 .containsExactly(
@@ -121,12 +123,32 @@ class TextEditRequestFactoryTest {
         assertThat(format.path("strict").asBoolean()).isTrue();
         JsonNode schema = format.path("schema");
         assertThat(schema.path("additionalProperties").asBoolean(true)).isFalse();
-        assertThat(schema.path("required").toString()).isEqualTo("[\"status\",\"message\",\"variants\"]");
+        assertThat(schema.path("required").toString())
+                .isEqualTo("[\"status\",\"reason\",\"message\",\"suggestions\",\"variants\"]");
         assertThat(schema.path("properties").path("status").path("enum").toString())
-                .isEqualTo("[\"ok\",\"unsupported\"]");
+                .isEqualTo("[\"ok\",\"alternative\"]");
+        assertThat(schema.path("properties").path("reason").path("enum").toString())
+                .isEqualTo("[\"none\",\"needs_source\",\"style_panel\",\"out_of_scope\",\"advice\",\"clarify\"]");
+        assertThat(schema.path("properties").path("suggestions").path("items").path("type").asText())
+                .isEqualTo("string");
         JsonNode item = schema.path("properties").path("variants").path("items");
-        assertThat(item.path("required").toString()).isEqualTo("[\"text\"]");
+        assertThat(item.path("required").toString()).isEqualTo("[\"text\",\"check_facts\"]");
+        assertThat(item.path("properties").path("check_facts").path("type").asText()).isEqualTo("boolean");
         assertThat(item.path("additionalProperties").asBoolean(true)).isFalse();
+    }
+
+    @Test
+    void outputBudgetOfTheRequestFollowsTheDefaults() {
+        assertThat(request(TextEditAction.SHORTEN, Map.of(), "gpt-5.4-mini").path("max_output_tokens").asInt())
+                .isEqualTo(1079);
+    }
+
+    @Test
+    void promptMatchesItsSnapshot() throws Exception {
+        try (var snapshot = getClass().getClassLoader().getResourceAsStream("golden/text-edit-instructions-v2.txt")) {
+            String expected = new String(snapshot.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(TextEditRequestFactory.instructions()).isEqualTo(expected.replace("\r\n", "\n").strip());
+        }
     }
 
     @Test
@@ -137,7 +159,7 @@ class TextEditRequestFactoryTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"1, 46, 279", "1, 110, 311", "3, 47, 328", "3, 4000, 2048", "2, 1, 258"})
+    @CsvSource({"1, 46, 1047", "1, 110, 1079", "3, 47, 1096", "3, 4000, 4096", "2, 1, 1026"})
     void maxOutputTokensFollowsTheFormula(int variants, int maxChars, int expected) {
         assertThat(factory.maxOutputTokens(variants, maxChars)).isEqualTo(expected);
     }

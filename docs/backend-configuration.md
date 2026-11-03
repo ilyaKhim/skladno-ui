@@ -139,8 +139,8 @@ Frontend/multipart по-прежнему ограничивают загрузк
 
 | ENV | Default | Назначение |
 | --- | --- | --- |
-| `AI_EDIT_MAX_OUTPUT_TOKENS` | `2048` | Потолок ответа |
-| `AI_EDIT_BASE_OUTPUT_TOKENS` | `256` | База формулы base + variants × ceil(max_chars / 2) |
+| `AI_EDIT_MAX_OUTPUT_TOKENS` | `4096` | Потолок ответа |
+| `AI_EDIT_BASE_OUTPUT_TOKENS` | `1024` | База формулы base + variants × ceil(max_chars / 2); reasoning входит в этот лимит, база даёт ему ~1000 токенов запаса. Лимит — потолок, а не расход |
 | `AI_EDIT_SHORTEN_RATIO` | `0.7` | Целевая доля длины; строго между 0 и 1 |
 | `AI_EDIT_TITLE_MAX_CHARS` | `80` | Длина каждого заголовка в контексте |
 | `AI_EDIT_ROLE_MAX_CHARS` | `160` | Длина описания роли поля |

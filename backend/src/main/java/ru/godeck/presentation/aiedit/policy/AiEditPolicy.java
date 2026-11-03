@@ -15,13 +15,18 @@ public final class AiEditPolicy {
 
     public static final int MAX_INSTRUCTION_LENGTH = 300;
 
+    public static final int MAX_SUGGESTIONS = 3;
+    public static final int MAX_SUGGESTION_LENGTH = 80;
+
+    public static final int HISTORY_DEFAULT_LIMIT = 50;
+    public static final int HISTORY_MAX_LIMIT = 100;
+
     public static final int ACTION_ID_MAX_LENGTH = 32;
     public static final int KIND_MAX_LENGTH = 16;
     public static final int STATUS_MAX_LENGTH = 16;
     public static final int TARGET_REF_MAX_LENGTH = 200;
-    public static final int SLIDE_ID_MAX_LENGTH = 16;
-    public static final int FIELD_KEY_MAX_LENGTH = 120;
-    public static final int BLOCK_ID_MAX_LENGTH = 120;
+    public static final int PROMPT_VERSION_MAX_LENGTH = 16;
+    public static final int REASON_MAX_LENGTH = 32;
 
     private AiEditPolicy() {}
 }

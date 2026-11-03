@@ -1,6 +1,9 @@
 import type {
   AiActionCatalog,
   AiCall,
+  AiHistoryPage,
+  AiHistoryQuery,
+  AiOutcomeRequest,
   CreatePresentationInput,
   EditorDeck,
   EditorAsset,
@@ -111,6 +114,7 @@ async function request<T>(
     })
     if (response.status === 401 || response.status === 403)
       throw new GenerationApiError(SESSION_EXPIRED, response.status)
+    if (response.status === 204) return undefined as T
     const body = await readJson(response)
     if (!response.ok) {
       const message =
@@ -279,6 +283,17 @@ export const generationApi = {
       { ...post(body), signal },
       TEXT_EDIT_TIMEOUT_MS,
     ),
+  aiHistory: (id: string, { limit, before }: AiHistoryQuery = {}, signal?: AbortSignal) => {
+    const query = new URLSearchParams()
+    if (limit !== undefined) query.set('limit', String(limit))
+    if (before !== undefined) query.set('before', before)
+    const search = query.size ? `?${query}` : ''
+    return request<AiHistoryPage>(`${presentationPath(id)}/editor/ai/history${search}`, { signal })
+  },
+  aiOutcome: (id: string, editId: string, body: AiOutcomeRequest) =>
+    request<void>(`${presentationPath(id)}/editor/ai/edits/${segment(editId)}/outcome`, post(body)),
+  clearAiHistory: (id: string) =>
+    request<void>(`${presentationPath(id)}/editor/ai/history`, { method: 'DELETE' }),
 }
 
 export async function loadAiCalls(id: string, signal: AbortSignal): Promise<AiCall[]> {

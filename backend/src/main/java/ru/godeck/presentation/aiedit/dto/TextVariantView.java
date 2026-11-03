@@ -11,7 +11,7 @@ import java.util.List;
  * @param length UTF-16 length of {@code text}
  * @param overBy {@code max(0, length - max_chars)}
  * @param warnings subset of {@code over_limit}, {@code exceeds_hard_limit}, {@code not_shorter},
- *     {@code line_breaks_removed}
+ *     {@code line_breaks_removed}, {@code check_facts}
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record TextVariantView(String text, int length, int overBy, List<String> warnings) {}

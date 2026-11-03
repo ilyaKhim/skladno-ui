@@ -406,3 +406,30 @@ test('a text edit failure keeps the contract error code for the chat reply', asy
     return true
   })
 })
+
+const csrfOk = () => json({ ok: true, data: { token: 'token', headerName: 'X-CSRF-TOKEN' } })
+
+test('an AI history page encodes the opaque cursor and sends no CSRF request', async () => {
+  const urls = []
+  globalThis.fetch = async (url) => { urls.push(url); return json({ items: [], next_before: null }) }
+  await generationApi.aiHistory('deck', { limit: 50, before: 'a+b/c==' })
+  await generationApi.aiHistory('deck')
+  assert.equal(urls[0], '/api/generation/v1/presentations/deck/editor/ai/history?limit=50&before=a%2Bb%2Fc%3D%3D')
+  assert.equal(urls[1], '/api/generation/v1/presentations/deck/editor/ai/history')
+})
+
+test('an AI outcome and clearing the history send CSRF and accept an empty 204', async () => {
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/auth/csrf') return csrfOk()
+    calls.push({ url, init })
+    return new Response(null, { status: 204 })
+  }
+  assert.equal(await generationApi.aiOutcome('deck', 'edit/1', { outcome: 'applied', variant: 0 }), undefined)
+  assert.equal(await generationApi.clearAiHistory('deck'), undefined)
+  assert.equal(calls[0].url, '/api/generation/v1/presentations/deck/editor/ai/edits/edit%2F1/outcome')
+  assert.deepEqual(JSON.parse(calls[0].init.body), { outcome: 'applied', variant: 0 })
+  assert.equal(calls[0].init.headers.get('X-CSRF-TOKEN'), 'token')
+  assert.equal(calls[1].init.method, 'DELETE')
+  assert.equal(calls[1].init.headers.get('X-CSRF-TOKEN'), 'token')
+})
