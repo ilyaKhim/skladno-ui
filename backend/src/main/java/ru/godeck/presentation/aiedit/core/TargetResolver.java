@@ -64,13 +64,14 @@ public class TargetResolver {
      * @param presentationId presentation being edited
      * @param target structurally valid target from the request
      * @param text source text of the edit
+     * @param allowEmptyText the action can work on an empty block
      * @return target with limits and context
      * @throws GenerationException {@code presentation_not_found}, {@code presentation_not_ready},
      *     {@code invalid_target}, {@code invalid_text} or {@code text_too_long}
      */
     @Transactional(readOnly = true)
     public ResolvedTextTarget resolve(
-            UUID userId, UUID presentationId, AiEditTarget target, String text) {
+            UUID userId, UUID presentationId, AiEditTarget target, String text, boolean allowEmptyText) {
         Presentation presentation =
                 presentations
                         .findByIdAndUserId(presentationId, userId)
@@ -78,7 +79,13 @@ public class TargetResolver {
                                 () -> new GenerationException(GenerationError.PRESENTATION_NOT_FOUND));
         if (presentation.getStatus() != SUCCEEDED && presentation.getStatus() != DRAFT)
             throw new GenerationException(GenerationError.PRESENTATION_NOT_READY);
-        return resolve(presentation.getTemplateId(), presentationId, document(presentation), target, text);
+        return resolve(
+                presentation.getTemplateId(),
+                presentationId,
+                document(presentation),
+                target,
+                text,
+                allowEmptyText);
     }
 
     /** Resolves an already loaded snapshot without another database lookup. */
@@ -87,7 +94,8 @@ public class TargetResolver {
             UUID presentationId,
             PresentationContent content,
             AiEditTarget target,
-            String text) {
+            String text,
+            boolean allowEmptyText) {
         PresentationContent.Slide slide =
                 content.slides().stream()
                         .filter(candidate -> candidate.slide() == target.slideNumber())
@@ -129,13 +137,13 @@ public class TargetResolver {
                                 slideTitle(content, slideFields, null));
                     }
                 };
-        checkText(text, resolved);
+        checkText(text, resolved, allowEmptyText);
         return resolved;
     }
 
-    private static void checkText(String text, ResolvedTextTarget target) {
+    private static void checkText(String text, ResolvedTextTarget target, boolean allowEmpty) {
         if (text == null
-                || text.isBlank()
+                || (text.isBlank() && !allowEmpty)
                 || text.contains(TEMPLATE_MARKER_OPEN)
                 || text.contains(TEMPLATE_MARKER_CLOSE))
             throw new GenerationException(GenerationError.INVALID_TEXT);

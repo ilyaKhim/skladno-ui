@@ -3,7 +3,6 @@ package ru.godeck.presentation.aiedit.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import ru.godeck.common.security.Hashing;
@@ -13,11 +12,16 @@ import ru.godeck.presentation.aiedit.action.TextEditAction;
 import ru.godeck.presentation.aiedit.action.TextEditActionCatalog;
 import ru.godeck.presentation.aiedit.config.TextEditPromptSettings;
 import ru.godeck.presentation.aiedit.ai.ResponsesUsage;
+import ru.godeck.presentation.aiedit.ai.TextEditCallException;
 import ru.godeck.presentation.aiedit.ai.TextEditLlm;
 import ru.godeck.presentation.aiedit.ai.TextEditOutcome;
 import ru.godeck.presentation.aiedit.ai.TextEditPrompt;
+import ru.godeck.presentation.aiedit.ai.TextEditRequestFactory;
+import ru.godeck.presentation.aiedit.core.AiEditFailureReason;
 import ru.godeck.presentation.aiedit.core.AiEditStatus;
 import ru.godeck.presentation.aiedit.core.AiEditTarget;
+import ru.godeck.presentation.aiedit.core.AlternativeReason;
+import ru.godeck.presentation.aiedit.core.FactGuardLevel;
 import ru.godeck.presentation.aiedit.core.ResolvedTextTarget;
 import ru.godeck.presentation.aiedit.core.TargetKind;
 import ru.godeck.presentation.aiedit.core.TargetResolver;
@@ -26,8 +30,11 @@ import ru.godeck.presentation.aiedit.dto.AiUsageView;
 import ru.godeck.presentation.aiedit.dto.TextEditRequest;
 import ru.godeck.presentation.aiedit.dto.TextEditTargetDto;
 import ru.godeck.presentation.aiedit.dto.TextEditView;
+import ru.godeck.presentation.aiedit.dto.TextVariantView;
 import ru.godeck.presentation.aiedit.entity.PresentationAiEdit;
 import ru.godeck.presentation.aiedit.repository.PresentationAiEditRepository;
+import ru.godeck.presentation.aiedit.text.AlternativeReply;
+import ru.godeck.presentation.aiedit.text.FactGuard;
 import ru.godeck.presentation.aiedit.text.TextResultSanitizer;
 import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.exception.GenerationError;
@@ -36,8 +43,12 @@ import ru.godeck.presentation.exception.GenerationException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -49,8 +60,8 @@ import java.util.regex.Pattern;
  *   <li>Checks without writes: action and parameters, model, target in the saved document, refined
  *       edit, AI availability.
  *   <li>Short transaction: idempotency, quota and a {@code running} journal row.
- *   <li>One model call without an open transaction, then deterministic sanitizing. Long text is
- *       never truncated and never triggers a second call.
+ *   <li>One model call without an open transaction, then deterministic sanitizing and the fact
+ *       check. Long text is never truncated and never triggers a second call.
  *   <li>Short transaction: outcome, usage and the replayable response.
  * </ol>
  *
@@ -63,8 +74,9 @@ public class AiTextEditService {
     private static final Pattern SLIDE_ID = Pattern.compile("slide-([1-9][0-9]{0,8})");
     private static final String TARGET_LENGTH = " Целевая длина ≤ %d символов.";
     private static final String EDIT_LOG =
-            "AI text edit: edit={} presentation={} action={} model={} status={} inputTokens={}"
-                    + " cachedTokens={} outputTokens={} reasoningTokens={} durationMs={} error={}";
+            "AI text edit: edit={} presentation={} action={} model={} promptVersion={} status={}"
+                    + " reason={} inputTokens={} cachedTokens={} outputTokens={} reasoningTokens={}"
+                    + " maxOutputTokens={} durationMs={} error={} failureReason={} factGuard={}";
 
     private final TextEditActionCatalog actions;
     private final PresentationModelCatalog models;
@@ -73,6 +85,8 @@ public class AiTextEditService {
     private final AiEditTransactions transactions;
     private final TextEditLlm llm;
     private final TextResultSanitizer sanitizer;
+    private final FactGuard factGuard;
+    private final TextEditRequestFactory requests;
     private final ObjectMapper json;
     private final Clock clock;
     private final String defaultModel;
@@ -86,6 +100,8 @@ public class AiTextEditService {
             AiEditTransactions transactions,
             TextEditLlm llm,
             TextResultSanitizer sanitizer,
+            FactGuard factGuard,
+            TextEditRequestFactory requests,
             ObjectMapper json,
             Clock clock,
             @Value("${godeck.ai-edit.model:gpt-5.4-mini}") String defaultModel,
@@ -97,6 +113,8 @@ public class AiTextEditService {
         this.transactions = transactions;
         this.llm = llm;
         this.sanitizer = sanitizer;
+        this.factGuard = factGuard;
+        this.requests = requests;
         this.json = json;
         this.clock = clock;
         // Fail at startup rather than on the first edit when the configured model is unknown.
@@ -124,15 +142,22 @@ public class AiTextEditService {
         TextEditAction action =
                 actions.require(request.action());
         Map<String, String> params = actions.validate(action, request.paramsOrEmpty());
-        String model = models.resolve(request.model() == null ? defaultModel : request.model());
+        String model = model(request.model());
         ResolvedTextTarget resolved =
-                targets.resolve(userId, presentationId, target, request.text());
+                targets.resolve(
+                        userId, presentationId, target, request.text(), action.allowsEmptySource());
         if (request.refinesEditId() != null
-                && !edits.existsByIdAndUserIdAndPresentationId(
-                        request.refinesEditId(), userId, presentationId))
+                && !edits.existsByIdAndUserIdAndPresentationIdAndTargetKindAndTargetRef(
+                        request.refinesEditId(),
+                        userId,
+                        presentationId,
+                        target.kind(),
+                        target.reference()))
             throw new GenerationException(GenerationError.INVALID_INPUT);
         if (!llm.enabled()) throw new GenerationException(GenerationError.OPENAI_DISABLED);
         int variants = request.variantsOrDefault();
+        String instruction = action.request(params);
+        int maxOutputTokens = requests.maxOutputTokens(variants, resolved.maxChars());
 
         var candidate =
                 new PresentationAiEdit(
@@ -147,14 +172,26 @@ public class AiTextEditService {
                         target.reference(),
                         request.text().length(),
                         model,
+                        TextEditRequestFactory.PROMPT_VERSION,
+                        maxOutputTokens,
+                        instruction == null ? null : instruction.length(),
                         clock.instant());
-        AiEditTransactions.Start start = start(candidate);
+        AiEditTransactions.Start start = transactions.start(candidate);
         if (start.replay() != null) {
-            log(start.editId(), presentationId, action.id(), model, "replayed", ResponsesUsage.NONE, started, null);
+            log(
+                    new LogLine(start.editId(), presentationId, action.id(), model, "replayed"),
+                    start.replay().reason(),
+                    ResponsesUsage.NONE,
+                    maxOutputTokens,
+                    durationMs(started),
+                    null,
+                    null,
+                    null);
             return start.replay();
         }
 
-        TextEditOutcome outcome;
+        TextEditOutcome outcome = null;
+        Proposal built;
         try {
             outcome =
                     llm.edit(
@@ -170,73 +207,157 @@ public class AiTextEditService {
                                     resolved.role(),
                                     resolved.deckTitle(),
                                     resolved.slideTitle(),
-                                    action.request(params),
+                                    instruction,
                                     variants,
                                     request.text()));
+            built = proposal(outcome, request.text(), instruction, resolved, action);
         } catch (RuntimeException failure) {
             GenerationError error =
                     failure instanceof AiGenerationException provider
                                     && provider.error() == GenerationError.OPENAI_DISABLED
                             ? GenerationError.OPENAI_DISABLED
                             : GenerationError.AI_EDIT_FAILED;
-            transactions.fail(start.editId(), error.code(), null);
-            log(start.editId(), presentationId, action.id(), model, AiEditStatus.FAILED.value(), ResponsesUsage.NONE, started, error.code());
+            TextEditCallException call = failure instanceof TextEditCallException known ? known : null;
+            // A failure after the answer still spent its tokens.
+            ResponsesUsage usage =
+                    call != null
+                            ? call.usage()
+                            : outcome == null ? ResponsesUsage.NONE : outcome.usage();
+            AiEditFailureReason reason =
+                    call == null ? AiEditFailureReason.INTERNAL : call.failureReason();
+            long duration = durationMs(started);
+            transactions.fail(start.editId(), error.code(), usage, reason, duration);
+            log(
+                    new LogLine(start.editId(), presentationId, action.id(), model, AiEditStatus.FAILED.value()),
+                    null,
+                    usage,
+                    maxOutputTokens,
+                    duration,
+                    error.code(),
+                    reason.value(),
+                    null);
             throw new GenerationException(error);
         }
 
-        var cleaned =
-                outcome.supported()
-                        ? sanitizer.sanitize(outcome.variants(), request.text(), resolved, action)
-                        : new TextResultSanitizer.Result(false, java.util.List.of());
-        AiEditStatus status =
-                !outcome.supported()
-                        ? AiEditStatus.UNSUPPORTED
-                        : cleaned.changed() ? AiEditStatus.OK : AiEditStatus.UNCHANGED;
-        String message =
-                switch (status) {
-                    case UNSUPPORTED ->
-                            outcome.message() == null || outcome.message().isBlank()
-                                    ? BackendMessages.text("presentation.ai-edit.unsupported")
-                                    : outcome.message().strip();
-                    case UNCHANGED -> BackendMessages.text("presentation.ai-edit.unchanged");
-                    default -> null;
-                };
+        Proposal proposal = built;
+        ResponsesUsage spent = outcome.usage();
+        long duration = durationMs(started);
+        String reason = proposal.reason() == null ? null : proposal.reason().value();
+        var telemetry =
+                new AiEditTransactions.Telemetry(
+                        spent, reason, proposal.factGuard().value(), duration);
         TextEditView view =
                 transactions.complete(
                         start.editId(),
-                        status,
-                        outcome.usage(),
+                        proposal.status(),
+                        telemetry,
                         quota ->
                                 new TextEditView(
                                         start.editId(),
                                         request.requestId(),
                                         request.refinesEditId(),
-                                        status,
-                                        message,
+                                        proposal.status(),
+                                        reason,
+                                        proposal.message(),
+                                        proposal.suggestions(),
                                         action.id(),
                                         request.target(),
                                         request.text(),
                                         resolved.maxChars(),
                                         resolved.hardMaxChars(),
-                                        cleaned.variants(),
+                                        proposal.variants(),
                                         model,
-                                        AiUsageView.from(outcome.usage()),
+                                        AiUsageView.from(spent),
                                         quota,
                                         false));
-        log(start.editId(), presentationId, action.id(), model, status.value(), outcome.usage(), started, null);
+        log(
+                new LogLine(start.editId(), presentationId, action.id(), model, proposal.status().value()),
+                reason,
+                spent,
+                maxOutputTokens,
+                duration,
+                null,
+                null,
+                proposal.factGuard().value());
         return view;
     }
 
-    /**
-     * Inserts the journal row; a lost race on the unique request id is retried once after the
-     * rollback and then sees the winner's row (in progress or completed).
-     */
-    private AiEditTransactions.Start start(PresentationAiEdit candidate) {
-        try {
-            return transactions.start(candidate);
-        } catch (DataIntegrityViolationException concurrent) {
-            return transactions.start(candidate);
+    /** Turns a parsed model answer into what the user sees; there is no reply without an action. */
+    private Proposal proposal(
+            TextEditOutcome outcome,
+            String source,
+            String instruction,
+            ResolvedTextTarget target,
+            TextEditAction action) {
+        FactGuard.Known known =
+                factGuard.known(
+                        Arrays.asList(
+                                source,
+                                instruction,
+                                target.role(),
+                                target.deckTitle(),
+                                target.slideTitle()));
+        if (outcome.alternative()) {
+            // A suggestion returns as the next request, where its text would count as known.
+            List<String> safe =
+                    outcome.suggestions().stream()
+                            .filter(text -> factGuard.check(text, known, false) != FactGuardLevel.BLOCKED)
+                            .toList();
+            boolean messageBlocked =
+                    factGuard.check(outcome.message(), known, false) == FactGuardLevel.BLOCKED;
+            boolean blocked = messageBlocked || safe.size() < outcome.suggestions().size();
+            return alternative(
+                    outcome.reason(),
+                    AlternativeReply.of(outcome.reason(), messageBlocked ? null : outcome.message(), safe),
+                    blocked ? FactGuardLevel.BLOCKED : FactGuardLevel.NONE);
         }
+        List<String> texts = new ArrayList<>();
+        Set<String> flagged = new java.util.HashSet<>();
+        Set<String> blockedRaw = new java.util.HashSet<>();
+        for (TextEditOutcome.Variant variant : outcome.variants()) {
+            texts.add(variant.text());
+            String clean = sanitizer.clean(variant.text(), source);
+            if (variant.checkFacts()) flagged.add(clean);
+            if (factGuard.check(variant.text(), known, false) == FactGuardLevel.BLOCKED)
+                blockedRaw.add(clean);
+        }
+        var cleaned = sanitizer.sanitize(texts, source, target, action);
+        if (!cleaned.changed())
+            return new Proposal(
+                    AiEditStatus.UNCHANGED,
+                    null,
+                    BackendMessages.text("presentation.ai-edit.unchanged"),
+                    List.of(),
+                    List.of(),
+                    FactGuardLevel.NONE);
+        FactGuard.Review review = factGuard.review(cleaned.variants(), known, flagged, blockedRaw);
+        if (review.variants().isEmpty())
+            return alternative(
+                    AlternativeReason.NEEDS_SOURCE,
+                    AlternativeReply.standard(AlternativeReason.NEEDS_SOURCE),
+                    review.level());
+        return new Proposal(
+                AiEditStatus.OK, null, null, List.of(), review.variants(), review.level());
+    }
+
+    private static Proposal alternative(
+            AlternativeReason reason, AlternativeReply reply, FactGuardLevel level) {
+        return new Proposal(
+                AiEditStatus.ALTERNATIVE, reason, reply.message(), reply.suggestions(), List.of(), level);
+    }
+
+    private static long durationMs(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000;
+    }
+
+    /**
+     * The contract allows {@code null} or a catalog id. A blank value is neither, and the catalog
+     * would otherwise resolve it to the generation default instead of the text-edit model.
+     */
+    private String model(String requested) {
+        if (requested == null) return defaultModel;
+        if (requested.isBlank()) throw new GenerationException(GenerationError.UNSUPPORTED_MODEL);
+        return models.resolve(requested);
     }
 
     /** Checks the structural combination of target keys and parses the editor slide id. */
@@ -283,28 +404,44 @@ public class AiTextEditService {
         return Hashing.sha256(json.writeValueAsString(normalized));
     }
 
-    /** One line per edit, without slide or request texts. */
+    /** One line per edit, without slide or request texts: only ids, numbers and codes. */
     private static void log(
-            UUID editId,
-            UUID presentationId,
-            String action,
-            String model,
-            String status,
+            LogLine line,
+            String reason,
             ResponsesUsage usage,
-            long startedNanos,
-            String error) {
+            int maxOutputTokens,
+            long durationMs,
+            String error,
+            String failureReason,
+            String factGuard) {
         log.info(
                 EDIT_LOG,
-                editId,
-                presentationId,
-                action,
-                model,
-                status,
+                line.editId(),
+                line.presentationId(),
+                line.action(),
+                line.model(),
+                TextEditRequestFactory.PROMPT_VERSION,
+                line.status(),
+                reason,
                 usage.inputTokens(),
                 usage.cachedInputTokens(),
                 usage.outputTokens(),
                 usage.reasoningTokens(),
-                (System.nanoTime() - startedNanos) / 1_000_000,
-                error);
+                maxOutputTokens,
+                durationMs,
+                error,
+                failureReason,
+                factGuard);
     }
+
+    private record LogLine(
+            UUID editId, UUID presentationId, String action, String model, String status) {}
+
+    private record Proposal(
+            AiEditStatus status,
+            AlternativeReason reason,
+            String message,
+            List<String> suggestions,
+            List<TextVariantView> variants,
+            FactGuardLevel factGuard) {}
 }

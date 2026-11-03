@@ -16,7 +16,14 @@ compose.yaml    Локальные PostgreSQL и Mailpit
 
 ## Локальный запуск
 
-Нужны Node.js 22+, pnpm 10.10.0, JDK 26 и Docker. Maven устанавливается wrapper-скриптом; системный Maven не нужен. Скрипт бэкенда также распознаёт ранее скачанный JDK в `.tools/jdk-26.0.2.1+1/Contents/Home`.
+Нужны Node.js 22.18+ (или 24+), pnpm 10.10.0, JDK 26 и Docker. Maven устанавливается wrapper-скриптом; системный Maven не нужен. Скрипт бэкенда также распознаёт ранее скачанный JDK в `.tools/jdk-26.0.2.1+1/Contents/Home`.
+
+Команды `pnpm verify`, `backend:*` и `document-worker:*` автоматически выбирают запуск по ОС.
+На macOS/Linux Node-обёртки используют существующие Bash-скрипты; на Windows — `mvnw.cmd`
+через встроенный `powershell.exe`, без Git Bash/WSL. На Windows задайте `JAVA_HOME` на JDK 26;
+если корректного `JAVA_HOME` нет, обёртки ищут JDK 26 в `%USERPROFILE%\.jdks` (установки IntelliJ).
+Оставшиеся требования Windows к browser snapshots и симлинкам описаны в
+[проверке редактора](docs/editor-verification.md#windows).
 
 Из корня проекта:
 

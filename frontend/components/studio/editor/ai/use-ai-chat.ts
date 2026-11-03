@@ -1,19 +1,21 @@
 'use client'
 
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import type { AiActionCatalog, TextEditTarget } from '@/lib/generation-types'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import type { AiActionCatalog, AiHistoryItem, AiOutcomeRequest, TextEditTarget } from '@/lib/generation-types'
 import type { Deck, EditableBlockFields } from '../editor-types'
 import type { AiEditPort } from './ai-edit-port'
-import { chipLabel, disabledReason, findTargetBlock, inputLimit, targetKey } from './ai-target'
+import { runTextEdit } from './ai-chat-runner'
+import { createOutcomeSender } from './ai-outcome'
+import { customRequest, findTargetBlock, inputLimit, targetKey } from './ai-target'
+import { messagesFromHistory, reconcileApplied } from './chat-history'
 import {
   anotherVariantPlan,
-  buildTextEditRequest,
   canApply,
   chatReducer,
   checkApply,
-  errorReply,
   initialChatState,
-  requestWithRetry,
+  noTargetMessage,
+  NO_TARGET_NOTICE,
   selectedVariant,
   sourceFor,
   type ActionRequest,
@@ -35,6 +37,8 @@ type EditorBridge = {
 type Options = {
   config: AiEditConfig | undefined
   editor: EditorBridge
+  /** The current document: statuses of applied proposals are compared with it on every change. */
+  deck: Deck
   /** Saves pending edits so the server validates the target against the current document. */
   ensureSaved?: () => Promise<boolean>
   /** The catalog is loaded on first use, not on every editor visit. */
@@ -43,19 +47,31 @@ type Options = {
 }
 
 const CHANGED_CONFIRMATION = 'Текст изменился, пока работал AI. Заменить?'
+const HISTORY_PAGE_SIZE = 50
 
-export function useAiChat({ config, editor, ensureSaved, active, confirm = (message) => window.confirm(message) }: Options) {
+export type ChatHistoryView = { status: 'idle' | 'loading' | 'ready' | 'error'; nextBefore: string | null }
+
+export function useAiChat({ config, editor, deck, ensureSaved, active, confirm = (message) => window.confirm(message) }: Options) {
   const [state, send] = useReducer(chatReducer, undefined, initialChatState)
   const current = useRef<ChatState>(state)
   const controllers = useRef(new Map<string, AbortController>())
   const [catalog, setCatalog] = useState<AiActionCatalog | null>(null)
   const [catalogError, setCatalogError] = useState('')
   const [catalogAttempt, setCatalogAttempt] = useState(0)
+  // Lives here, not in the panel: the mobile sheet unmounts while the user picks a block.
+  const [draft, setDraft] = useState('')
+  const [history, setHistory] = useState<ChatHistoryView>({ status: 'idle', nextBefore: null })
+  const [clearing, setClearing] = useState(false)
+  const historyStarted = useRef(false)
+  const historyItems = useRef<AiHistoryItem[]>([])
+  const historyController = useRef<AbortController | null>(null)
   const bridge = useRef(editor)
+  const catalogRef = useRef(catalog)
   const saver = useRef(ensureSaved)
   useEffect(() => {
     bridge.current = editor
     saver.current = ensureSaved
+    catalogRef.current = catalog
   })
 
   // Mirror the reducer like useEditorState does, so async callbacks read the latest feed.
@@ -63,6 +79,47 @@ export function useAiChat({ config, editor, ensureSaved, active, confirm = (mess
     current.current = chatReducer(current.current, action)
     send(action)
   }, [])
+
+  const outcomeSender = useMemo(() => config
+    ? createOutcomeSender((editId, body) => config.port.outcome(config.presentationId, editId, body))
+    : null, [config])
+  const sendOutcome = useCallback((editId: string, body: AiOutcomeRequest) => outcomeSender?.(editId, body), [outcomeSender])
+
+  const reconcile = useCallback((document: Deck) => {
+    const changes = reconcileApplied(current.current.messages, document)
+    if (changes.length === 0) return
+    dispatch({ type: 'reconciled', changes })
+    for (const change of changes) sendOutcome(change.editId, { outcome: change.outcome, variant: change.variant })
+  }, [dispatch, sendOutcome])
+
+  useEffect(() => reconcile(deck), [deck, reconcile])
+
+  const loadHistory = useCallback(async (before: string | null) => {
+    if (!config) return
+    historyController.current?.abort()
+    const controller = new AbortController()
+    historyController.current = controller
+    setHistory((value) => ({ ...value, status: 'loading' }))
+    try {
+      const page = await config.port.history(config.presentationId, { limit: HISTORY_PAGE_SIZE, before: before ?? undefined }, controller.signal)
+      if (controller.signal.aborted) return
+      historyItems.current = [...historyItems.current, ...page.items]
+      const document = bridge.current.getDeck()
+      dispatch({ type: 'historyLoaded', messages: messagesFromHistory(historyItems.current, catalogRef.current, document) })
+      reconcile(document)
+      setHistory({ status: 'ready', nextBefore: page.next_before })
+    } catch {
+      if (!controller.signal.aborted) setHistory((value) => ({ ...value, status: 'error' }))
+    }
+  }, [config, dispatch, reconcile])
+
+  // Waits for the catalog (action labels), but a catalog failure must not hide the history.
+  const catalogSettled = Boolean(catalog || catalogError)
+  useEffect(() => {
+    if (!config || !active || !catalogSettled || historyStarted.current) return
+    historyStarted.current = true
+    void loadHistory(null)
+  }, [config, active, catalogSettled, loadHistory])
 
   const port = config?.port
   useEffect(() => {
@@ -83,55 +140,22 @@ export function useAiChat({ config, editor, ensureSaved, active, confirm = (mess
     return () => {
       for (const controller of running.values()) controller.abort()
       running.clear()
+      historyController.current?.abort()
     }
   }, [])
 
-  const run = useCallback(async (plan: RetryPlan, mode: 'new' | 'another', userText: string) => {
+  const run = useCallback((plan: RetryPlan, retriedMessageId?: string) => {
     if (!config || !catalog) return
-    const key = targetKey(plan.target)
-    if (current.current.inFlight.has(key)) return
-    const deck = bridge.current.getDeck()
-    const label = chipLabel(deck, plan.target)
-    const base = { targetKey: key, chipLabel: label }
-    const found = findTargetBlock(deck, plan.target)
-    const reason = found ? disabledReason(found.block, catalog, plan.source.text) : 'Блок удалён'
-    if (reason) {
-      dispatch({ type: 'notice', message: { ...base, id: crypto.randomUUID(), kind: 'error', text: reason, retry: null } })
-      return
-    }
-
-    const requestId = crypto.randomUUID()
-    dispatch({ type: 'started', targetKey: key, requestId,
-      message: { ...base, id: crypto.randomUUID(), kind: 'user', text: userText, requestId } })
-    const fail = (text: string, retry: RetryPlan | null) =>
-      dispatch({ type: 'failed', targetKey: key, requestId, message: { ...base, id: crypto.randomUUID(), kind: 'error', text, retry } })
-
-    const controller = new AbortController()
-    controllers.current.set(key, controller)
-    try {
-      if (saver.current && !(await saver.current())) {
-        fail('Не удалось сохранить изменения, повторите', plan)
-        return
-      }
-      if (controller.signal.aborted) return
-      const body = buildTextEditRequest({ requestId, request: plan.request, target: plan.target, source: plan.source,
-        variants: catalog.variants.default })
-      const response = await requestWithRetry(
-        () => config.port.textEdit(config.presentationId, body, controller.signal),
-        controller.signal,
-      )
-      dispatch({ type: 'succeeded', targetKey: key, requestId, messageId: crypto.randomUUID(), chipLabel: label,
-        target: plan.target, request: plan.request, source: plan.source, mode, response })
-    } catch (error) {
-      if (controller.signal.aborted) {
-        dispatch({ type: 'aborted', targetKey: key, requestId })
-        return
-      }
-      const reply = errorReply(error, current.current.quota)
-      fail(reply.text, reply.retryable ? plan : null)
-    } finally {
-      if (controllers.current.get(key) === controller) controllers.current.delete(key)
-    }
+    void runTextEdit({
+      port: config.port,
+      presentationId: config.presentationId,
+      catalog,
+      getDeck: () => bridge.current.getDeck(),
+      getState: () => current.current,
+      dispatch,
+      controllers: controllers.current,
+      ensureSaved: saver.current,
+    }, plan, retriedMessageId)
   }, [config, catalog, dispatch])
 
   /** Sends an action for the selected block; with a pending proposal the request refines it. */
@@ -139,10 +163,27 @@ export function useAiChat({ config, editor, ensureSaved, active, confirm = (mess
     const found = findTargetBlock(bridge.current.getDeck(), target)
     const limit = found && catalog ? inputLimit(found.block, catalog) : undefined
     const source: SourceSnapshot = sourceFor(current.current, targetKey(target), found?.block.text ?? '', limit)
-    void run({ target, request, source }, 'new', request.label)
+    run({ target, request, source, mode: 'new' })
   }, [run, catalog])
 
-  const retry = useCallback((plan: RetryPlan) => void run(plan, 'new', plan.request.label), [run])
+  /** A button under a reply: a free-form request for the reply's own block. */
+  const sendSuggestion = useCallback((target: TextEditTarget, text: string) => {
+    const request = customRequest(catalog, target, text)
+    if (request) sendAction(target, request)
+  }, [sendAction, catalog])
+
+  /** Local only: no request and no quota. Repeated presses do not stack the same notice. */
+  const askForTarget = useCallback(() => {
+    const last = current.current.messages.at(-1)
+    if (last?.kind === 'reply' && last.text === NO_TARGET_NOTICE) return
+    dispatch({ type: 'notice', message: noTargetMessage(crypto.randomUUID()) })
+  }, [dispatch])
+
+  /** Repeats the request of an error card; its button is spent as soon as the request starts. */
+  const retry = useCallback((messageId: string) => {
+    const message = current.current.messages.find((item) => item.id === messageId)
+    if (message?.kind === 'error' && message.retry) run(message.retry, messageId)
+  }, [run])
 
   const findProposal = (messageId: string) => {
     const message = current.current.messages.find((item) => item.id === messageId)
@@ -151,7 +192,7 @@ export function useAiChat({ config, editor, ensureSaved, active, confirm = (mess
 
   const anotherVariant = useCallback((messageId: string) => {
     const proposal = findProposal(messageId)
-    if (proposal?.status === 'pending') void run(anotherVariantPlan(proposal), 'another', 'Другой вариант')
+    if (proposal?.status === 'pending') run(anotherVariantPlan(proposal))
   }, [run])
 
   const note = (proposal: ProposalMessage, text: string) =>
@@ -175,30 +216,68 @@ export function useAiChat({ config, editor, ensureSaved, active, confirm = (mess
     const proposal = findProposal(messageId)
     if (!proposal || !canApply(proposal)) return
     const { text } = selectedVariant(proposal)
-    if (replaceText(proposal, proposal.source.baseText, text, `ai:${proposal.editId}`))
-      dispatch({ type: 'applied', messageId, text })
-  }, [dispatch])
+    const undoText = findTargetBlock(bridge.current.getDeck(), proposal.target)?.block.text
+    if (!replaceText(proposal, proposal.source.baseText, text, `ai:${proposal.editId}`)) return
+    dispatch({ type: 'applied', messageId, text, undoText })
+    sendOutcome(proposal.editId, { outcome: 'applied', variant: proposal.selected })
+  }, [dispatch, sendOutcome])
 
   const revert = useCallback((messageId: string) => {
     const proposal = findProposal(messageId)
     if (!proposal || proposal.status !== 'applied') return
-    if (replaceText(proposal, proposal.appliedText ?? '', proposal.source.baseText, `ai:${proposal.editId}:revert`))
-      dispatch({ type: 'reverted', messageId })
-  }, [dispatch])
+    if (!replaceText(proposal, proposal.appliedText ?? '', proposal.source.baseText, `ai:${proposal.editId}:revert`)) return
+    dispatch({ type: 'reverted', messageId })
+    sendOutcome(proposal.editId, { outcome: 'reverted', variant: null })
+  }, [dispatch, sendOutcome])
 
-  const reject = useCallback((messageId: string) => dispatch({ type: 'rejected', messageId }), [dispatch])
+  const reject = useCallback((messageId: string) => {
+    const proposal = findProposal(messageId)
+    if (proposal?.status !== 'pending') return
+    dispatch({ type: 'rejected', messageId })
+    sendOutcome(proposal.editId, { outcome: 'rejected', variant: null })
+  }, [dispatch, sendOutcome])
   const selectVariant = useCallback((messageId: string, index: number) => dispatch({ type: 'selectVariant', messageId, index }), [dispatch])
   const reloadCatalog = useCallback(() => {
     setCatalog(null)
     setCatalogAttempt((value) => value + 1)
   }, [])
 
+  /** Loads the next older page, or repeats the page that failed. */
+  const loadEarlier = useCallback(() => loadHistory(history.nextBefore), [loadHistory, history.nextBefore])
+
+  /** Clears the feed only: the document, Ctrl+Z, the quota and running requests stay. */
+  const clearHistory = useCallback(async () => {
+    if (!config) return
+    setClearing(true)
+    try {
+      await config.port.clearHistory(config.presentationId)
+      historyController.current?.abort()
+      historyStarted.current = true
+      historyItems.current = []
+      setHistory({ status: 'ready', nextBefore: null })
+      dispatch({ type: 'historyCleared' })
+    } catch {
+      dispatch({ type: 'notice', message: { id: crypto.randomUUID(), targetKey: '', chipLabel: '', kind: 'error',
+        text: 'Не удалось очистить историю. Повторите попытку', retry: null } })
+    } finally {
+      setClearing(false)
+    }
+  }, [config, dispatch])
+
   return {
     state,
+    history,
+    loadEarlier,
+    clearing,
+    clearHistory,
     catalog,
     catalogError,
     reloadCatalog,
+    draft,
+    setDraft,
     sendAction,
+    sendSuggestion,
+    askForTarget,
     retry,
     anotherVariant,
     apply,

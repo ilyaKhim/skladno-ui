@@ -59,6 +59,11 @@ public enum TextEditAction {
         return Math.max(1, Math.min(target.maxChars(), length));
     }
 
+    /** Only a free-form request gives the model something to write into an empty block. */
+    public boolean allowsEmptySource() {
+        return this == CUSTOM;
+    }
+
     public List<String> warnings(String source, String result) {
         return this == SHORTEN && result.length() >= source.length()
                 ? List.of("not_shorter")

@@ -6,10 +6,12 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import ru.godeck.presentation.aiedit.config.AiEditClientConfig;
+import ru.godeck.presentation.aiedit.core.AiEditFailureReason;
 import ru.godeck.presentation.exception.AiGenerationException;
 import ru.godeck.presentation.exception.GenerationError;
 import ru.godeck.presentation.ai.AiCallContext;
@@ -102,12 +104,15 @@ public class AiResponsesClient {
         } catch (RestClientResponseException failure) {
             httpStatus = failure.getStatusCode().value();
             responseBody = failure.getResponseBodyAsString();
-            throw new AiGenerationException(error, failure);
+            throw new TextEditCallException(
+                    AiEditFailureReason.PROVIDER_HTTP, ResponsesUsage.NONE, failure);
+        } catch (ResourceAccessException failure) {
+            throw new TextEditCallException(AiEditFailureReason.TIMEOUT, ResponsesUsage.NONE, failure);
         } catch (AiGenerationException failure) {
             error = failure.error();
             throw failure;
         } catch (Exception failure) {
-            throw new AiGenerationException(error, failure);
+            throw new TextEditCallException(AiEditFailureReason.INTERNAL, ResponsesUsage.NONE, failure);
         } finally {
             recordResponse(callId, responseBody, httpStatus, error);
         }

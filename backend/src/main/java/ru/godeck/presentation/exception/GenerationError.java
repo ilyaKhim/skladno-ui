@@ -40,6 +40,8 @@ public enum GenerationError {
             HttpStatus.CONFLICT, "ai_edit_in_progress", "presentation.error.ai-edit-in-progress"),
     AI_EDIT_LIMIT(
             HttpStatus.TOO_MANY_REQUESTS, "ai_edit_limit", "presentation.error.ai-edit-limit"),
+    AI_EDIT_NOT_FOUND(
+            HttpStatus.NOT_FOUND, "ai_edit_not_found", "presentation.error.ai-edit-not-found"),
     PRESENTATION_BUSY(
             HttpStatus.CONFLICT, "presentation_busy", "presentation.error.presentation-busy"),
     CANNOT_CANCEL(HttpStatus.CONFLICT, "cannot_cancel", "presentation.error.cannot-cancel"),

@@ -8,8 +8,11 @@ if (!process.env.E2E_AI_URL?.match(/^http:\/\/127\.0\.0\.1:\d+\/v1\/responses$/)
 }
 
 const database = new URL(process.env.E2E_DATABASE_URL ?? 'postgresql://godeck:godeck-local-only@127.0.0.1:5433/godeck')
-const backendUrl = 'http://127.0.0.1:18081'
-const frontendUrl = 'http://127.0.0.1:13000'
+const backendUrl = process.env.BACKEND_URL
+const frontendUrl = process.env.FRONTEND_URL
+if (!backendUrl || !frontendUrl) throw new Error('E2E server URLs must be set by pnpm test:e2e.')
+const backendPort = new URL(backendUrl).port
+const frontendPort = new URL(frontendUrl).port
 
 export default defineConfig({
   testDir: './e2e',
@@ -39,7 +42,7 @@ export default defineConfig({
   webServer: [
     {
       name: 'Documents',
-      command: 'bash scripts/document-worker.sh --no-build',
+      command: 'node scripts/document-worker.cjs --no-build',
       wait: { stdout: /Document worker ready/ },
       reuseExistingServer: false,
       timeout: 30_000,
@@ -53,8 +56,8 @@ export default defineConfig({
     {
       name: 'API',
       command: process.env.E2E_JAVA_DEBUG === '1'
-        ? 'bash scripts/backend-dev.sh -Dspring-boot.run.jvmArguments=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:15005'
-        : 'bash scripts/backend-dev.sh',
+        ? 'node scripts/backend-dev.cjs -Dspring-boot.run.jvmArguments=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:15005'
+        : 'node scripts/backend-dev.cjs',
       url: `${backendUrl}/api/generation/health/ready`,
       reuseExistingServer: false,
       timeout: 120_000,
@@ -62,7 +65,7 @@ export default defineConfig({
       env: {
         AUTH_BYPASS: 'true',
         SERVER_ADDRESS: '127.0.0.1',
-        PORT: '18081',
+        PORT: backendPort,
         DATABASE_URL: `jdbc:postgresql://${database.host}${database.pathname}?currentSchema=${process.env.E2E_SCHEMA}`,
         DATABASE_USER: decodeURIComponent(database.username),
         DATABASE_PASSWORD: decodeURIComponent(database.password),
@@ -79,7 +82,7 @@ export default defineConfig({
     },
     {
       name: 'Web',
-      command: 'pnpm --filter @godeck/frontend start --port 13000 --hostname 127.0.0.1',
+      command: `pnpm --filter @godeck/frontend start --port ${frontendPort} --hostname 127.0.0.1`,
       url: `${frontendUrl}/studio`,
       reuseExistingServer: false,
       timeout: 60_000,

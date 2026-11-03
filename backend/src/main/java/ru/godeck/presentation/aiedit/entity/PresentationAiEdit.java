@@ -15,6 +15,7 @@ import org.springframework.data.domain.Persistable;
 
 import ru.godeck.common.security.Hashing;
 import ru.godeck.presentation.aiedit.ai.ResponsesUsage;
+import ru.godeck.presentation.aiedit.core.AiEditFailureReason;
 import ru.godeck.presentation.aiedit.core.AiEditKind;
 import ru.godeck.presentation.aiedit.core.AiEditStatus;
 import ru.godeck.presentation.aiedit.core.TargetKind;
@@ -105,6 +106,42 @@ public class PresentationAiEdit implements Persistable<UUID> {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @Column(name = "prompt_version", length = AiEditPolicy.PROMPT_VERSION_MAX_LENGTH)
+    private String promptVersion;
+
+    @Column(name = "duration_ms")
+    private Long durationMs;
+
+    @Column(name = "max_output_tokens")
+    private Integer maxOutputTokens;
+
+    @Column(name = "instruction_length")
+    private Integer instructionLength;
+
+    @Column(name = "alternative_reason", length = AiEditPolicy.REASON_MAX_LENGTH)
+    private String alternativeReason;
+
+    @Column(name = "failure_reason", length = AiEditPolicy.REASON_MAX_LENGTH)
+    private String failureReason;
+
+    @Column(name = "incomplete_reason", length = AiEditPolicy.REASON_MAX_LENGTH)
+    private String incompleteReason;
+
+    @Column(name = "fact_guard", length = AiEditPolicy.STATUS_MAX_LENGTH)
+    private String factGuard;
+
+    @Column(length = AiEditPolicy.STATUS_MAX_LENGTH)
+    private String outcome;
+
+    @Column(name = "outcome_variant")
+    private Short outcomeVariant;
+
+    @Column(name = "outcome_at")
+    private Instant outcomeAt;
+
+    @Column(name = "cleared_at")
+    private Instant clearedAt;
+
     @Transient private boolean persisted;
 
     protected PresentationAiEdit() {}
@@ -122,6 +159,9 @@ public class PresentationAiEdit implements Persistable<UUID> {
             String targetRef,
             int sourceLength,
             String model,
+            String promptVersion,
+            int maxOutputTokens,
+            Integer instructionLength,
             Instant createdAt) {
         this.id = UUID.randomUUID();
         this.presentationId = presentationId;
@@ -137,24 +177,44 @@ public class PresentationAiEdit implements Persistable<UUID> {
         this.sourceLength = sourceLength;
         this.status = AiEditStatus.RUNNING;
         this.model = model;
+        this.promptVersion = promptVersion;
+        this.maxOutputTokens = maxOutputTokens;
+        this.instructionLength = instructionLength;
         this.createdAt = createdAt;
     }
 
     /** Stores a successful outcome and the response body replayed for the same request id. */
     public void complete(
-            AiEditStatus status, String resultJson, ResponsesUsage usage, Instant completedAt) {
+            AiEditStatus status,
+            String resultJson,
+            ResponsesUsage usage,
+            String alternativeReason,
+            String factGuard,
+            long durationMs,
+            Instant completedAt) {
         if (!status.replayable()) throw new IllegalArgumentException(status.value());
         this.status = status;
         this.resultJson = resultJson;
         recordUsage(usage);
+        this.alternativeReason = alternativeReason;
+        this.factGuard = factGuard;
+        this.durationMs = durationMs;
         this.completedAt = completedAt;
     }
 
     /** Marks the edit failed; a retry with the same request id returns the same error. */
-    public void fail(String errorCode, ResponsesUsage usage, Instant completedAt) {
+    public void fail(
+            String errorCode,
+            ResponsesUsage usage,
+            AiEditFailureReason failureReason,
+            Long durationMs,
+            Instant completedAt) {
         this.status = AiEditStatus.FAILED;
         this.errorCode = errorCode;
         recordUsage(usage);
+        this.failureReason = failureReason.value();
+        this.incompleteReason = failureReason.incompleteReason();
+        this.durationMs = durationMs;
         this.completedAt = completedAt;
     }
 
@@ -264,5 +324,21 @@ public class PresentationAiEdit implements Persistable<UUID> {
 
     public Instant getCompletedAt() {
         return completedAt;
+    }
+
+    public String getPromptVersion() {
+        return promptVersion;
+    }
+
+    public String getOutcome() {
+        return outcome;
+    }
+
+    public Short getOutcomeVariant() {
+        return outcomeVariant;
+    }
+
+    public Instant getClearedAt() {
+        return clearedAt;
     }
 }

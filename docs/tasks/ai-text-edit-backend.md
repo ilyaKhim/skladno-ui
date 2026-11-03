@@ -124,7 +124,7 @@ Backend должен:
 | `target.slide_id` | id слайда редактора `slide-<номер исходного слайда>`; слайд включён в документ |
 | `target.field_key` | поле шаблона, которое есть на этом слайде |
 | `target.block_id` | id пользовательского текстового блока на этом слайде в сохранённом на сервере документе (клиент вызывает `saveNow()` перед запросом) |
-| `text` | источник: текущий текст блока или, при уточнении, текст текущего предложения. Не пустой и не только пробелы, без `{{`/`}}`; длина ≤ `hard_max_chars` для `template_field`, ≤ `limits.custom_block_max_input_chars` для `custom_block` |
+| `text` | источник: текущий текст блока или, при уточнении, текст текущего предложения. Пустая строка или только пробелы допустимы только у `custom`; без `{{`/`}}`; длина ≤ `hard_max_chars` для `template_field`, ≤ `limits.custom_block_max_input_chars` для `custom_block` |
 | `refines_edit_id` | `null` или `edit_id` предыдущего ответа для той же цели, если `text` — его вариант. Сохраняется в журнале для аналитики, в модель не передаётся. Неизвестный или чужой id → `invalid_input` |
 | `variants` | 1…`variants.max`; по умолчанию `variants.default` |
 | `model` | `null` или id из `GET /api/generation/v1/models` |
@@ -137,7 +137,9 @@ Backend должен:
   "request_id": "3f6c2a8e-1b7d-4c1e-9a52-6f0d2b7c9e11",
   "refines_edit_id": null,
   "status": "ok",
+  "reason": null,
   "message": null,
+  "suggestions": [],
   "action": "custom",
   "target": { "kind": "template_field", "slide_id": "slide-3", "field_key": "STATEMENT", "block_id": null },
   "source_text": "Мы делаем презентации быстро и без лишней головной боли",
@@ -156,12 +158,13 @@ Backend должен:
 
 | Поле | Значение |
 | --- | --- |
-| `status` | `ok` — есть хотя бы один вариант; `unchanged` — модель не нашла, что изменить (`variants: []`, `message` объясняет); `unsupported` — просьба выходит за рамки правки текста (`variants: []`, `message`, например «Я могу менять только текст выбранного блока») |
+| `status` | `ok` — есть хотя бы один вариант; `unchanged` — модель не нашла, что изменить (`variants: []`, `message` объясняет); `alternative` — правки нет, есть причина и что можно сделать (`variants: []`, `reason`, `message`, `suggestions`). `unsupported` новые запросы не получают, он остаётся в старых записях и их повторах |
+| `reason`, `suggestions` | Заполнены только при `alternative`. Значения и лента — контракт этапа 1 в `docs/ai-chat-v2.md`, раздел 7.10 |
 | `source_text` | эхо `text` запроса |
 | `max_chars`, `hard_max_chars` | мягкий лимит цели (вёрстка) и жёсткий предел (сохранение) |
 | `variants[].length` | длина `text` |
 | `variants[].over_by` | `max(0, length − max_chars)` |
-| `variants[].warnings` | подмножество {`over_limit`, `exceeds_hard_limit`, `not_shorter`, `line_breaks_removed`}. Текст **никогда не обрезается**. С `exceeds_hard_limit` вариант применить нельзя |
+| `variants[].warnings` | подмножество {`over_limit`, `exceeds_hard_limit`, `not_shorter`, `line_breaks_removed`, `check_facts`}. Текст **никогда не обрезается**. С `exceeds_hard_limit` вариант применить нельзя |
 | `usage` | токены этого вызова; поля могут быть `null`, если провайдер их не вернул |
 | `quota` | состояние после этой правки; `resets_at` — когда освободится ближайшая единица квоты |
 | `replayed` | `true`, если ответ взят из сохранённого результата по тому же `request_id` (квота не расходуется) |
@@ -180,7 +183,7 @@ Backend должен:
 | 422 | `unsupported_action` | `action` нет в каталоге или действие недоступно для `target.kind` |
 | 422 | `invalid_params` | неизвестный или отсутствующий параметр, значение не из `options`, строка длиннее `max_length` |
 | 422 | `invalid_target` | слайд не включён или отсутствует, поля нет на слайде, блока нет в сохранённом документе |
-| 422 | `invalid_text` | пустой текст или текст содержит `{{`/`}}` |
+| 422 | `invalid_text` | пустой текст у `shorten` и `rephrase` или текст содержит `{{`/`}}` |
 | 422 | `text_too_long` | `text` длиннее допустимого для цели |
 | 422 | `unsupported_model` | модель не из каталога |
 | 429 | `ai_edit_limit` | исчерпана дневная квота (100 правок за скользящие 24 часа) |
@@ -395,8 +398,10 @@ CREATE INDEX presentation_ai_calls_retention_idx ON presentation_ai_calls(operat
       - завершённый `ok`/`unchanged`/`unsupported` → `result_json` с `replayed: true`;
       - `failed` → `ai_edit_failed`.
 
-      Затем квота (≥ 100 строк за окно → `ai_edit_limit`) и вставка `running`. Гонку решает
-      `UNIQUE (user_id, request_id)`: проигравший после rollback перечитывает строку победителя.
+      Затем квота (≥ 100 строк за окно → `ai_edit_limit`) и вставка `running`. Все эти шаги идут
+      под `pg_advisory_xact_lock` на пользователя до конца транзакции: параллельные запросы не
+      превышают квоту, а дубликат выполняющегося запроса видит его строку, а не `ai_edit_limit`.
+      `UNIQUE (user_id, request_id)` остаётся гарантией на уровне БД.
    3. Один вызов LLM **без открытой транзакции**, затем очистка.
    4. `AiEditTransactions.complete` / `fail` — короткие транзакции: статус, `result_json`, usage,
       `error_code`, `completed_at`.
@@ -492,7 +497,7 @@ Integration (PostgreSQL, MockMvc с настоящим Spring Security):
    `instruction: "ещё короче"`, `text: V`, `refines_edit_id: E1`. Тогда: 200; в `request_body` есть
    только V и просьба, без текста E1 и прошлых сообщений; в журнале сохранён `refines_edit_id`.
 6. **Длинный результат без обрезки.** Дано: модель вернула текст на 14 символов длиннее
-   `max_chars`. Тогда: вариант возвращён целиком, `over_by: 13`, `warnings: ["over_limit"]`, вызов
+   `max_chars`. Тогда: вариант возвращён целиком, `over_by: 14`, `warnings: ["over_limit"]`, вызов
    модели был один.
 7. **Длинный текст в редакторе.** Дано: черновик с полем длиной `max_chars + 13`. Когда: autosave →
    `GET /editor` → экспорт. Тогда: 200 на каждом шаге, текст полный в ответе `GET`, в

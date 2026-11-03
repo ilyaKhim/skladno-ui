@@ -78,7 +78,7 @@ Smoke создаёт один локальный аккаунт и два пис
 - Unit: `TextEditActionCatalogTest` (фиксированные действия, каталог совпадает
   с примером контракта, строгая валидация instruction и запрет лишних параметров), `TextEditRequestFactoryTest` (снимок `input`
   для каждого действия, только минимальный контекст, strict schema, `store: false`, формула
-  `max_output_tokens`), `TextEditResponseParserTest`, `TextResultSanitizerTest` (кавычки, markdown,
+  `max_output_tokens`, снимок промпта `golden/text-edit-instructions-v2.txt`), `TextEditResponseParserTest`, `FactGuardTest`, `AlternativeReplyTest`, `TextEditCallExceptionTest`, `TextResultSanitizerTest` (кавычки, markdown,
   переносы, маркеры, предупреждения; текст не обрезается), `TargetResolverTest` (заголовки, aurora без
   sidecar, исключённый слайд, чужое поле, блок только в черновике/опубликованном документе, лимиты),
   `ScriptedTextEditLlmTest` (заглушка не стартует вне `test`/`e2e`),
@@ -88,12 +88,50 @@ Smoke создаёт один локальный аккаунт и два пис
   Намеренное изменение — `./mvnw test -Dtest=PresentationRequestGoldenTest -Dgodeck.golden.update=true`.
 - `AiTextEditIntegrationTest`: каталог и `enabled: false`, 200 для поля и блока с записью в обоих
   журналах, неизменность документа и файлов, уточнение и `refines_edit_id`, `__LONG__`/`__HUGE__`
-  без обрезки и с одним вызовом, `unsupported`, 401/403/404/409, каждый код 422 без вызова модели,
+  без обрезки и с одним вызовом, `alternative`, повтор старой строки `unsupported`, пустой источник `custom`,
+  401/403/404/409, каждый код 422 без вызова модели,
   квота (101-й запрос → 429 с временем сброса), идемпотентность и параллельный дубль (один вызов),
   autosave и экспорт во время вызова, отсутствие транзакции во время вызова, зависшая `running`,
   ошибка провайдера, хранение 90 дней.
+- `AiEditHistoryIntegrationTest` (схема `ai_chat_test`): порядок и страницы ленты, `failed`, `tracked`, скрытые записи,
+  исход, очистка, запрос в работе при очистке, телеметрия при `ok`, `alternative` и ошибке, логи без текстов.
+- `AiChatControlSetIntegrationTest`: 60 записей `golden/ai-chat-stage1-control-set.json` через HTTP на заглушке. Маркер
+  сценария (`__ALT_SOURCE__`, `__FAKE_QUOTE__`, `__INCOMPLETE__` и другие, см. `ScriptedTextEditLlm`) дописывается к
+  просьбе. Набор проверяет код вокруг модели: нет ответа без действия, нет `unsupported`, в модель уходят только
+  разрешённые поля, `instructions` ≤ 1800 символов. **Качество текста и послушание настоящей модели он не проверяет.**
 - `EditorLongTextIntegrationTest`: draft/`GET /editor`/commit сохраняют текст до `hard_max_chars`
   целиком (в `content_json` и PPTX), `hard + 1` → 422; генерация и ручная сборка по-прежнему обрезают.
+
+Новая реплика чата добавляется строкой в контрольный набор, смена текста промпта — новой версией в первой строке, в
+`PROMPT_VERSION` и в снимке.
+
+### Сводка телеметрии чата
+
+Экрана нет, смотреть еженедельно этим запросом; пороги в `docs/ai-chat-v2.md`, раздел 9.7. Запрос читает только числа и
+коды. `output_tokens` Responses API уже включает reasoning.
+
+```sql
+SELECT prompt_version,
+       count(*) AS calls,
+       round(100.0 * count(*) FILTER (WHERE failure_reason = 'max_output') / count(*), 2) AS incomplete_limit_pct,
+       round(100.0 * count(*) FILTER (WHERE failure_reason = 'content_filter') / count(*), 2) AS content_filter_pct,
+       round(100.0 * count(*) FILTER (WHERE status = 'failed') / count(*), 2) AS failed_pct,
+       round(100.0 * count(*) FILTER (WHERE status = 'alternative') / count(*), 2) AS alternative_pct,
+       round(100.0 * count(*) FILTER (WHERE fact_guard = 'blocked') / count(*), 2) AS fact_blocked_pct,
+       round(100.0 * count(*) FILTER (WHERE fact_guard = 'flagged') / count(*), 2) AS fact_flagged_pct,
+       round(100.0 * count(*) FILTER (WHERE outcome = 'applied') / nullif(count(*) FILTER (WHERE status = 'ok'), 0), 2) AS applied_pct,
+       round(100.0 * count(*) FILTER (WHERE outcome = 'reverted') / nullif(count(*) FILTER (WHERE outcome IS NOT NULL), 0), 2) AS reverted_pct,
+       percentile_cont(0.95) WITHIN GROUP (ORDER BY output_tokens::float / nullif(max_output_tokens, 0)) AS p95_limit_share,
+       percentile_cont(0.95) WITHIN GROUP (ORDER BY reasoning_tokens) AS p95_reasoning,
+       percentile_cont(0.95) WITHIN GROUP (ORDER BY input_tokens) AS p95_input,
+       percentile_cont(0.90) WITHIN GROUP (ORDER BY duration_ms) AS p90_duration_ms
+FROM presentation_ai_edits
+WHERE prompt_version IS NOT NULL
+  AND status <> 'running'
+  AND created_at > now() - interval '7 days'
+GROUP BY prompt_version
+ORDER BY prompt_version;
+```
 
 На Windows без права создавать символические ссылки `PresentationFilesTest.outsidePathsAndSymlinksCannotBeDownloaded`
 падает с `AccessDeniedException` до проверки — это ограничение окружения, а не кода.

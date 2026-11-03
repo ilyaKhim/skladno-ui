@@ -16,8 +16,8 @@ import java.util.Map;
 @Validated
 @ConfigurationProperties("godeck.ai-edit.prompt")
 public record TextEditPromptSettings(
-        @DefaultValue("2048") @Min(1) int maxOutputTokens,
-        @DefaultValue("256") @Min(0) int baseOutputTokens,
+        @DefaultValue("4096") @Min(1) int maxOutputTokens,
+        @DefaultValue("1024") @Min(0) int baseOutputTokens,
         @DefaultValue("0.7") @DecimalMin(value = "0", inclusive = false)
                 @DecimalMax(value = "1", inclusive = false) double shortenRatio,
         @DefaultValue("80") @Min(1) int titleMaxChars,

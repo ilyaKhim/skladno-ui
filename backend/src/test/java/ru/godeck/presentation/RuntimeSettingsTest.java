@@ -59,8 +59,8 @@ class RuntimeSettingsTest {
             assertThat(images.maxDimension()).isEqualTo(8192);
             assertThat(images.maxPixels()).isEqualTo(32000000);
             var prompt = app.getBean(TextEditPromptSettings.class);
-            assertThat(prompt.maxOutputTokens()).isEqualTo(2048);
-            assertThat(prompt.baseOutputTokens()).isEqualTo(256);
+            assertThat(prompt.maxOutputTokens()).isEqualTo(4096);
+            assertThat(prompt.baseOutputTokens()).isEqualTo(1024);
             assertThat(prompt.shortenRatio()).isEqualTo(0.7);
             assertThat(prompt.titleMaxChars()).isEqualTo(80);
             assertThat(prompt.roleMaxChars()).isEqualTo(160);
@@ -118,7 +118,7 @@ class RuntimeSettingsTest {
         "godeck.images.max-dimension=8193",
         "godeck.images.max-pixels=32000001",
         "godeck.ai-edit.prompt.max-output-tokens=0",
-        "godeck.ai-edit.prompt.base-output-tokens=2048",
+        "godeck.ai-edit.prompt.base-output-tokens=4096",
         "godeck.ai-edit.prompt.shorten-ratio=1",
         "godeck.ai-edit.prompt.shorten-ratio=0",
         "godeck.ai-edit.prompt.title-max-chars=0",

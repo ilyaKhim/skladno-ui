@@ -50,7 +50,7 @@ class TargetResolverTest {
     void fieldTargetGetsLimitsRoleAndBothTitles() {
         var slide = slideWithTitleAndBody("atlas");
         var content = content("atlas", Map.of(slide.title(), "Почему это важно", slide.body(), "Текст"), slide.number(), List.of());
-        var resolved = resolver.resolve("atlas", ID, content, field(slide.number(), slide.body()), "Текст");
+        var resolved = resolver.resolve("atlas", ID, content, field(slide.number(), slide.body()), "Текст", false);
         int max = templates.fields("atlas").get(slide.body());
         assertThat(resolved.maxChars()).isEqualTo(max);
         assertThat(resolved.hardMaxChars()).isEqualTo(Math.min(4000, Math.max(2 * max, max + 100)));
@@ -66,7 +66,7 @@ class TargetResolverTest {
     void slideTitleIsNullWhenItIsTheTarget() {
         var slide = slideWithTitleAndBody("atlas");
         var content = content("atlas", Map.of(slide.title(), "Заголовок слайда"), slide.number(), List.of());
-        var resolved = resolver.resolve("atlas", ID, content, field(slide.number(), slide.title()), "Заголовок слайда");
+        var resolved = resolver.resolve("atlas", ID, content, field(slide.number(), slide.title()), "Заголовок слайда", false);
         assertThat(resolved.slideTitle()).isNull();
     }
 
@@ -78,9 +78,26 @@ class TargetResolverTest {
         values.put(slide.title(), "   ");
         var resolved =
                 resolver.resolve(
-                        "atlas", ID, content("atlas", values, slide.number(), List.of()), field(slide.number(), slide.body()), "Текст");
+                        "atlas", ID, content("atlas", values, slide.number(), List.of()), field(slide.number(), slide.body()), "Текст", false);
         assertThat(resolved.deckTitle()).hasSize(80);
         if (!slide.title().equals("TITLE")) assertThat(resolved.slideTitle()).isNull();
+    }
+
+    @Test
+    void emptyTextIsAcceptedOnlyWhenTheActionAllowsIt() {
+        var slide = slideWithTitleAndBody("atlas");
+        var content = content("atlas", Map.of(), slide.number(), List.of());
+        var target = field(slide.number(), slide.body());
+        for (String empty : List.of("", "   ")) {
+            assertThat(resolver.resolve("atlas", ID, content, target, empty, true).maxChars()).isPositive();
+            assertThat(code(() -> resolver.resolve("atlas", ID, content, target, empty, false)))
+                    .isEqualTo("invalid_text");
+        }
+        assertThat(code(() -> resolver.resolve("atlas", ID, content, target, "a {{TITLE}}", true)))
+                .isEqualTo("invalid_text");
+        int hard = templates.fields("atlas").get(slide.body()) + 1_000_000;
+        assertThat(code(() -> resolver.resolve("atlas", ID, content, target, "а".repeat(hard), true)))
+                .isEqualTo("text_too_long");
     }
 
     @Test
@@ -88,7 +105,7 @@ class TargetResolverTest {
         String field = (String) ((List<?>) templates.slideManifest("aurora").getFirst().get("fields")).getFirst();
         var resolved =
                 resolver.resolve(
-                        "aurora", ID, content("aurora", Map.of(), 1, List.of()), field(1, field), "Текст");
+                        "aurora", ID, content("aurora", Map.of(), 1, List.of()), field(1, field), "Текст", false);
         assertThat(resolved.role()).isNull();
     }
 
@@ -98,18 +115,18 @@ class TargetResolverTest {
         var content = content("atlas", Map.of(), slide.number(), List.of());
         int excluded = slide.number() == 1 ? 2 : 1;
         String excludedField = fieldsOf("atlas", excluded).getFirst();
-        assertThat(code(() -> resolver.resolve("atlas", ID, content, field(excluded, excludedField), "Текст")))
+        assertThat(code(() -> resolver.resolve("atlas", ID, content, field(excluded, excludedField), "Текст", false)))
                 .isEqualTo("invalid_target");
-        assertThat(code(() -> resolver.resolve("atlas", ID, content, field(999, "TITLE"), "Текст")))
+        assertThat(code(() -> resolver.resolve("atlas", ID, content, field(999, "TITLE"), "Текст", false)))
                 .isEqualTo("invalid_target");
         String foreign =
                 templates.fields("atlas").keySet().stream()
                         .filter(name -> !fieldsOf("atlas", slide.number()).contains(name))
                         .findFirst()
                         .orElseThrow();
-        assertThat(code(() -> resolver.resolve("atlas", ID, content, field(slide.number(), foreign), "Текст")))
+        assertThat(code(() -> resolver.resolve("atlas", ID, content, field(slide.number(), foreign), "Текст", false)))
                 .isEqualTo("invalid_target");
-        assertThat(code(() -> resolver.resolve("atlas", ID, content, field(slide.number(), "NOPE"), "Текст")))
+        assertThat(code(() -> resolver.resolve("atlas", ID, content, field(slide.number(), "NOPE"), "Текст", false)))
                 .isEqualTo("invalid_target");
     }
 
@@ -119,7 +136,7 @@ class TargetResolverTest {
         var content = content("atlas", Map.of(), slide.number(), List.of(block("note-1", "Заметка")));
         var resolved =
                 resolver.resolve(
-                        "atlas", ID, content, new AiEditTarget.CustomBlockTarget(slide.number(), "note-1"), "Заметка");
+                        "atlas", ID, content, new AiEditTarget.CustomBlockTarget(slide.number(), "note-1"), "Заметка", false);
         assertThat(resolved.maxChars()).isEqualTo(4000);
         assertThat(resolved.hardMaxChars()).isEqualTo(4000);
         assertThat(resolved.maxInputChars()).isEqualTo(2000);
@@ -128,7 +145,7 @@ class TargetResolverTest {
                         code(
                                 () ->
                                         resolver.resolve(
-                                                "atlas", ID, content, new AiEditTarget.CustomBlockTarget(slide.number(), "other"), "Текст")))
+                                                "atlas", ID, content, new AiEditTarget.CustomBlockTarget(slide.number(), "other"), "Текст", false)))
                 .isEqualTo("invalid_target");
     }
 
@@ -138,15 +155,15 @@ class TargetResolverTest {
         var content = content("atlas", Map.of(), slide.number(), List.of(block("note-1", "x")));
         var target = field(slide.number(), slide.body());
         int hard = Math.min(4000, Math.max(2 * templates.fields("atlas").get(slide.body()), templates.fields("atlas").get(slide.body()) + 100));
-        assertThat(resolver.resolve("atlas", ID, content, target, "а".repeat(hard)).hardMaxChars()).isEqualTo(hard);
-        assertThat(code(() -> resolver.resolve("atlas", ID, content, target, "а".repeat(hard + 1))))
+        assertThat(resolver.resolve("atlas", ID, content, target, "а".repeat(hard), false).hardMaxChars()).isEqualTo(hard);
+        assertThat(code(() -> resolver.resolve("atlas", ID, content, target, "а".repeat(hard + 1), false)))
                 .isEqualTo("text_too_long");
         var block = new AiEditTarget.CustomBlockTarget(slide.number(), "note-1");
-        assertThat(resolver.resolve("atlas", ID, content, block, "а".repeat(2000)).maxInputChars()).isEqualTo(2000);
-        assertThat(code(() -> resolver.resolve("atlas", ID, content, block, "а".repeat(2001))))
+        assertThat(resolver.resolve("atlas", ID, content, block, "а".repeat(2000), false).maxInputChars()).isEqualTo(2000);
+        assertThat(code(() -> resolver.resolve("atlas", ID, content, block, "а".repeat(2001), false)))
                 .isEqualTo("text_too_long");
         for (String invalid : List.of("", "   ", "a {{TITLE}}", "b }}"))
-            assertThat(code(() -> resolver.resolve("atlas", ID, content, target, invalid)))
+            assertThat(code(() -> resolver.resolve("atlas", ID, content, target, invalid, false)))
                     .isEqualTo("invalid_text");
     }
 
@@ -157,9 +174,9 @@ class TargetResolverTest {
         var drafted = content("atlas", Map.of(), slide.number(), List.of(block("draft-only", "x")));
         Presentation presentation = presentation(published, drafted, 1);
         when(repository.findByIdAndUserId(ID, USER)).thenReturn(Optional.of(presentation));
-        assertThat(resolver.resolve(USER, ID, new AiEditTarget.CustomBlockTarget(slide.number(), "draft-only"), "x").maxChars())
+        assertThat(resolver.resolve(USER, ID, new AiEditTarget.CustomBlockTarget(slide.number(), "draft-only"), "x", false).maxChars())
                 .isEqualTo(4000);
-        assertThat(code(() -> resolver.resolve(USER, ID, new AiEditTarget.CustomBlockTarget(slide.number(), "published-only"), "x")))
+        assertThat(code(() -> resolver.resolve(USER, ID, new AiEditTarget.CustomBlockTarget(slide.number(), "published-only"), "x", false)))
                 .isEqualTo("invalid_target");
     }
 
@@ -170,20 +187,20 @@ class TargetResolverTest {
         var drafted = content("atlas", Map.of(), slide.number(), List.of(block("draft-only", "x")));
         Presentation presentation = presentation(published, drafted, 2);
         when(repository.findByIdAndUserId(ID, USER)).thenReturn(Optional.of(presentation));
-        assertThat(resolver.resolve(USER, ID, new AiEditTarget.CustomBlockTarget(slide.number(), "published-only"), "x").maxChars())
+        assertThat(resolver.resolve(USER, ID, new AiEditTarget.CustomBlockTarget(slide.number(), "published-only"), "x", false).maxChars())
                 .isEqualTo(4000);
-        assertThat(code(() -> resolver.resolve(USER, ID, new AiEditTarget.CustomBlockTarget(slide.number(), "draft-only"), "x")))
+        assertThat(code(() -> resolver.resolve(USER, ID, new AiEditTarget.CustomBlockTarget(slide.number(), "draft-only"), "x", false)))
                 .isEqualTo("invalid_target");
     }
 
     @Test
     void foreignAndNotReadyPresentationsAreRejected() {
         when(repository.findByIdAndUserId(ID, USER)).thenReturn(Optional.empty());
-        assertThat(code(() -> resolver.resolve(USER, ID, field(1, "TITLE"), "x"))).isEqualTo("presentation_not_found");
+        assertThat(code(() -> resolver.resolve(USER, ID, field(1, "TITLE"), "x", false))).isEqualTo("presentation_not_found");
         Presentation running = mock(Presentation.class);
         when(running.getStatus()).thenReturn(PresentationStatus.RUNNING);
         when(repository.findByIdAndUserId(ID, USER)).thenReturn(Optional.of(running));
-        assertThat(code(() -> resolver.resolve(USER, ID, field(1, "TITLE"), "x"))).isEqualTo("presentation_not_ready");
+        assertThat(code(() -> resolver.resolve(USER, ID, field(1, "TITLE"), "x", false))).isEqualTo("presentation_not_ready");
     }
 
     /** Published version 2; the draft is current only when based on version {@code draftBase}. */

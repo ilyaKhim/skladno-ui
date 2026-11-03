@@ -4,8 +4,8 @@ import { Check, RefreshCw, Undo2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { Deck } from '../editor-types'
-import { findTargetBlock, sharedFieldSlides } from './ai-target'
-import { canApply, selectedVariant, type ProposalMessage } from './chat-reducer'
+import { chipLabel, findTargetBlock, sharedFieldSlides } from './ai-target'
+import { canApply, factCheckText, selectedVariant, type ProposalMessage } from './chat-reducer'
 import { plural } from './plural'
 
 const symbols = (count: number) => `${count} ${plural(count, 'символ', 'символа', 'символов')}`
@@ -19,6 +19,8 @@ function warningTexts(proposal: ProposalMessage, deck: Deck) {
     texts.push({ text: `Длиннее лимита поля на ${symbols(variant.over_by)} — может не поместиться, после применения можно подвинуть или увеличить блок` })
   if (variant.warnings.includes('not_shorter')) texts.push({ text: 'Короче не получилось' })
   if (variant.warnings.includes('line_breaks_removed')) texts.push({ text: 'Переносы строк убраны' })
+  const facts = factCheckText(proposal)
+  if (facts) texts.push({ text: facts })
   const found = findTargetBlock(deck, proposal.target)
   const shared = found ? sharedFieldSlides(deck, found.block) : 1
   if (shared > 1) texts.push({ text: `Поле используется на ${shared} ${plural(shared, 'слайде', 'слайдах', 'слайдах')}, изменится везде` })
@@ -30,6 +32,9 @@ const STATUS_TEXT: Record<Exclude<ProposalMessage['status'], 'pending'>, string>
   rejected: 'Отклонено',
   superseded: 'Заменено уточнением',
   reverted: 'Исходный текст возвращён',
+  stale: 'Не применено',
+  undone: 'Отменено',
+  unknown: 'Статус неизвестен',
 }
 
 type ProposalCardProps = {
@@ -47,8 +52,12 @@ type ProposalCardProps = {
 export function AiProposalCard({ proposal, deck, busy, onApply, onAnother, onReject, onRevert, onSelectVariant }: ProposalCardProps) {
   const variant = selectedVariant(proposal)
   const pending = proposal.status === 'pending'
+  const stale = proposal.status === 'stale'
+  const open = pending || stale
   const applicable = canApply(proposal)
-  const target = `«${proposal.chipLabel}»`
+  const label = chipLabel(deck, proposal.target)
+  const present = Boolean(findTargetBlock(deck, proposal.target))
+  const target = `«${label}»`
   const status = proposal.status === 'pending'
     ? null
     : proposal.status === 'superseded' && proposal.supersededBy === 'another'
@@ -58,16 +67,16 @@ export function AiProposalCard({ proposal, deck, busy, onApply, onAnother, onRej
   return (
     <article
       aria-label={`Предложение AI для блока ${target}`}
-      className={cn('flex flex-col gap-2 rounded-lg border bg-card p-3 text-sm', pending ? 'border-primary/40' : 'border-border opacity-80')}
+      className={cn('flex flex-col gap-2 rounded-lg border bg-card p-3 text-sm', open ? 'border-primary/40' : 'border-border opacity-80')}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-secondary-foreground">{proposal.chipLabel}</span>
+        <span className="truncate rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-secondary-foreground">{label}</span>
         {status && <span className="shrink-0 text-[11px] font-medium text-muted-foreground">{status}</span>}
       </div>
 
       <div>
         <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Было</p>
-        <p className="mt-0.5 break-words whitespace-pre-wrap text-muted-foreground">{proposal.source.baseText}</p>
+        <p className="mt-0.5 break-words whitespace-pre-wrap text-muted-foreground">{proposal.source.baseText || 'Пусто'}</p>
       </div>
       <div>
         <div className="flex items-baseline justify-between gap-2">
@@ -90,7 +99,7 @@ export function AiProposalCard({ proposal, deck, busy, onApply, onAnother, onRej
               role="radio"
               aria-checked={index === proposal.selected}
               aria-label={`Вариант ${index + 1} из ${proposal.variants.length}`}
-              disabled={!pending}
+              disabled={!open}
               onClick={() => onSelectVariant(index)}
               className={cn(
                 'size-6 rounded-md text-xs tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60',
@@ -103,7 +112,7 @@ export function AiProposalCard({ proposal, deck, busy, onApply, onAnother, onRej
         </div>
       )}
 
-      {pending && warningTexts(proposal, deck).map(({ text, strong }) => (
+      {open && warningTexts(proposal, deck).map(({ text, strong }) => (
         <p key={text} className={cn('text-xs leading-snug', strong ? 'font-medium text-destructive' : 'text-muted-foreground')}>{text}</p>
       ))}
 
@@ -120,7 +129,17 @@ export function AiProposalCard({ proposal, deck, busy, onApply, onAnother, onRej
           </Button>
         </div>
       )}
-      {proposal.status === 'applied' && (
+      {stale && present && (
+        <div className="pt-1">
+          <Button size="sm" disabled={!applicable} onClick={onApply} aria-label={`Применить вариант к блоку ${target}`}>
+            <Check /> Применить
+          </Button>
+        </div>
+      )}
+      {proposal.status === 'applied' && factCheckText(proposal) && (
+        <p className="text-xs leading-snug text-muted-foreground">{factCheckText(proposal)}</p>
+      )}
+      {proposal.status === 'applied' && present && (
         <div className="pt-1">
           <Button size="sm" variant="outline" onClick={onRevert} aria-label={`Вернуть исходный текст блока ${target}`}>
             <Undo2 /> Вернуть исходный

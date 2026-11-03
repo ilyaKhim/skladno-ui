@@ -1,6 +1,10 @@
 import { GenerationApiError, generationApi } from '../../../../lib/generation-client.ts'
 import type {
   AiActionCatalog,
+  AiHistoryItem,
+  AiHistoryPage,
+  AiHistoryQuery,
+  AiOutcomeRequest,
   TextEditRequest,
   TextEditResponse,
   TextEditTarget,
@@ -11,12 +15,18 @@ import type {
 export interface AiEditPort {
   actions(signal?: AbortSignal): Promise<AiActionCatalog>
   textEdit(presentationId: string, body: TextEditRequest, signal?: AbortSignal): Promise<TextEditResponse>
+  history(presentationId: string, query?: AiHistoryQuery, signal?: AbortSignal): Promise<AiHistoryPage>
+  outcome(presentationId: string, editId: string, body: AiOutcomeRequest): Promise<void>
+  clearHistory(presentationId: string): Promise<void>
 }
 
 export function createHttpAiEditPort(): AiEditPort {
   return {
     actions: (signal) => generationApi.aiActions(signal),
     textEdit: (presentationId, body, signal) => generationApi.textEdit(presentationId, body, signal),
+    history: (presentationId, query, signal) => generationApi.aiHistory(presentationId, query, signal),
+    outcome: (presentationId, editId, body) => generationApi.aiOutcome(presentationId, editId, body),
+    clearHistory: (presentationId) => generationApi.clearAiHistory(presentationId),
   }
 }
 
@@ -55,15 +65,17 @@ export const CONTRACT_TEXT_EDIT_RESPONSE: TextEditResponse = {
   request_id: '3f6c2a8e-1b7d-4c1e-9a52-6f0d2b7c9e11',
   refines_edit_id: null,
   status: 'ok',
+  reason: null,
   message: null,
+  suggestions: [],
   action: 'custom',
   target: { kind: 'template_field', slide_id: 'slide-3', field_key: 'STATEMENT', block_id: null },
   source_text: 'Мы делаем презентации быстро и без лишней головной боли',
   max_chars: 46,
   hard_max_chars: 146,
   variants: [
-    { text: 'Мы готовим презентации оперативно и без лишних затрат усилий', length: 59,
-      over_by: 13, warnings: ['over_limit'] },
+    { text: 'Мы готовим презентации оперативно и без лишних затрат усилий', length: 60,
+      over_by: 14, warnings: ['over_limit'] },
   ],
   model: 'gpt-5.4-mini',
   usage: { input_tokens: 512, cached_input_tokens: 0, output_tokens: 41, reasoning_tokens: 0 },
@@ -71,11 +83,62 @@ export const CONTRACT_TEXT_EDIT_RESPONSE: TextEditResponse = {
   replayed: false,
 }
 
+// The examples below repeat the stage 1 contract (docs/ai-chat-v2.md, section 7.10).
+export const CONTRACT_ALTERNATIVE_RESPONSE: TextEditResponse = {
+  edit_id: '9c1d7b52-0f7e-4c55-8f3e-2d4b1a6e7c90',
+  request_id: '3f6c2a8e-1b7d-4c1e-9a52-6f0d2b7c9e11',
+  refines_edit_id: null,
+  status: 'alternative',
+  reason: 'needs_source',
+  message: 'Подлинную цитату без источника вставить не могу: её нельзя придумывать.',
+  suggestions: ['Вставь заглушку [Цитата: имя, источник]', 'Перескажи мысль своими словами без цитаты'],
+  action: 'custom',
+  target: { kind: 'template_field', slide_id: 'slide-3', field_key: 'STATEMENT', block_id: null },
+  source_text: 'Оппозитный двигатель остаётся основой марки',
+  max_chars: 46,
+  hard_max_chars: 146,
+  variants: [],
+  model: 'gpt-5.4-mini',
+  usage: { input_tokens: 640, cached_input_tokens: 0, output_tokens: 90, reasoning_tokens: 40 },
+  quota: { limit: 100, remaining: 86, resets_at: '2026-11-01T09:12:00Z' },
+  replayed: false,
+}
+
+export const CONTRACT_HISTORY_PAGE: AiHistoryPage = {
+  items: [
+    {
+      edit_id: '9c1d7b52-0f7e-4c55-8f3e-2d4b1a6e7c90',
+      created_at: '2026-10-31T09:12:00Z',
+      refines_edit_id: null,
+      action: 'custom',
+      instruction: 'сделай формальнее',
+      target: { kind: 'template_field', slide_id: 'slide-3', field_key: 'STATEMENT', block_id: null },
+      status: 'ok',
+      reason: null,
+      message: null,
+      suggestions: [],
+      source_text: 'Мы делаем презентации быстро',
+      max_chars: 46,
+      hard_max_chars: 146,
+      variants: [{ text: 'Мы оперативно готовим презентации', length: 33, over_by: 0, warnings: [] }],
+      outcome: 'applied',
+      outcome_variant: 0,
+      tracked: true,
+    },
+  ],
+  next_before: null,
+}
+
 export type MockScenario =
   | 'ok'
   | 'over_limit'
   | 'exceeds_hard_limit'
-  | 'unsupported'
+  | 'check_facts'
+  | 'needs_source'
+  | 'style_panel'
+  | 'out_of_scope'
+  | 'advice'
+  | 'clarify'
   | 'unchanged'
   | 'ai_edit_limit'
   | 'ai_edit_failed'
@@ -97,13 +160,59 @@ const MARKERS: [string, MockScenario][] = [
   ['__FAIL__', 'ai_edit_failed'],
   ['__LIMIT__', 'ai_edit_limit'],
   ['__SAME__', 'unchanged'],
+  ['__CHECK_FACTS__', 'check_facts'],
+  ['__ALT_SOURCE__', 'needs_source'],
+  ['__ALT_STYLE__', 'style_panel'],
+  ['__ALT_SCOPE__', 'out_of_scope'],
+  ['__ADVICE__', 'advice'],
+  ['__CLARIFY__', 'clarify'],
 ]
+
+const WORD_START = '(?:^|[^а-яё])'
+/** Requests that name a safe form of the answer: they must not loop back into the same alternative. */
+const SAFE_REQUEST = /заглушк|своими словами|\[[^\]]+\]/i
+const PHRASES: [RegExp, MockScenario][] = [
+  [new RegExp(`цитат|статистик|свеж|${WORD_START}цен[аыуе]?(?:[^а-яё]|$)`, 'i'), 'needs_source'],
+  [/шрифт|цвет|крупнее|мельче|жирн|курсив|начертан|размер/i, 'style_panel'],
+  [new RegExp(`слайд|картин|изображени|диаграмм|график|анимац|макет|${WORD_START}фон`, 'i'), 'out_of_scope'],
+  [/^\s*(?:сделай лучше|поменяй)\s*$/i, 'clarify'],
+  [/\?\s*$/, 'advice'],
+]
+
+type AlternativeScenario = 'needs_source' | 'style_panel' | 'out_of_scope' | 'advice' | 'clarify'
+const ALTERNATIVES: Record<AlternativeScenario, { message: string; suggestions: string[] }> = {
+  needs_source: {
+    message: 'Подлинную цитату или точные данные без источника вставить не могу: их нельзя придумывать.',
+    suggestions: ['Вставь заглушку [Цитата: имя, источник]', 'Перескажи мысль своими словами без цитаты'],
+  },
+  style_panel: {
+    message: 'Вид текста чат не меняет. Могу поработать над самим текстом.',
+    suggestions: ['Сократи текст', 'Сделай тон живее'],
+  },
+  out_of_scope: {
+    message: 'Сейчас чат правит один выбранный блок. Могу изменить его текст.',
+    suggestions: ['Сократи этот блок', 'Сделай формальнее'],
+  },
+  advice: {
+    message: 'Главную мысль лучше поставить в начало и убрать общие слова.',
+    suggestions: ['Сократи текст', 'Сделай формальнее'],
+  },
+  clarify: {
+    message: 'Что изменить: длину или тон?',
+    suggestions: ['Сделай короче', 'Сделай формальнее'],
+  },
+}
+
+const isAlternative = (scenario: MockScenario): scenario is AlternativeScenario => scenario in ALTERNATIVES
 
 /** Same markers as the backend `ScriptedTextEditLlm`, plus `__LIMIT__`/`__SAME__` for the demo. */
 export function scenarioFor(body: TextEditRequest): MockScenario {
   const haystack = [body.text, ...Object.values(body.params)].join('\n')
   for (const [marker, scenario] of MARKERS) if (haystack.includes(marker)) return scenario
-  if (Object.values(body.params).some((value) => /слайд|картин|изображени|диаграмм|шрифт|цвет/i.test(value))) return 'unsupported'
+  for (const value of Object.values(body.params)) {
+    if (SAFE_REQUEST.test(value)) continue
+    for (const [phrase, scenario] of PHRASES) if (phrase.test(value)) return scenario
+  }
   return 'ok'
 }
 
@@ -121,6 +230,9 @@ const REPHRASE_PREFIXES = ['Иначе говоря', 'Проще говоря',
 
 function transform(action: string, params: Record<string, string>, text: string, index: number) {
   const instruction = Object.values(params).join(' ').trim()
+  const placeholder = instruction.match(/\[[^\]]+\]/)
+  if (placeholder) return placeholder[0]
+  if (!text.trim()) return `Новый текст блока: ${lowerFirst(instruction)}${index ? `, вариант ${index + 1}` : ''}`
   if (action === 'shorten' || /корот|короч|сократ/i.test(instruction)) return index === 0 ? shorten(text) : shorten(shorten(text))
   if (action === 'rephrase') return `${REPHRASE_PREFIXES[index % REPHRASE_PREFIXES.length]}: ${lowerFirst(text)}`
   if (/формал/i.test(instruction)) return `${['Сообщаем', 'Отметим', 'Подчеркнём'][index % 3]}: ${lowerFirst(text)}`
@@ -166,7 +278,16 @@ export function createMockAiEditPort(options: MockAiEditOptions = {}): AiEditPor
   const dailyLimit = options.dailyLimit ?? 100
   const results = new Map<string, { body: string; response: TextEditResponse }>()
   const editIds = new Set<string>()
+  const clearedRequests = new Set<string>()
+  const records = new Map<string, { seq: number; item: AiHistoryItem }[]>()
+  let sequence = 0
   let used = 0
+
+  const remember = (presentationId: string, item: AiHistoryItem) => {
+    const list = records.get(presentationId) ?? []
+    list.push({ seq: ++sequence, item })
+    records.set(presentationId, list)
+  }
 
   return {
     async actions(signal) {
@@ -176,6 +297,8 @@ export function createMockAiEditPort(options: MockAiEditOptions = {}): AiEditPor
     async textEdit(presentationId, body, signal) {
       await abortableDelay(delayMs, signal)
       const serialized = JSON.stringify(body)
+      if (clearedRequests.has(body.request_id))
+        throw new GenerationApiError('AI не ответил. Повторите попытку.', 502, 'ai_edit_failed')
       const previous = results.get(body.request_id)
       if (previous) {
         if (previous.body !== serialized)
@@ -197,7 +320,7 @@ export function createMockAiEditPort(options: MockAiEditOptions = {}): AiEditPor
         if (value && param.max_length && value.length > param.max_length)
           throw unprocessable('invalid_params', `Просьба длиннее ${param.max_length} символов.`)
       }
-      if (!body.text.trim() || body.text.includes('{{') || body.text.includes('}}'))
+      if ((body.action !== 'custom' && !body.text.trim()) || body.text.includes('{{') || body.text.includes('}}'))
         throw unprocessable('invalid_text', 'Текст пустой или содержит служебные метки.')
 
       const limits = body.target.kind === 'custom_block'
@@ -211,20 +334,31 @@ export function createMockAiEditPort(options: MockAiEditOptions = {}): AiEditPor
       if (scenario === 'ai_edit_limit' || used >= dailyLimit)
         throw new GenerationApiError('Дневной лимит AI-правок исчерпан. Попробуйте завтра.', 429, 'ai_edit_limit')
       used += 1
-      if (scenario === 'ai_edit_failed') throw new GenerationApiError('AI не ответил. Повторите попытку.', 502, 'ai_edit_failed')
+      if (scenario === 'ai_edit_failed') {
+        remember(presentationId, {
+          edit_id: crypto.randomUUID(), created_at: new Date().toISOString(), refines_edit_id: body.refines_edit_id,
+          action: body.action, instruction: body.action === 'custom' ? body.params.instruction ?? null : null,
+          target: clone(body.target), status: 'failed', reason: null, message: null, suggestions: [],
+          source_text: null, max_chars: null, hard_max_chars: null, variants: [],
+          outcome: null, outcome_variant: null, tracked: true,
+        })
+        throw new GenerationApiError('AI не ответил. Повторите попытку.', 502, 'ai_edit_failed')
+      }
 
       const source = stripMarkers(body.text)
       const count = Math.min(Math.max(body.variants, 1), catalog.variants.max)
-      const variants = scenario === 'unsupported' || scenario === 'unchanged'
+      const alternative = isAlternative(scenario) ? ALTERNATIVES[scenario] : null
+      const variants = alternative || scenario === 'unchanged'
         ? []
         : Array.from({ length: count }, (_, index) => {
             const text = transform(body.action, body.params, source, index)
             const sized = scenario === 'over_limit'
               ? padTo(text, limits.maxChars + 13)
               : scenario === 'exceeds_hard_limit' ? padTo(text, limits.hardMaxChars + 20) : text
-            return describeVariant(sized, body.text, body.action, limits.maxChars, limits.hardMaxChars)
+            const variant = describeVariant(sized, body.text, body.action, limits.maxChars, limits.hardMaxChars)
+            return scenario === 'check_facts' ? { ...variant, warnings: [...variant.warnings, 'check_facts'] } : variant
           })
-      const status = scenario === 'unsupported' ? 'unsupported' : scenario === 'unchanged' || variants.every((item) => item.text === body.text) ? 'unchanged' : 'ok'
+      const status = alternative ? 'alternative' : scenario === 'unchanged' || variants.every((item) => item.text === body.text) ? 'unchanged' : 'ok'
       const editId = crypto.randomUUID()
       editIds.add(editId)
       const response: TextEditResponse = {
@@ -232,9 +366,9 @@ export function createMockAiEditPort(options: MockAiEditOptions = {}): AiEditPor
         request_id: body.request_id,
         refines_edit_id: body.refines_edit_id,
         status,
-        message: status === 'unsupported'
-          ? 'Я могу менять только текст выбранного блока.'
-          : status === 'unchanged' ? 'Менять нечего: текст уже подходит.' : null,
+        reason: alternative ? scenario : null,
+        message: alternative?.message ?? (status === 'unchanged' ? 'Менять нечего: текст уже подходит.' : null),
+        suggestions: alternative ? [...alternative.suggestions] : [],
         action: body.action,
         target: clone(body.target),
         source_text: body.text,
@@ -247,7 +381,47 @@ export function createMockAiEditPort(options: MockAiEditOptions = {}): AiEditPor
         replayed: false,
       }
       results.set(body.request_id, { body: serialized, response })
+      remember(presentationId, {
+        edit_id: editId, created_at: new Date().toISOString(), refines_edit_id: body.refines_edit_id,
+        action: body.action, instruction: body.action === 'custom' ? body.params.instruction ?? null : null,
+        target: clone(body.target), status, reason: response.reason, message: response.message,
+        suggestions: [...response.suggestions], source_text: body.text, max_chars: limits.maxChars,
+        hard_max_chars: limits.hardMaxChars, variants: clone(response.variants),
+        outcome: null, outcome_variant: null, tracked: true,
+      })
       return clone(response)
+    },
+    async history(presentationId, query = {}, signal) {
+      await abortableDelay(Math.min(delayMs, 200), signal)
+      if (!presentationId) throw new GenerationApiError('Презентация не найдена.', 404, 'presentation_not_found')
+      const limit = query.limit ?? 50
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw unprocessable('invalid_input', 'Неверный limit.')
+      if (query.before !== undefined && !/^\d+$/.test(query.before)) throw unprocessable('invalid_input', 'Неверный before.')
+      const before = query.before === undefined ? Infinity : Number(query.before)
+      const list = (records.get(presentationId) ?? []).filter((record) => record.seq < before).reverse()
+      const page = list.slice(0, limit)
+      return { items: clone(page.map((record) => record.item)), next_before: list.length > limit ? String(page.at(-1)?.seq) : null }
+    },
+    async outcome(presentationId, editId, body) {
+      await abortableDelay(Math.min(delayMs, 200))
+      if (!presentationId) throw new GenerationApiError('Презентация не найдена.', 404, 'presentation_not_found')
+      const record = records.get(presentationId)?.find((entry) => entry.item.edit_id === editId)
+      if (!record) throw new GenerationApiError('Запись не найдена.', 404, 'ai_edit_not_found')
+      const known = ['applied', 'rejected', 'reverted'].includes(body.outcome)
+      const validVariant = body.outcome === 'applied'
+        ? body.variant !== null && Boolean(record.item.variants[body.variant])
+        : body.variant === null
+      if (!known || !validVariant) throw unprocessable('invalid_input', 'Неверный исход.')
+      record.item.outcome = body.outcome
+      record.item.outcome_variant = body.variant
+    },
+    async clearHistory(presentationId) {
+      await abortableDelay(Math.min(delayMs, 200))
+      if (!presentationId) throw new GenerationApiError('Презентация не найдена.', 404, 'presentation_not_found')
+      for (const { item } of records.get(presentationId) ?? [])
+        for (const [requestId, stored] of results)
+          if (stored.response.edit_id === item.edit_id) { clearedRequests.add(requestId); results.delete(requestId) }
+      records.delete(presentationId)
     },
   }
 }

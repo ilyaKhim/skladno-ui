@@ -28,9 +28,12 @@ public class TextResultSanitizer {
         {"«", "»"}, {"\"", "\""}, {"“", "”"}, {"„", "“"}, {"”", "”"}
     };
     private static final Pattern LINE_BREAK = Pattern.compile("\\s*\\R\\s*");
-    private static final Pattern HEADING = Pattern.compile("(?m)^[ \\t]*#+[ \\t]*");
-    private static final String BOLD = "**";
-    private static final String UNDERLINE_BOLD = "__";
+    // Only markdown syntax is removed: "#1 в рейтинге", "2**10", "snake__case" and "Имя: ____" are text.
+    private static final Pattern HEADING = Pattern.compile("(?m)^[ \\t]*#{1,6}(?:[ \\t]+|$)");
+    private static final Pattern EMPHASIS =
+            Pattern.compile(
+                    "(?<![\\p{L}\\p{N}_*])(\\*\\*|__)(?=[^\\s*_])(.+?)(?<=[^\\s*_])\\1(?![\\p{L}\\p{N}_*])");
+    private static final Pattern ONLY_MARKUP = Pattern.compile("[*_#\\s]+");
     private static final String MARKER_OPEN = "{{";
     private static final String MARKER_CLOSE = "}}";
 
@@ -45,17 +48,13 @@ public class TextResultSanitizer {
             String source,
             ResolvedTextTarget target,
             TextEditAction action) {
-        boolean sourceHasBreaks = source.contains("\n") || source.contains("\r");
         var texts = new LinkedHashSet<String>();
         var removedBreaks = new java.util.HashSet<String>();
         for (String raw : variants) {
             if (raw == null) continue;
-            String text = stripFormatting(raw);
-            boolean breaksRemoved = !sourceHasBreaks && LINE_BREAK.matcher(text).find();
-            if (breaksRemoved) text = LINE_BREAK.matcher(text).replaceAll(" ");
-            text = removeMarkers(text).strip();
-            if (text.isEmpty()) continue;
-            if (texts.add(text) && breaksRemoved) removedBreaks.add(text);
+            Cleaned cleaned = cleaned(raw, source);
+            if (cleaned.text().isEmpty()) continue;
+            if (texts.add(cleaned.text()) && cleaned.breaksRemoved()) removedBreaks.add(cleaned.text());
         }
         boolean unchanged =
                 texts.stream().allMatch(text -> text.equals(source) || text.equals(source.strip()));
@@ -78,10 +77,24 @@ public class TextResultSanitizer {
         return new Result(true, List.copyOf(views));
     }
 
+    /** The text {@link #sanitize} keeps for one raw variant; empty when it would drop the variant. */
+    public String clean(String raw, String source) {
+        return cleaned(raw, source).text();
+    }
+
+    private static Cleaned cleaned(String raw, String source) {
+        boolean sourceHasBreaks = source.contains("\n") || source.contains("\r");
+        String text = stripFormatting(raw);
+        boolean breaksRemoved = !sourceHasBreaks && LINE_BREAK.matcher(text).find();
+        if (breaksRemoved) text = LINE_BREAK.matcher(text).replaceAll(" ");
+        return new Cleaned(removeMarkers(text).strip(), breaksRemoved);
+    }
+
     /** Trims, removes framing quotes and markdown emphasis/headings. */
     static String stripFormatting(String raw) {
         String text = raw.strip();
-        text = text.replace(BOLD, "").replace(UNDERLINE_BOLD, "");
+        if (ONLY_MARKUP.matcher(text).matches()) return "";
+        text = EMPHASIS.matcher(text).replaceAll("$2");
         text = HEADING.matcher(text).replaceAll("").strip();
         boolean changed = true;
         while (changed && text.length() >= 2) {
@@ -112,4 +125,6 @@ public class TextResultSanitizer {
      * @param changed {@code false} means status {@code unchanged} with no variants
      */
     public record Result(boolean changed, List<TextVariantView> variants) {}
+
+    private record Cleaned(String text, boolean breaksRemoved) {}
 }
