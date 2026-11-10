@@ -6,7 +6,7 @@ import { unzipSync } from 'fflate'
 for (const exportWhileSaving of [false, true]) {
   test(exportWhileSaving
     ? 'экспорт ждёт медленный autosave и все последующие правки'
-    : 'медленный autosave сохраняет последнюю правку без повторного ввода', async ({ page, deckId }) => {
+    : 'медленный autosave сохраняет последнюю правку без повторного ввода', { tag: '@smoke' }, async ({ page, deckId }) => {
     let releaseFirst!: () => void
     const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve })
     const requests: { text: string; revision: number }[] = []

@@ -2,7 +2,7 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { strFromU8 } from 'fflate'
 import { serialize, toDeck } from '../frontend/components/studio/editor/editor-document'
-import { test, expect, canvas, downloadPptx, editorApi, editorState, editorUrl, mutation, saved } from './support'
+import { test, expect, canvas, captureReview, downloadPptx, editorApi, editorState, editorUrl, mutation, saved } from './support'
 
 const review = resolve('frontend/.impeccable/review/data-blocks')
 const blockOnCanvas = (page: import('@playwright/test').Page) => canvas(page).locator('[data-data-block-id]')
@@ -15,13 +15,13 @@ test('таблица: данные, перемещение, undo, reload и на
   await page.getByRole('textbox', { name: 'Строка 1, столбец 1', exact: true }).fill('Январь')
   await page.getByRole('textbox', { name: 'Строка 1, столбец 2', exact: true }).fill('42')
   await mkdir(review, { recursive: true })
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-table-data.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-table-data.png`))
   await page.getByRole('button', { name: 'Применить данные', exact: true }).click()
   await expect(blockOnCanvas(page)).toContainText('Январь')
   const rowHeights = await canvas(page).getByRole('table').locator('tr').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height))
   expect(Math.max(...rowHeights) - Math.min(...rowHeights)).toBeLessThan(2)
   await saved(page)
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-table.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-table.png`))
   await page.keyboard.press('ArrowRight')
   await page.getByRole('button', { name: 'Отменить', exact: true }).click()
   await saved(page)
@@ -51,7 +51,7 @@ test('диаграмма: отрицательные значения, оба н
   await expect(page.getByRole('button', { name: 'Применить данные', exact: true })).toBeDisabled()
   await expect(page.getByRole('region', { name: 'Данные блока', exact: true }).getByRole('alert')).toContainText('введите числа')
   await mkdir(review, { recursive: true })
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-data-error.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-data-error.png`))
   await page.getByRole('textbox', { name: 'Строка 1, столбец 2', exact: true }).fill('42')
   await page.getByRole('textbox', { name: 'Строка 2, столбец 2', exact: true }).fill('-12.5')
   await page.getByRole('button', { name: 'Добавить столбец', exact: true }).click()
@@ -60,7 +60,7 @@ test('диаграмма: отрицательные значения, оба н
   await page.getByRole('button', { name: 'Применить данные', exact: true }).click()
   await expect(canvas(page).getByRole('img', { name: 'Столбчатая диаграмма', exact: true })).toBeVisible()
   await saved(page)
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-desktop.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-desktop.png`))
   await page.getByRole('button', { name: 'Изменить данные', exact: true }).click()
   await page.getByRole('checkbox', { name: 'Горизонтальные столбцы', exact: true }).check()
   await page.getByRole('button', { name: 'Применить данные', exact: true }).click()
@@ -88,12 +88,12 @@ test('диаграмма: отрицательные значения, оба н
   await page.getByRole('textbox', { name: 'Строка 1, столбец 3', exact: true }).fill('0')
   await page.getByRole('button', { name: 'Применить данные', exact: true }).click()
   await expect(canvas(page).locator('svg')).toContainText('1e-3')
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-small-values.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-small-values.png`))
   await page.getByRole('button', { name: 'Изменить данные', exact: true }).click()
   await page.getByRole('textbox', { name: 'Строка 1, столбец 2', exact: true }).fill('1000000000000')
   await page.getByRole('button', { name: 'Применить данные', exact: true }).click()
   await expect(canvas(page).locator('svg')).toContainText('1e12')
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-large-values.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-large-values.png`))
 })
 
 test('mobile: данные прокручиваются локально, отмена ничего не сохраняет', async ({ page, deckId }) => {
@@ -118,7 +118,7 @@ test('mobile: данные прокручиваются локально, отм
   await expect(page.getByRole('region', { name: 'Данные блока', exact: true })).toBeVisible()
   await page.getByRole('textbox', { name: 'Заголовок 3', exact: true }).fill('Длинный заголовок')
   await mkdir(review, { recursive: true })
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-mobile-data.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-mobile-data.png`))
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
   await page.getByRole('button', { name: 'Отмена', exact: true }).click()
   await saved(page)
@@ -128,7 +128,7 @@ test('mobile: данные прокручиваются локально, отм
   await page.getByRole('button', { name: 'Столбчатая диаграмма', exact: true }).click()
   await page.getByRole('button', { name: 'Применить данные', exact: true }).click()
   await expect(blockOnCanvas(page)).toBeVisible()
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-mobile.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-mobile.png`))
 })
 
 test('API: старый клиент сохраняет блоки; некорректные данные не меняют черновик', async ({ page, deckId }) => {

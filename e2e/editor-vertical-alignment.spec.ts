@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { strFromU8 } from 'fflate'
-import { test, expect, canvas, downloadPptx, editorState, editorUrl, saved } from './support'
+import { test, expect, canvas, captureReview, downloadPptx, editorState, editorUrl, saved } from './support'
 
 test('выравнивание Opal: рамка заголовка прижата вниз в редакторе, миниатюре и после редактирования', async ({ page, deckId }) => {
   await page.goto(editorUrl(deckId))
@@ -29,7 +29,7 @@ test('выравнивание Opal: рамка заголовка прижат�
   expect(Math.abs(thumbnailGap)).toBeLessThan(2)
   const folder = resolve('frontend/.impeccable/review/expanded-blocks')
   await mkdir(folder, { recursive: true })
-  await page.screenshot({ path: resolve(folder, `${test.info().project.name}-template-alignment.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(folder, `${test.info().project.name}-template-alignment.png`))
   const zip = await downloadPptx(page)
   const xml = strFromU8(zip['ppt/slides/slide1.xml'])
   expect(xml).toContain('Короткий заголовок')
@@ -38,5 +38,5 @@ test('выравнивание Opal: рамка заголовка прижат�
   await page.setViewportSize({ width: 390, height: 844 })
   await expect.poll(async () => (await placement()).gap).toBeLessThan(2)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.screenshot({ path: resolve(folder, `${test.info().project.name}-template-alignment-mobile.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(folder, `${test.info().project.name}-template-alignment-mobile.png`))
 })

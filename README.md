@@ -25,6 +25,11 @@ compose.yaml    Локальные PostgreSQL и Mailpit
 Оставшиеся требования Windows к browser snapshots и симлинкам описаны в
 [проверке редактора](docs/editor-verification.md#windows).
 
+Для быстрой проверки основных сценариев: `pnpm test:e2e:smoke` (Chromium).
+После изменения только E2E-тестов: `pnpm test:e2e:smoke --reuse-build`.
+Полная проверка остаётся `pnpm verify`; режимы, журналы и ограничения описаны в
+[руководстве E2E](docs/editor-verification.md#быстрая-обратная-связь-при-разработке).
+
 Из корня проекта:
 
 ```sh

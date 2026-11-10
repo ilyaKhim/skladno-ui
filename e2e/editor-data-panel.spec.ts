@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { test, expect, canvas, editorState, editorUrl, saved } from './support'
+import { test, expect, canvas, captureReview, editorState, editorUrl, saved } from './support'
 
 const panel = (page: import('@playwright/test').Page) => page.getByRole('region', { name: 'Данные блока', exact: true })
 const preview = (page: import('@playwright/test').Page) => canvas(page).locator('[data-data-block-id]')
@@ -21,7 +21,7 @@ test('сужение окна с открытым AI-чатом не перек�
   await expect(canvas(page).locator('[data-slide-background]')).toHaveJSProperty('naturalWidth', 960)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await mkdir(review, { recursive: true })
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-resize.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-resize.png`))
   expect((await editorState(page, deckId)).slides[0].data_blocks).toEqual([])
   await page.getByRole('button', { name: 'Применить данные', exact: true }).click()
   await expect(panel(page)).toHaveCount(0)
@@ -56,7 +56,7 @@ test('нижняя панель: живой предпросмотр без со
   await reload
   await expect(page.getByRole('textbox', { name: 'Строка 1, столбец 2', exact: true })).toHaveValue('42')
   await mkdir(review, { recursive: true })
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-desktop.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-desktop.png`))
   await page.getByRole('button', { name: 'Отмена', exact: true }).click()
   await expect(panel(page)).toHaveCount(0)
   await expect(preview(page)).toHaveCount(0)
@@ -78,13 +78,13 @@ test('верхнее меню группирует графики и блоки;
   for (const name of ['Столбчатая диаграмма', 'Линейный график', 'Кольцевая диаграмма'])
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
   await mkdir(review, { recursive: true })
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-chart-menu.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-chart-menu.png`))
   await page.getByRole('button', { name: 'Линейный график', exact: true }).click()
   await page.getByRole('textbox', { name: 'Строка 1, столбец 2', exact: true }).fill('73')
   await expect(preview(page).locator('svg')).toHaveAttribute('aria-label', 'Линейный график')
   expect((await canvas(page).boundingBox())!.height).toBeGreaterThan(80)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-mobile.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-mobile.png`))
   await page.keyboard.press('Escape')
   await expect(panel(page)).toHaveCount(0)
   expect((await editorState(page, deckId)).slides[0].data_blocks).toEqual([])
@@ -93,7 +93,7 @@ test('верхнее меню группирует графики и блоки;
   await page.getByRole('button', { name: 'Добавить столбец', exact: true }).click()
   await page.getByRole('textbox', { name: 'Заголовок 4', exact: true }).fill('Ещё вариант')
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-mobile-grid.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-mobile-grid.png`))
   await page.getByRole('button', { name: 'Закрыть данные', exact: true }).click()
   await expect(panel(page)).toHaveCount(0)
   expect((await editorState(page, deckId)).slides[0].data_blocks).toEqual([])

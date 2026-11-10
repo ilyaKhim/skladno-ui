@@ -12,10 +12,11 @@ frontend_check:
   script:
     - pnpm typecheck
     - pnpm test:frontend
+    - pnpm test:e2e:runner
     # Main is built by deploy_reg; branches/MRs also validate the static export.
     - if [ "$CI_COMMIT_BRANCH" != main ]; then STATIC_EXPORT=1 pnpm build; fi
   rules:
-    - changes: [frontend/**/*, package.json, pnpm-lock.yaml, pnpm-workspace.yaml, .gitlab/**/*, .gitlab-ci.yml]
+    - changes: [frontend/**/*, scripts/e2e*, scripts/tool-commands*, scripts/backend-dev.cjs, scripts/document-worker.cjs, package.json, pnpm-lock.yaml, pnpm-workspace.yaml, .gitlab/**/*, .gitlab-ci.yml]
 
 backend_check:
   stage: test
@@ -43,7 +44,7 @@ backend_check:
     reports:
       junit: [backend/target/surefire-reports/TEST-*.xml, document-worker/target/surefire-reports/TEST-*.xml]
   rules:
-    - changes: [backend/**/*, document-worker/**/*, compose.yaml, scripts/backend-dev.sh, scripts/document-worker.sh, .gitlab/**/*, .gitlab-ci.yml]
+    - changes: [backend/**/*, document-worker/**/*, compose.yaml, scripts/backend-dev.*, scripts/document-worker.*, scripts/tool-commands.cjs, .gitlab/**/*, .gitlab-ci.yml]
 
 bridge_check:
   stage: test
@@ -90,4 +91,4 @@ editor_e2e:
     reports:
       junit: test-results/e2e.xml
   rules:
-    - changes: [frontend/**/*, backend/**/*, document-worker/**/*, e2e/**/*, playwright.config.ts, scripts/e2e.mjs, scripts/backend-dev.sh, scripts/document-worker.sh, scripts/test-draft-migration.mjs, package.json, pnpm-lock.yaml, .gitlab/**/*, .gitlab-ci.yml]
+    - changes: [frontend/**/*, backend/**/*, document-worker/**/*, e2e/**/*, playwright.config.ts, scripts/e2e*, scripts/backend-dev.*, scripts/document-worker.*, scripts/tool-commands.cjs, scripts/test-draft-migration.mjs, package.json, pnpm-lock.yaml, .gitlab/**/*, .gitlab-ci.yml]

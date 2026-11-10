@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { Page, TestInfo } from '@playwright/test'
-import { test, expect, mutation, editorApi } from './support'
+import { test, expect, mutation, editorApi, captureReview } from './support'
 
 async function capture(page: Page, info: TestInfo, name: string) {
   if (info.project.name !== 'chromium') return
@@ -20,11 +20,7 @@ async function capture(page: Page, info: TestInfo, name: string) {
         ),
     )
     .toBe(true)
-  await page.screenshot({
-    path: resolve(folder, `${name}.png`),
-    fullPage: true,
-    animations: 'disabled',
-  })
+  await captureReview(page, resolve(folder, `${name}.png`))
 }
 
 test('workspace shows real covers, search/filter/sort and keeps versions and chat', async ({

@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { strFromU8 } from 'fflate'
-import { test, expect, canvas, downloadPptx, editorState, listShape, openList, saved } from './support'
+import { test, expect, canvas, captureReview, downloadPptx, editorState, listShape, openList, saved } from './support'
 
 test('форматирование на слайде сохраняется, переживает reload и попадает в настоящий PPTX', async ({ page, deckId }) => {
   await openList(page, deckId)
@@ -110,18 +110,18 @@ test('desktop and mobile editor expose only AI chat and keep inline controls ins
     await expect(page.getByRole('combobox', { name: 'Шрифт', exact: true })).toBeVisible()
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.evaluate(() => document.fonts.ready)
-    if (info.project.name === 'chromium') await page.screenshot({ path: resolve(review, `${name}.png`), fullPage: true, animations: 'disabled' })
+    if (info.project.name === 'chromium') await captureReview(page, resolve(review, `${name}.png`))
     await page.keyboard.press('Escape')
   }
   await page.getByRole('combobox', { name: 'Масштаб', exact: true }).selectOption('1')
   await expect.poll(async () => (await canvas(page).boundingBox())!.width).toBeCloseTo(960, 0)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  if (info.project.name === 'chromium') await page.screenshot({ path: resolve(review, 'mobile-zoom.png'), fullPage: true, animations: 'disabled' })
+  if (info.project.name === 'chromium') await captureReview(page, resolve(review, 'mobile-zoom.png'))
   await page.getByRole('combobox', { name: 'Масштаб', exact: true }).selectOption('fit')
   await page.getByRole('button', { name: 'AI-чат', exact: true }).click()
   const chat = page.getByRole('complementary', { name: 'AI-чат', exact: true })
   await expect(chat).toBeVisible()
   await expect(chat.getByRole('textbox', { name: 'Запрос к AI', exact: true })).toBeVisible()
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  if (info.project.name === 'chromium') await page.screenshot({ path: resolve(review, 'mobile-chat.png'), fullPage: true, animations: 'disabled' })
+  if (info.project.name === 'chromium') await captureReview(page, resolve(review, 'mobile-chat.png'))
 })
