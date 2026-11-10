@@ -21,8 +21,10 @@
     "backend:test:integration": "node scripts/backend-dev.cjs test \"-Dtest=*IntegrationTest,DevelopmentAuthBypassTest\"",
     "test:frontend": "node --experimental-strip-types --test frontend/lib/*.test.mjs",
     "test:e2e": "node scripts/e2e.mjs",
+    "test:e2e:smoke": "node scripts/e2e.mjs --smoke",
+    "test:e2e:diagnostic": "node scripts/e2e.mjs --diagnostic",
     "test:e2e:debug": "node scripts/e2e.mjs --debug=inspector",
-    "test:e2e:runner": "node --test scripts/e2e-run-guard.test.mjs scripts/tool-commands.test.cjs",
+    "test:e2e:runner": "node --test scripts/e2e-run-guard.test.mjs scripts/tool-commands.test.cjs scripts/e2e-build.test.mjs scripts/e2e-reporter.test.cjs",
     "test:e2e:types": "pnpm --filter @godeck/frontend exec tsc --noEmit -p ../e2e/tsconfig.json",
     "test:e2e:report": "playwright show-report",
     "verify": "pnpm test:frontend && pnpm typecheck && pnpm test:e2e:types && pnpm test:e2e:runner && pnpm test:migrations && pnpm document-worker:test && pnpm backend:test && pnpm test:e2e"

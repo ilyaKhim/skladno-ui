@@ -87,7 +87,7 @@ test('мобильный AI-чат не применяет предложени�
   expect(state.slides[1].blocks.find((b: { field_key: string }) => b.field_key === 'LIST_3').text).toBe(original)
 })
 
-test('AI готовит неопубликованный черновик; редактор сохраняет его и публикует первую версию без второго AI', async ({ page, request, createdDecks }) => {
+test('AI готовит неопубликованный черновик; редактор сохраняет его и публикует первую версию без второго AI', { tag: '@smoke' }, async ({ page, request, createdDecks }) => {
   const id = await createDraft(request, createdDecks, 'draft to first publication')
   const job = await (await request.get(`${root}/${id}`)).json()
   expect(job).toMatchObject({ version: 0, download_url: null })

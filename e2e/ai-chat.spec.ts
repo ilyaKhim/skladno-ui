@@ -26,7 +26,7 @@ async function ask(page: Page, text: string) {
 
 const outcomeRequest = (page: Page) => page.waitForRequest((request) => request.method() === 'POST' && request.url().endsWith('/outcome'))
 
-test('просьба «в виде анекдота» даёт карточку, правка применяется только кнопкой', async ({ page, deckId }) => {
+test('просьба «в виде анекдота» даёт карточку, правка применяется только кнопкой', { tag: '@smoke' }, async ({ page, deckId }) => {
   await selectBlock(page, deckId)
   await ask(page, 'перескажи в виде анекдота')
   await expect(apply(page)).toBeVisible()

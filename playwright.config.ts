@@ -18,12 +18,13 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   workers: 1,
+  maxFailures: 3,
   retries: process.env.CI ? 1 : 0,
   forbidOnly: Boolean(process.env.CI),
   timeout: 60_000,
   expect: { timeout: 10_000 },
   snapshotPathTemplate: `{testDir}/snapshots/${process.platform}/{projectName}/{arg}{ext}`,
-  reporter: [['list'], ['html', { open: 'never' }], ['junit', { outputFile: 'test-results/e2e.xml' }]],
+  reporter: [['./scripts/e2e-reporter.cjs'], ['html', { open: 'never' }], ['junit', { outputFile: 'test-results/e2e.xml' }]],
   use: {
     baseURL: frontendUrl,
     actionTimeout: 15_000,
@@ -33,7 +34,7 @@ export default defineConfig({
     timezoneId: 'Europe/Moscow',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: process.env.E2E_VIDEO === '1' ? 'retain-on-failure' : 'off',
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } } },
@@ -42,6 +43,8 @@ export default defineConfig({
   webServer: [
     {
       name: 'Documents',
+      stdout: 'pipe',
+      stderr: 'pipe',
       command: 'node scripts/document-worker.cjs --no-build',
       wait: { stdout: /Document worker ready/ },
       reuseExistingServer: false,
@@ -55,6 +58,8 @@ export default defineConfig({
     },
     {
       name: 'API',
+      stdout: 'pipe',
+      stderr: 'pipe',
       command: process.env.E2E_JAVA_DEBUG === '1'
         ? 'node scripts/backend-dev.cjs -Dspring-boot.run.jvmArguments=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:15005'
         : 'node scripts/backend-dev.cjs',
@@ -82,6 +87,8 @@ export default defineConfig({
     },
     {
       name: 'Web',
+      stdout: 'pipe',
+      stderr: 'pipe',
       command: `pnpm --filter @godeck/frontend start --port ${frontendPort} --hostname 127.0.0.1`,
       url: `${frontendUrl}/studio`,
       reuseExistingServer: false,

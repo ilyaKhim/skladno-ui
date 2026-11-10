@@ -1,7 +1,7 @@
 import { readFile, mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { strFromU8 } from 'fflate'
-import { test, expect, canvas, downloadPptx, editorApi, editorState, listShape, openList, saved } from './support'
+import { test, expect, canvas, captureReview, downloadPptx, editorApi, editorState, listShape, openList, saved } from './support'
 
 test('folio follows the slide order immediately, after reload and in the real PPTX', async ({ page, deckId }) => {
   await openList(page, deckId)
@@ -24,7 +24,7 @@ test('folio follows the slide order immediately, after reload and in the real PP
   expect(folio).toBe('01')
 })
 
-test('PDF retry downloads the same published version, keeps the editor and honours hidden slides', async ({ page, deckId }) => {
+test('PDF retry downloads the same published version, keeps the editor and honours hidden slides', { tag: '@smoke' }, async ({ page, deckId }) => {
   let commits = 0
   let fail = true
   const downloads: string[] = []
@@ -35,7 +35,7 @@ test('PDF retry downloads the same published version, keeps the editor and honou
     downloads.push(route.request().url())
     if (fail) {
       await expect(page.getByRole('status').filter({ hasText: 'Подготавливаем PDF…' })).toBeVisible()
-      await page.screenshot({ path: resolve(review, `${test.info().project.name}-loading.png`), fullPage: true, animations: 'disabled' })
+      await captureReview(page, resolve(review, `${test.info().project.name}-loading.png`))
     }
     return fail ? route.fulfill({ status: 429, json: { error: { code: 'pdf_busy', message: 'PDF занят. Попробуйте ещё раз.' } } }) : route.continue()
   })
@@ -49,7 +49,7 @@ test('PDF retry downloads the same published version, keeps the editor and honou
   await expect(page.getByRole('alert', { name: 'Ошибка редактора' })).toContainText('PDF занят')
   await expect(page.getByRole('alert', { name: 'Ошибка редактора' })).toContainText('Версия сохранена. Файл не скачан.')
   await expect(page.getByRole('alert', { name: 'Ошибка редактора' })).not.toContainText('Проверьте результат публикации')
-  await page.screenshot({ path: resolve(review, `${test.info().project.name}-error.png`), fullPage: true, animations: 'disabled' })
+  await captureReview(page, resolve(review, `${test.info().project.name}-error.png`))
   expect(commits).toBe(1)
   await expect(page.getByRole('button', { name: 'Отменить', exact: true })).toBeEnabled()
   fail = false
@@ -105,7 +105,7 @@ test('PDF controls fit desktop and mobile and allow including hidden slides', as
     await page.getByRole('checkbox', { name: 'Включить скрытые слайды (1)' }).check()
     await expect(page.getByRole('button', { name: 'Экспортировать', exact: true })).toBeInViewport()
     await expect(page.locator('[data-slot="popover-content"]')).toHaveCSS('opacity', '1')
-    await page.screenshot({ path: resolve(directory, `${test.info().project.name}-${width}.png`), fullPage: true, animations: 'disabled' })
+    await captureReview(page, resolve(directory, `${test.info().project.name}-${width}.png`))
     await page.keyboard.press('Escape')
   }
   await page.getByRole('button', { name: 'Экспорт', exact: true }).click()

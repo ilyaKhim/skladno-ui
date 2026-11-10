@@ -79,23 +79,30 @@ export const test = base.extend<{ plan: Plan; deckId: string; createdDecks: stri
     })
   },
   deckId: async ({ request, plan, createdDecks }, use) => {
-    const job = await mutation(request, 'post', '/api/generation/v1/presentations', {
-      template_id: 'opal', topic: 'E2E Subaru Impreza WRX', mode: 'manual',
+    const id = await base.step('Подготовка презентации', async () => {
+      const job = await mutation(request, 'post', '/api/generation/v1/presentations', {
+        template_id: 'opal', topic: 'E2E Subaru Impreza WRX', mode: 'manual',
+      })
+      createdDecks.push(job.id)
+      await mutation(request, 'put', `/api/generation/v1/presentations/${job.id}/content`, plan)
+      await expect.poll(async () => {
+        const response = await request.get(`/api/generation/v1/presentations/${job.id}`)
+        return (await response.json()).status
+      }, { timeout: 30_000 }).toBe('draft')
+      const state = await (await request.get(editorApi(job.id))).json()
+      const draft = await mutation(request, 'put', `${editorApi(job.id)}/draft`, serialize(toDeck(state), state.base_version, state.draft_revision))
+      await mutation(request, 'post', `${editorApi(job.id)}/commit`, { base_version: 0, draft_revision: draft.draft_revision })
+      return job.id as string
     })
-    createdDecks.push(job.id)
-    await mutation(request, 'put', `/api/generation/v1/presentations/${job.id}/content`, plan)
-    await expect.poll(async () => {
-      const response = await request.get(`/api/generation/v1/presentations/${job.id}`)
-      return (await response.json()).status
-    }, { timeout: 30_000 }).toBe('draft')
-    const state = await (await request.get(editorApi(job.id))).json()
-    const draft = await mutation(request, 'put', `${editorApi(job.id)}/draft`, serialize(toDeck(state), state.base_version, state.draft_revision))
-    await mutation(request, 'post', `${editorApi(job.id)}/commit`, { base_version: 0, draft_revision: draft.draft_revision })
-    await use(job.id)
+    await use(id)
   },
 })
 
 export { expect }
+
+export async function captureReview(page: Page, path: string) {
+  if (process.env.E2E_REVIEW === '1') await page.screenshot({ path, fullPage: true, animations: 'disabled' })
+}
 
 export const editorUrl = (id: string) => `/studio/editor?presentation=${id}`
 export const editorApi = (id: string) => `/api/generation/v1/presentations/${id}/editor`

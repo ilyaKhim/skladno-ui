@@ -163,7 +163,7 @@ test('обновление предупреждает о правках; пос�
   expect(textIn(await editorState(page, deckId))).toBe('Текст для восстановления после reload')
 })
 
-test('браузерный Back из редактора показывает предупреждение и позволяет остаться', async ({ page, deckId }) => {
+test('браузерный Back из редактора показывает предупреждение и позволяет остаться', { tag: '@smoke' }, async ({ page, deckId }) => {
   await page.goto('/studio')
   await page.getByRole('link', { name: 'Недавние', exact: true }).click()
   await page.locator(`a[href*="presentation=${deckId}"]`).click()

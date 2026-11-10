@@ -1,7 +1,7 @@
 import { test, expect, canvas, downloadPptx, editorState, inspectPresentationOrder, inspectSlide, listShape, moveListShapeTo, openList, saved } from './support'
 import { strFromU8 } from 'fflate'
 
-test('создать презентацию через студию и открыть редактор с настоящим фоном', async ({ page, plan, createdDecks }) => {
+test('создать презентацию через студию и открыть редактор с настоящим фоном', { tag: '@smoke' }, async ({ page, plan, createdDecks }) => {
   await page.goto('/studio/?view=create')
   await page.getByRole('button', { name: /Вставить ответ LLM/ }).click()
   await page.locator('label:has(input[name="template"][value="opal"])').click()
@@ -46,7 +46,7 @@ test('создать презентацию через студию и откр�
   })
 })
 
-test('изменить текст и передвинуть shape, дождаться autosave и перезагрузить', async ({ page, deckId }) => {
+test('изменить текст и передвинуть shape, дождаться autosave и перезагрузить', { tag: '@smoke' }, async ({ page, deckId }) => {
   await openList(page, deckId)
   const third = listShape(page).locator('[data-paragraph-index="2"]')
   await third.dblclick()
@@ -115,7 +115,7 @@ test('вставить изображение, сохранить и восст�
   expect(exported.shapes.some((shape) => shape.paragraphs.includes('Свободный текст E2E'))).toBe(true)
 })
 
-test('экспортировать PPTX с изменённым текстом, геометрией, порядком и hidden-слайдом', async ({ page, deckId, plan }) => {
+test('экспортировать PPTX с изменённым текстом, геометрией, порядком и hidden-слайдом', { tag: '@smoke' }, async ({ page, deckId, plan }) => {
   await openList(page, deckId)
   await listShape(page).locator('[data-paragraph-index="2"]').dblclick()
   await page.getByRole('textbox', { name: 'Текст', exact: true }).fill('Третий пункт для экспорта')
